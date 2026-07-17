@@ -1,0 +1,14 @@
+RewriteEngine On
+
+# Public shareable site links: /s/{slug} route through s.php, which looks
+# up the slug and serves the matching generated static page. Without this
+# rule, /s/{slug} 404s because there is no physical file at that path.
+RewriteRule ^s/([a-zA-Z0-9\-]+)/?$ s.php?slug=$1 [L,QSA]
+
+# Never allow direct access to the raw error dump or other storage files.
+RewriteRule ^storage/ - [F,L]
+
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+</IfModule>

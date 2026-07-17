@@ -1,0 +1,32 @@
+body { font-family: 'Inter', system-ui, sans-serif; }
+.glass { backdrop-filter: blur(16px); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+.dropzone { border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; transition: border-color 0.2s; }
+.dropzone.dragover { border-color: #10B981; background: rgba(16,185,129,0.05); }
+.gen-progress-bar { height: 8px; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; }
+.gen-progress-fill { height: 100%; background: #10B981; transition: width 0.3s ease; }
+a { transition: color 0.15s; }
+
+input, textarea, select {
+  color: #ffffff;
+  color-scheme: dark;
+}
+input::placeholder, textarea::placeholder {
+  color: rgba(148, 163, 184, 0.7);
+}
+input[type="color"] {
+  padding: 2px;
+  background: transparent;
+}
+select option {
+  background: #0f172a;
+  color: #ffffff;
+}
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-text-fill-color: #ffffff;
+  -webkit-box-shadow: 0 0 0px 1000px rgba(30,41,59,0.9) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
