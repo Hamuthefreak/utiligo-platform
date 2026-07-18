@@ -1,0 +1,63 @@
+name: Deploy to InfinityFree FTP
+
+# Runs automatically on every push to main
+on:
+  push:
+    branches:
+      - main
+  # Also lets you trigger it manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    name: FTP Deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      # 1. Check out the full repo
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2   # needed so ftp-deploy can diff changed files only
+
+      # 2. Deploy changed files to InfinityFree via FTP
+      #    Uses: https://github.com/SamKirkland/FTP-Deploy-Action
+      - name: Deploy via FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          # --- Connection ---
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: 21
+          protocol: ftp
+
+          # --- Paths ---
+          # local-dir: the folder inside your repo to deploy (trailing slash required)
+          # Use './' to deploy the whole repo root, or 'htdocs/' if your files live there
+          local-dir: ./
+          # server-dir: the remote folder on InfinityFree (usually htdocs/)
+          server-dir: /htdocs/
+
+          # --- Smart sync options ---
+          # Only upload files that actually changed (saves time + quota)
+          dangerous-clean-slate: false
+
+          # Files/folders to NEVER upload to the server
+          exclude: |
+            **/.git*
+            **/.git*/**
+            **/node_modules/**
+            .github/**
+            README.md
+            *.zip
+            storage/error_log.txt
+            storage/error_log.txt.*.bak
+            config.php
+
+          # Print every file being transferred (useful for debugging)
+          log-level: verbose
+
+      - name: Deployment complete
+        run: echo "Deployed to InfinityFree successfully!"
