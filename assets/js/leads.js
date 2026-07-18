@@ -9,7 +9,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (!form) return;
 
-  // Fake-but-believable placeholder names for locked rows
   const FAKE_NAMES = [
     'Montreal Plumbing Co.', 'Apex Roofing Services', 'Bella Vista Restaurant',
     'ProClean Janitorial', 'City Electrical Works', 'Green Thumb Landscaping',
@@ -23,20 +22,20 @@ document.addEventListener('DOMContentLoaded', function () {
   ];
   const FAKE_SCORES = [72, 81, 68, 90, 77, 85, 63, 79, 88, 74];
 
-  function fakeName(index) {
-    return FAKE_NAMES[index % FAKE_NAMES.length];
-  }
-  function fakeCity(index) {
-    return FAKE_CITIES[index % FAKE_CITIES.length];
-  }
-  function fakeScore(index) {
-    return FAKE_SCORES[index % FAKE_SCORES.length];
-  }
+  function fakeName(i)  { return FAKE_NAMES[i  % FAKE_NAMES.length]; }
+  function fakeCity(i)  { return FAKE_CITIES[i  % FAKE_CITIES.length]; }
+  function fakeScore(i) { return FAKE_SCORES[i  % FAKE_SCORES.length]; }
 
   function scoreColor(score) {
     if (score >= 80) return 'bg-emerald-500/20 text-emerald-400';
     if (score >= 60) return 'bg-amber-500/20 text-amber-400';
     return 'bg-red-500/20 text-red-400';
+  }
+
+  function escHtml(str) {
+    return String(str)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function renderLeadRow(lead) {
@@ -57,7 +56,8 @@ document.addEventListener('DOMContentLoaded', function () {
           : `<i class="fa-solid fa-phone mr-1 text-slate-600"></i><span class="text-slate-500">No phone found</span>`
         }
       </div>
-      <a href="/portal/generate.php?lead_id=${encodeURIComponent(lead.id)}" class="text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-full font-semibold whitespace-nowrap">
+      <a href="/portal/generate.php?lead_id=${encodeURIComponent(lead.id)}"
+         class="text-xs bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-4 py-2 rounded-full font-semibold whitespace-nowrap">
         <i class="fa-solid fa-bolt mr-1"></i>Generate Website
       </a>
     `;
@@ -67,31 +67,27 @@ document.addEventListener('DOMContentLoaded', function () {
   function renderLockedRow(lead, index) {
     const row = document.createElement('div');
     row.className = 'relative glass rounded-xl p-4 flex items-center justify-between gap-4 flex-wrap overflow-hidden';
-    const name  = fakeName(index);
-    const city  = fakeCity(index);
     const score = fakeScore(index);
     const sc    = scoreColor(score);
+    // Everything is fully blurred — name, address, phone all unreadable
     row.innerHTML = `
-      <div class="absolute inset-0 backdrop-blur-[3px] bg-slate-950/40 z-10 rounded-xl pointer-events-none"></div>
-      <div class="flex-1 min-w-[200px] relative z-0">
+      <div class="flex-1 min-w-[200px]">
         <div class="flex items-center gap-2 mb-1">
-          <h3 class="font-semibold text-white">${escHtml(name)}</h3>
-          <span class="text-xs px-2 py-0.5 rounded-full ${sc} font-semibold">${score}</span>
+          <h3 class="font-semibold text-white blur-sm select-none pointer-events-none">${escHtml(fakeName(index))}</h3>
+          <span class="text-xs px-2 py-0.5 rounded-full ${sc} font-semibold blur-sm select-none">${score}</span>
         </div>
-        <p class="text-sm text-slate-400"><i class="fa-solid fa-location-dot mr-1"></i>${escHtml(city)}</p>
+        <p class="text-sm text-slate-400 blur-sm select-none pointer-events-none">
+          <i class="fa-solid fa-location-dot mr-1"></i>${escHtml(fakeCity(index))}
+        </p>
       </div>
-      <div class="text-sm text-slate-300 min-w-[160px] relative z-0">
-        <i class="fa-solid fa-phone mr-1 text-emerald-500"></i><span class="blur-sm select-none">(514) 555-01${String(10 + index).padStart(2,'0')}</span>
+      <div class="text-sm text-slate-300 min-w-[160px] blur-sm select-none pointer-events-none">
+        <i class="fa-solid fa-phone mr-1 text-emerald-500"></i>(${514 + index}) 555-0${100 + index}
       </div>
-      <div class="text-xs bg-white/5 text-slate-400 px-4 py-2 rounded-full font-semibold whitespace-nowrap relative z-0">
-        <i class="fa-solid fa-lock mr-1 text-amber-400"></i>Pro Only
+      <div class="text-xs bg-amber-500/10 border border-amber-500/20 text-amber-400 px-4 py-2 rounded-full font-semibold whitespace-nowrap">
+        <i class="fa-solid fa-lock mr-1"></i>Pro Only
       </div>
     `;
     return row;
-  }
-
-  function escHtml(str) {
-    return String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
 
   function runSearch(city, industry, forceRefresh) {
@@ -111,11 +107,30 @@ document.addEventListener('DOMContentLoaded', function () {
         lockedList.innerHTML = '';
 
         if (!data.success) {
-          leadsList.innerHTML = `<div class="glass rounded-xl p-5 text-red-400 text-sm text-center">
-            <i class="fa-solid fa-triangle-exclamation mr-2"></i>${escHtml(data.error || 'Search failed.')}
+          leadsList.innerHTML = `<div class="glass rounded-xl p-5 text-sm text-center ${
+            data.rate_limited ? 'text-amber-400' : 'text-red-400'
+          }">
+            <i class="fa-solid fa-${ data.rate_limited ? 'clock' : 'triangle-exclamation' } mr-2"></i>
+            ${escHtml(data.error || 'Search failed.')}
+            ${ data.resets_at ? `<span class="block text-xs text-slate-400 mt-1">Your searches reset at ${new Date(data.resets_at * 1000).toLocaleTimeString()}</span>` : '' }
           </div>`;
           lockedWrap.classList.add('hidden');
           return;
+        }
+
+        // Show remaining searches for free tier
+        if (data.is_free_tier && typeof data.searches_remaining !== 'undefined') {
+          const badge = document.createElement('div');
+          badge.className = 'flex items-center justify-between gap-3 text-xs mb-3 px-1';
+          const left = data.searches_remaining;
+          badge.innerHTML = `
+            <span class="${ left === 0 ? 'text-red-400' : left === 1 ? 'text-amber-400' : 'text-slate-400' }">
+              <i class="fa-solid fa-search mr-1"></i>
+              <strong>${left}</strong> free search${left !== 1 ? 'es' : ''} remaining today
+            </span>
+            <a href="/portal/billing.php?upgrade=1" class="text-emerald-400 hover:text-emerald-300 font-semibold">Get unlimited &rarr;</a>
+          `;
+          leadsList.appendChild(badge);
         }
 
         if (data.from_cache) {
