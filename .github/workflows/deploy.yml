@@ -38,7 +38,7 @@ jobs:
           # Use './' to deploy the whole repo root, or 'htdocs/' if your files live there
           local-dir: ./
           # server-dir: the remote folder on InfinityFree (usually htdocs/)
-          server-dir: /htdocs/
+          server-dir: /utiligo.ca/htdocs/
 
           # --- Smart sync options ---
           # Only upload files that actually changed (saves time + quota)
