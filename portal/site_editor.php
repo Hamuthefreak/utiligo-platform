@@ -23,6 +23,10 @@ $pages = ['index' => 'Home', 'about' => 'About', 'services' => 'Services', 'gall
 $currentPage = $_GET['page'] ?? 'index';
 if (!array_key_exists($currentPage, $pages)) $currentPage = 'index';
 
+// Use stored public_slug as folder name — it includes the uniqid suffix
+// used during generation, so it always points to the real folder on disk.
+$slugDir = $site['public_slug'] ?: (slugify($site['business_name']) . '-' . $site['id']);
+
 $pageTitle = 'Edit Site — Utiligo Portal';
 require_once __DIR__ . '/../includes/header.php';
 ?>
@@ -86,7 +90,8 @@ require_once __DIR__ . '/../includes/header.php';
   </div>
 
   <div class="glass rounded-xl overflow-hidden" style="height:calc(100vh - 220px);">
-    <iframe id="siteFrame" src="/assets/uploads/generated_sites/<?= htmlspecialchars(slugify($site['business_name']) . '-' . $site['id']) ?>/<?= $currentPage ?>.html?edit=1&t=<?= time() ?>"
+    <iframe id="siteFrame"
+            src="/assets/uploads/generated_sites/<?= htmlspecialchars($slugDir) ?>/<?= $currentPage ?>.html?edit=1&t=<?= time() ?>"
             class="w-full h-full border-0 bg-white"></iframe>
   </div>
 </div>
