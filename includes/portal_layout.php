@@ -6,7 +6,7 @@ if (!isset($pageTitle)) { $pageTitle = 'Utiligo Portal'; }
 $loggedIn  = function_exists('is_logged_in') && is_logged_in();
 $_user     = function_exists('current_user')  ? current_user()  : [];
 $_plan     = $_user['plan'] ?? 'free';
-$_is_pro   = $_plan === 'pro';
+$_is_paid  = in_array($_plan, ['pro','entrepreneur']);
 $_name     = htmlspecialchars(trim($_user['full_name'] ?? 'User'));
 $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
@@ -72,7 +72,6 @@ function _nav_active(string $href, string $current): string {
     <a href="/portal/generate.php" class="nav-link <?= _nav_active('/portal/generate.php', $_path) ?>"><i class="fa-solid fa-bolt"></i> Generate Site</a>
     <a href="/portal/my_sites.php" class="nav-link <?= _nav_active('/portal/my_sites.php', $_path) ?>"><i class="fa-solid fa-folder-open"></i> My Sites</a>
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mt-5 mb-2">Account</p>
-    <a href="/portal/settings.php" class="nav-link <?= _nav_active('/portal/settings.php', $_path) ?>"><i class="fa-solid fa-paintbrush"></i> White-Label</a>
     <a href="/portal/billing.php"  class="nav-link <?= _nav_active('/portal/billing.php',  $_path) ?>"><i class="fa-solid fa-credit-card"></i> Billing</a>
     <?php if (($_user['admin_flag'] ?? 0) && (defined('DEBUG_MODE') && DEBUG_MODE)): ?>
     <a href="/portal/debug.php" class="nav-link <?= _nav_active('/portal/debug.php', $_path) ?>"><i class="fa-solid fa-bug"></i> Debug Panel</a>
@@ -80,13 +79,13 @@ function _nav_active(string $href, string $current): string {
   </nav>
 
   <!-- Plan badge -->
-  <?php if (!$_is_pro): ?>
+  <?php if (!$_is_paid): ?>
   <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
     <p class="text-xs font-bold text-white mb-0.5">Free Plan</p>
-    <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; sites</p>
+    <p class="text-xs text-slate-400 mb-3">Unlock leads, sites &amp; more</p>
     <a href="/portal/billing.php?upgrade=1"
        class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
-      <i class="fa-solid fa-crown mr-1"></i> Upgrade to Pro
+      <i class="fa-solid fa-crown mr-1"></i> Upgrade Plan
     </a>
   </div>
   <?php endif; ?>
@@ -98,7 +97,7 @@ function _nav_active(string $href, string $current): string {
     </div>
     <div class="flex-1 min-w-0">
       <p class="text-xs font-semibold text-white truncate"><?= $_name ?></p>
-      <p class="text-xs text-slate-500"><?= $_is_pro ? 'Pro' : 'Free' ?> Plan</p>
+      <p class="text-xs text-slate-500"><?= ucfirst($_plan) ?> Plan</p>
     </div>
     <a href="/includes/auth.php?action=logout" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
