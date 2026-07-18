@@ -1,145 +1,130 @@
 <?php
-/**
- * register.php — User registration page.
- */
 require_once __DIR__ . '/config.php';
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/userdb.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/mailer.php';
 
-if (is_logged_in()) {
-    header('Location: /portal/index.php');
-    exit;
-}
+if (is_logged_in()) { header('Location: /portal/index.php'); exit; }
+
+$_plan_param  = isset($_GET['plan']) && in_array($_GET['plan'], ['pro','entrepreneur']) ? $_GET['plan'] : 'free';
+$_plan_labels = ['free' => 'Free', 'pro' => 'Pro — $21.99/mo', 'entrepreneur' => 'Entrepreneur — $49.99/mo'];
 
 $error = '';
 $success = false;
-$wantsPro = isset($_GET['plan']) && $_GET['plan'] === 'pro';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
-        $error = 'Invalid session. Please try again.';
+        $error = 'Invalid session token. Please try again.';
     } else {
-        $email = trim($_POST['email'] ?? '');
-        $password = $_POST['password'] ?? '';
-        $fullName = trim($_POST['full_name'] ?? '');
+        $full_name = trim($_POST['full_name'] ?? '');
+        $email     = strtolower(trim($_POST['email'] ?? ''));
+        $password  = $_POST['password'] ?? '';
+        $plan      = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
 
-        if (strlen($password) < 8) {
-            $error = 'Password must be at least 8 characters.';
-        } else {
-            $result = register_user($email, $password, $fullName);
-            if ($result['success']) {
-                $userId = $result['user_id'];
-
-                brevo_upsert_contact($email, ['FIRSTNAME' => $fullName], [BREVO_LIST_ALL_USERS, BREVO_LIST_FREE_USERS]);
-
-                if (EMAIL_VERIFICATION_REQUIRED) {
-                    $token = create_email_verification_token($userId);
-                    $verifyLink = APP_BASE_URL . '/verify-email.php?token=' . $token;
-                    send_verification_email($email, $fullName, $verifyLink);
-                    $success = true;
-                    $_SESSION['pending_verification_user_id'] = $userId;
-                    $_SESSION['pending_wants_pro'] = $wantsPro;
-                } else {
-                    login_user($userId);
-                    if ($wantsPro) {
-                        header('Location: /portal/billing.php?upgrade=1');
-                    } else {
-                        header('Location: /portal/index.php');
-                    }
-                    exit;
-                }
+        if (!$full_name)                        { $error = 'Please enter your full name.'; }
+        elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $error = 'Please enter a valid email.'; }
+        elseif (strlen($password) < 8)          { $error = 'Password must be at least 8 characters.'; }
+        else {
+            $userdb = get_user_db();
+            $stmt   = $userdb->prepare('SELECT id FROM utiligo_users WHERE email = ?');
+            $stmt->execute([$email]);
+            if ($stmt->fetch()) {
+                $error = 'An account with that email already exists. <a href="/login.php" class="underline">Sign in instead?</a>';
             } else {
-                $error = $result['error'];
+                $hash = password_hash($password, PASSWORD_BCRYPT);
+                try {
+                    $userdb->prepare('INSERT INTO utiligo_users (full_name, email, password_hash, plan, subscription_status, created_at) VALUES (?,?,?,?,?,NOW())')
+                        ->execute([$full_name, $email, $hash, 'free', 'none']);
+                } catch (\PDOException $e) {
+                    $userdb->prepare('INSERT INTO utiligo_users (full_name, email, password_hash, plan, created_at) VALUES (?,?,?,?,NOW())')
+                        ->execute([$full_name, $email, $hash, 'free']);
+                }
+                try { brevo_upsert_contact($email, ['FIRSTNAME' => $full_name], [BREVO_LIST_ALL_USERS]); } catch (\Throwable $e) {}
+                try { send_welcome_email($email, $full_name); } catch (\Throwable $e) {}
+
+                // Log user in and redirect appropriately
+                $userdb2 = get_user_db();
+                $stmt2   = $userdb2->prepare('SELECT * FROM utiligo_users WHERE email = ? LIMIT 1');
+                $stmt2->execute([$email]);
+                $newUser = $stmt2->fetch(PDO::FETCH_ASSOC);
+                if ($newUser) {
+                    session_start_safe();
+                    $_SESSION['user_id'] = $newUser['id'];
+                }
+                // Redirect to billing if they chose a paid plan
+                if ($plan === 'pro') {
+                    header('Location: /portal/billing.php?upgrade=1&plan=pro'); exit;
+                } elseif ($plan === 'entrepreneur') {
+                    header('Location: /portal/billing.php?upgrade=1&plan=entrepreneur'); exit;
+                } else {
+                    header('Location: /portal/index.php?welcome=1'); exit;
+                }
             }
         }
     }
 }
 
-$pageTitle = 'Sign Up — Utiligo';
+$pageTitle = 'Create Account — Utiligo';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<section class="max-w-5xl mx-auto px-6 py-16 md:py-24">
-  <div class="grid md:grid-cols-2 gap-10 items-center">
-
-    <!-- Left: value props -->
-    <div class="hidden md:block">
-      <span class="text-emerald-400 text-sm font-semibold uppercase tracking-wide">For Freelancers & Agencies</span>
-      <h1 class="text-4xl font-extrabold mt-3 mb-6 leading-tight">Start finding clients in the next 5 minutes.</h1>
-      <p class="text-slate-400 mb-8">Utiligo finds local businesses without a website, then generates one for them instantly. No coding required.</p>
-      <ul class="space-y-4 text-sm text-slate-300">
-        <li class="flex items-start gap-3">
-          <span class="w-8 h-8 rounded-full bg-emerald-500/15 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-check text-emerald-400 text-xs"></i></span>
-          <span>Search any city and industry for warm leads</span>
-        </li>
-        <li class="flex items-start gap-3">
-          <span class="w-8 h-8 rounded-full bg-emerald-500/15 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-check text-emerald-400 text-xs"></i></span>
-          <span>Generate a full website in about 60 seconds</span>
-        </li>
-        <li class="flex items-start gap-3">
-          <span class="w-8 h-8 rounded-full bg-emerald-500/15 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-check text-emerald-400 text-xs"></i></span>
-          <span>Export a clean ZIP — no lock-in, ever</span>
-        </li>
-        <li class="flex items-start gap-3">
-          <span class="w-8 h-8 rounded-full bg-emerald-500/15 flex items-center justify-center flex-shrink-0"><i class="fa-solid fa-check text-emerald-400 text-xs"></i></span>
-          <span>White-label everything with your own brand</span>
-        </li>
-      </ul>
+<section class="min-h-screen flex items-center justify-center px-4 py-16">
+  <div class="w-full max-w-md">
+    <div class="text-center mb-8">
+      <a href="/" class="inline-flex items-center gap-2 mb-6">
+        <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
+          <i class="fa-solid fa-bolt text-black text-base"></i>
+        </div>
+        <span class="text-2xl font-black">Utiligo</span>
+      </a>
+      <h1 class="text-2xl font-bold">Create your account</h1>
+      <p class="text-slate-400 text-sm mt-1">No credit card required to start.</p>
     </div>
 
-    <!-- Right: form -->
-    <div class="glass rounded-2xl p-8">
-
-      <?php if ($success): ?>
-        <div class="text-center">
-          <div class="text-4xl mb-4">📬</div>
-          <h1 class="text-2xl font-bold mb-2">Check Your Email</h1>
-          <p class="text-slate-400 text-sm">We sent a verification link to your inbox. Click it to activate your account and get started.</p>
-        </div>
-      <?php else: ?>
-
-      <h1 class="text-2xl font-bold mb-1 text-center md:hidden">Create Your Account</h1>
-      <h2 class="text-xl font-bold mb-1 text-center hidden md:block">Create Your Account</h2>
-      <p class="text-slate-400 text-sm text-center mb-6">
-        <?= $wantsPro ? "Sign up, verify your email, then activate Pro — no bank account needed to test it." : "Start free. Upgrade anytime." ?>
-      </p>
-
-      <?php if ($error): ?>
-        <div class="bg-red-500/10 border border-red-400/30 text-red-400 rounded-lg px-4 py-3 mb-6 text-sm">
-          <?= htmlspecialchars($error) ?>
-        </div>
-      <?php endif; ?>
-
-      <form method="POST" class="space-y-4">
-        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-        <div>
-          <label class="block text-sm mb-2">Full Name</label>
-          <input type="text" name="full_name" required
-            value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>"
-            class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-sm mb-2">Email</label>
-          <input type="email" name="email" required
-            value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
-            class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
-        </div>
-        <div>
-          <label class="block text-sm mb-2">Password (min 8 characters)</label>
-          <input type="password" name="password" required minlength="8"
-            class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
-        </div>
-        <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-full font-semibold transition">
-          <?= $wantsPro ? 'Create Account & Continue' : 'Start Free' ?>
-        </button>
-      </form>
-
-      <p class="text-center text-sm text-slate-400 mt-6">
-        Already have an account? <a href="/login.php" class="text-emerald-400 hover:underline">Log In</a>
-      </p>
-      <?php endif; ?>
+    <?php if ($_plan_param !== 'free'): ?>
+    <div class="flex items-center gap-2 bg-white/8 border border-white/15 rounded-xl px-4 py-3 mb-5 text-sm">
+      <i class="fa-solid fa-<?= $_plan_param === 'entrepreneur' ? 'rocket' : 'crown' ?> text-white"></i>
+      <span class="text-white font-semibold">Starting on <strong><?= $_plan_labels[$_plan_param] ?></strong> &mdash; you&rsquo;ll complete payment after signup.</span>
     </div>
+    <?php endif; ?>
+
+    <?php if ($error): ?>
+    <div class="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-3 mb-5 text-sm"><?= $error ?></div>
+    <?php endif; ?>
+
+    <form method="POST" class="glass rounded-2xl p-8 border border-white/10 space-y-4">
+      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+      <input type="hidden" name="plan" value="<?= htmlspecialchars($_plan_param) ?>">
+
+      <div>
+        <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Full Name</label>
+        <input type="text" name="full_name" required autofocus
+               value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>"
+               class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Email</label>
+        <input type="email" name="email" required
+               value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+               class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+      </div>
+      <div>
+        <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Password</label>
+        <input type="password" name="password" required minlength="8"
+               class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+        <p class="text-xs text-slate-500 mt-1">Minimum 8 characters</p>
+      </div>
+      <button type="submit"
+              class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all">
+        <?= $_plan_param !== 'free' ? 'Create Account &amp; Continue to Billing' : 'Create Free Account' ?>
+      </button>
+    </form>
+
+    <p class="text-center text-sm text-slate-500 mt-6">
+      Already have an account? <a href="/login.php" class="text-white hover:underline">Sign in</a>
+    </p>
   </div>
 </section>
 
