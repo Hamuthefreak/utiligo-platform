@@ -25,7 +25,6 @@ $stmt->execute([$user['id']]); $dealsWon = (int)$stmt->fetch()['c'];
 $stmt = $pdo->prepare('SELECT l.business_name, l.status, l.created_at FROM utiligo_leads l JOIN utiligo_lead_searches s ON l.search_id = s.id WHERE s.user_id = ? ORDER BY l.created_at DESC LIMIT 6');
 $stmt->execute([$user['id']]); $recentActivity = $stmt->fetchAll();
 
-// White-label set up?
 $stmt = $pdo->prepare('SELECT id FROM utiligo_whitelabel WHERE user_id = ? LIMIT 1');
 $stmt->execute([$user['id']]); $hasWhiteLabel = (bool)$stmt->fetch();
 
@@ -95,62 +94,48 @@ function statusLabel(string $s): string {
   </div>
 </div>
 
-<!-- Quick actions + Getting Started (side by side on desktop) -->
+<!-- Quick actions + Getting Started -->
 <div class="grid md:grid-cols-3 gap-6 mb-8">
-
-  <!-- Quick actions (2/3 width) -->
   <div class="md:col-span-2">
     <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-3">Quick Actions</p>
     <div class="grid grid-cols-2 gap-3">
       <a href="/portal/leads.php" class="group flex items-center gap-3 glass rounded-2xl px-4 py-4 border border-white/5 hover:border-emerald-500/40 hover:-translate-y-0.5 transition-all">
-        <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/25 transition">
-          <i class="fa-solid fa-magnifying-glass text-emerald-400"></i>
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0 group-hover:bg-emerald-500/25 transition"><i class="fa-solid fa-magnifying-glass text-emerald-400"></i></div>
         <div><p class="font-semibold text-sm">Find Leads</p><p class="text-slate-500 text-xs">Search any city</p></div>
       </a>
       <a href="/portal/generate.php" class="group flex items-center gap-3 glass rounded-2xl px-4 py-4 border border-white/5 hover:border-blue-500/40 hover:-translate-y-0.5 transition-all">
-        <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0 group-hover:bg-blue-500/25 transition">
-          <i class="fa-solid fa-bolt text-blue-400"></i>
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center shrink-0 group-hover:bg-blue-500/25 transition"><i class="fa-solid fa-bolt text-blue-400"></i></div>
         <div><p class="font-semibold text-sm">Generate Site</p><p class="text-slate-500 text-xs">60-second build</p></div>
       </a>
       <a href="/portal/my_sites.php" class="group flex items-center gap-3 glass rounded-2xl px-4 py-4 border border-white/5 hover:border-amber-500/40 hover:-translate-y-0.5 transition-all">
-        <div class="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0 group-hover:bg-amber-500/25 transition">
-          <i class="fa-solid fa-folder-open text-amber-400"></i>
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0 group-hover:bg-amber-500/25 transition"><i class="fa-solid fa-folder-open text-amber-400"></i></div>
         <div><p class="font-semibold text-sm">My Sites</p><p class="text-slate-500 text-xs">Manage &amp; share</p></div>
       </a>
       <a href="/portal/settings.php" class="group flex items-center gap-3 glass rounded-2xl px-4 py-4 border border-white/5 hover:border-violet-500/40 hover:-translate-y-0.5 transition-all">
-        <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0 group-hover:bg-violet-500/25 transition">
-          <i class="fa-solid fa-paintbrush text-violet-400"></i>
-        </div>
+        <div class="w-10 h-10 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0 group-hover:bg-violet-500/25 transition"><i class="fa-solid fa-paintbrush text-violet-400"></i></div>
         <div><p class="font-semibold text-sm">White-Label</p><p class="text-slate-500 text-xs">Customize brand</p></div>
       </a>
     </div>
   </div>
-
-  <!-- Getting Started checklist (1/3 width) -->
   <div class="glass rounded-2xl p-5 border border-white/5">
     <div class="flex items-center gap-2 mb-4">
-      <div class="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center">
-        <i class="fa-solid fa-list-check text-emerald-400 text-xs"></i>
-      </div>
+      <div class="w-7 h-7 rounded-lg bg-emerald-500/15 flex items-center justify-center"><i class="fa-solid fa-list-check text-emerald-400 text-xs"></i></div>
       <p class="text-sm font-semibold">Getting Started</p>
     </div>
     <ul class="space-y-3">
       <?php
       $steps = [
-          ['done' => $leadCount > 0,     'label' => 'Find your first lead',     'href' => '/portal/leads.php'],
-          ['done' => $sitesCount > 0,    'label' => 'Generate a website',       'href' => '/portal/generate.php'],
-          ['done' => $hasWhiteLabel,     'label' => 'Set up white-label brand', 'href' => '/portal/settings.php'],
-          ['done' => $dealsWon > 0,      'label' => 'Close your first deal',    'href' => '/portal/leads.php'],
-          ['done' => $is_pro,            'label' => 'Upgrade to Pro',           'href' => '/portal/billing.php?upgrade=1'],
+          ['done'=>$leadCount>0,  'label'=>'Find your first lead',     'href'=>'/portal/leads.php'],
+          ['done'=>$sitesCount>0, 'label'=>'Generate a website',       'href'=>'/portal/generate.php'],
+          ['done'=>$hasWhiteLabel,'label'=>'Set up white-label brand', 'href'=>'/portal/settings.php'],
+          ['done'=>$dealsWon>0,   'label'=>'Close your first deal',    'href'=>'/portal/leads.php'],
+          ['done'=>$is_pro,       'label'=>'Upgrade to Pro',           'href'=>'/portal/billing.php?upgrade=1'],
       ];
-      $total_done = count(array_filter($steps, fn($s) => $s['done']));
+      $total_done = count(array_filter($steps, fn($s)=>$s['done']));
       ?>
       <?php foreach($steps as $step): ?>
       <li class="flex items-center gap-2.5">
-        <div class="w-5 h-5 rounded-full shrink-0 flex items-center justify-center <?= $step['done'] ? 'bg-emerald-500' : 'bg-white/5 border border-white/10' ?>">
+        <div class="w-5 h-5 rounded-full shrink-0 flex items-center justify-center <?= $step['done']?'bg-emerald-500':'bg-white/5 border border-white/10' ?>">
           <?php if($step['done']): ?><i class="fa-solid fa-check text-slate-950 text-[9px]"></i><?php endif; ?>
         </div>
         <?php if($step['done']): ?>
@@ -162,15 +147,12 @@ function statusLabel(string $s): string {
       <?php endforeach; ?>
     </ul>
     <div class="mt-4 pt-4 border-t border-white/5">
-      <div class="flex justify-between text-xs text-slate-500 mb-1.5">
-        <span>Progress</span><span><?= $total_done ?>/<?= count($steps) ?></span>
-      </div>
+      <div class="flex justify-between text-xs text-slate-500 mb-1.5"><span>Progress</span><span><?= $total_done ?>/<?= count($steps) ?></span></div>
       <div class="w-full bg-white/5 rounded-full h-1.5">
         <div class="h-1.5 rounded-full bg-emerald-500 transition-all" style="width:<?= round($total_done/count($steps)*100) ?>%"></div>
       </div>
     </div>
   </div>
-
 </div>
 
 <!-- Activity feed -->
@@ -181,9 +163,7 @@ function statusLabel(string $s): string {
   </div>
   <?php if (!$recentActivity): ?>
   <div class="px-6 py-12 text-center">
-    <div class="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
-      <i class="fa-solid fa-inbox text-slate-500 text-xl"></i>
-    </div>
+    <div class="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4"><i class="fa-solid fa-inbox text-slate-500 text-xl"></i></div>
     <p class="text-slate-400 font-medium">No activity yet</p>
     <p class="text-slate-600 text-sm mt-1">Start by finding your first leads.</p>
     <a href="/portal/leads.php" class="inline-flex items-center gap-2 mt-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-2 rounded-xl text-sm font-bold">
@@ -205,5 +185,3 @@ function statusLabel(string $s): string {
   </ul>
   <?php endif; ?>
 </div>
-
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>

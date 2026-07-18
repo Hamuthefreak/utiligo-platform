@@ -28,14 +28,14 @@ if (!rate_limit_check('generate_site', RATE_LIMIT_GENERATE_SITE)) {
     json_response(['success' => false, 'error' => 'Too many generations. Please wait a moment.'], 429);
 }
 
+$pdo = get_platform_db();
+
 // Free user daily quota check
 if (!$is_pro) {
-    $pdo    = get_platform_db();
     $cutoff = date('Y-m-d H:i:s', strtotime('-24 hours'));
     $qstmt  = $pdo->prepare('SELECT COUNT(*) FROM utiligo_generated_sites WHERE user_id = ? AND created_at > ?');
     $qstmt->execute([$user['id'], $cutoff]);
-    $usedToday = (int)$qstmt->fetchColumn();
-    if ($usedToday >= FREE_GENERATE_DAILY_LIMIT) {
+    if ((int)$qstmt->fetchColumn() >= FREE_GENERATE_DAILY_LIMIT) {
         json_response(['success' => false, 'error' => 'Daily generation limit reached. Upgrade to Pro for unlimited generations.'], 403);
     }
 }
@@ -48,12 +48,9 @@ $email             = sanitize($input['business_email'] ?? '');
 $requestedTemplate = $input['template_name'] ?? 'modern';
 $allTemplates      = get_all_site_templates();
 
-// Free users restricted to first N templates
 if (!$is_pro) {
     $freeKeys = array_slice(array_keys($allTemplates), 0, FREE_TEMPLATE_LIMIT);
-    if (!in_array($requestedTemplate, $freeKeys, true)) {
-        $requestedTemplate = $freeKeys[0];
-    }
+    if (!in_array($requestedTemplate, $freeKeys, true)) $requestedTemplate = $freeKeys[0];
 }
 $template = array_key_exists($requestedTemplate, $allTemplates) ? $requestedTemplate : 'modern';
 $leadId   = !empty($input['lead_id']) ? (int)$input['lead_id'] : null;
@@ -82,21 +79,36 @@ if (!$businessName || !$category || !$city) {
     json_response(['success' => false, 'error' => 'Business name, category, and city are required.'], 400);
 }
 
-if (!isset($pdo)) $pdo = get_platform_db();
+// ---------------------------------------------------------------
+// Build INSERT dynamically — only include columns that exist.
+// This means the API works even on a bare-minimum table, and will
+// automatically use new columns once migration 004 has been run.
+// ---------------------------------------------------------------
+$candidateCols = [
+    'lead_id'           => $leadId,
+    'business_name'     => $businessName,
+    'business_category' => $category,
+    'business_city'     => $city,
+    'business_phone'    => $phone,
+    'business_email'    => $email,
+    'template_name'     => $template,
+];
 
-// Use db_table_has_column so this works even if migration hasn't been run yet
-$hasCategoryCol = db_table_has_column($pdo, 'utiligo_generated_sites', 'business_category');
-$hasCityCol     = db_table_has_column($pdo, 'utiligo_generated_sites', 'business_city');
-$hasPhoneCol    = db_table_has_column($pdo, 'utiligo_generated_sites', 'business_phone');
-$hasEmailCol    = db_table_has_column($pdo, 'utiligo_generated_sites', 'business_email');
-
-if ($hasCategoryCol && $hasCityCol && $hasPhoneCol && $hasEmailCol) {
-    $stmt = $pdo->prepare('INSERT INTO utiligo_generated_sites (user_id, lead_id, business_name, business_category, business_city, business_phone, business_email, template_name, status) VALUES (?,?,?,?,?,?,?,?,"pending")');
-    $stmt->execute([$user['id'], $leadId, $businessName, $category, $city, $phone, $email, $template]);
-} else {
-    $stmt = $pdo->prepare('INSERT INTO utiligo_generated_sites (user_id, lead_id, business_name, template_name, status) VALUES (?,?,?,?,"pending")');
-    $stmt->execute([$user['id'], $leadId, $businessName, $template]);
+$insertCols = ['user_id'];
+$insertVals = [$user['id']];
+foreach ($candidateCols as $col => $val) {
+    if (db_table_has_column($pdo, 'utiligo_generated_sites', $col)) {
+        $insertCols[] = $col;
+        $insertVals[] = $val;
+    }
 }
+$insertCols[] = 'status';
+$insertVals[] = 'pending';
+
+$colList      = implode(', ', $insertCols);
+$placeholders = implode(', ', array_fill(0, count($insertVals), '?'));
+$pdo->prepare("INSERT INTO utiligo_generated_sites ($colList) VALUES ($placeholders)")
+    ->execute($insertVals);
 $siteId = (int)$pdo->lastInsertId();
 
 $slug    = slugify($businessName) . '-' . $siteId;
