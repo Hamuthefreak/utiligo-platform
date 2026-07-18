@@ -1,32 +1,94 @@
 body { font-family: 'Inter', system-ui, sans-serif; }
-.glass { backdrop-filter: blur(16px); background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
-.dropzone { border: 2px dashed rgba(255,255,255,0.2); border-radius: 12px; transition: border-color 0.2s; }
-.dropzone.dragover { border-color: #10B981; background: rgba(16,185,129,0.05); }
-.gen-progress-bar { height: 8px; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; }
-.gen-progress-fill { height: 100%; background: #10B981; transition: width 0.3s ease; }
+
+/* ── Black & white accent overrides ── */
+:root {
+  --accent:       #FFFFFF;
+  --accent-dim:   rgba(255,255,255,0.12);
+  --accent-hover: rgba(255,255,255,0.18);
+  --accent-text:  #000000;
+}
+
+.glass {
+  backdrop-filter: blur(16px);
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.dropzone {
+  border: 2px dashed rgba(255,255,255,0.18);
+  border-radius: 12px;
+  transition: border-color 0.2s;
+}
+.dropzone.dragover {
+  border-color: #ffffff;
+  background: rgba(255,255,255,0.04);
+}
+.gen-progress-bar  { height:8px; background:rgba(255,255,255,0.1); border-radius:999px; overflow:hidden; }
+.gen-progress-fill { height:100%; background:#ffffff; transition:width 0.3s ease; }
 a { transition: color 0.15s; }
 
-input, textarea, select {
-  color: #ffffff;
-  color-scheme: dark;
-}
-input::placeholder, textarea::placeholder {
-  color: rgba(148, 163, 184, 0.7);
-}
-input[type="color"] {
-  padding: 2px;
-  background: transparent;
-}
-select option {
-  background: #0f172a;
-  color: #ffffff;
-}
+input, textarea, select { color:#ffffff; color-scheme:dark; }
+input::placeholder, textarea::placeholder { color:rgba(148,163,184,0.7); }
+input[type="color"] { padding:2px; background:transparent; }
+select option { background:#0f172a; color:#ffffff; }
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 textarea:-webkit-autofill,
 select:-webkit-autofill {
-  -webkit-text-fill-color: #ffffff;
-  -webkit-box-shadow: 0 0 0px 1000px rgba(30,41,59,0.9) inset;
-  transition: background-color 5000s ease-in-out 0s;
+  -webkit-text-fill-color:#ffffff;
+  -webkit-box-shadow:0 0 0px 1000px rgba(30,41,59,0.9) inset;
+  transition:background-color 5000s ease-in-out 0s;
 }
+
+/* ══ Global emerald → white/grey overrides ══
+   These cascade over Tailwind's utility classes
+   so we only need to touch ONE file for the
+   whole platform colour theme.                */
+
+/* Filled CTA buttons (bg-emerald-500, bg-emerald-400) */
+.bg-emerald-500 { background-color:#ffffff !important; color:#000000 !important; }
+.bg-emerald-400 { background-color:#e2e8f0 !important; color:#000000 !important; }
+
+/* Hover variants */
+.hover\:bg-emerald-500:hover { background-color:#ffffff !important; color:#000000 !important; }
+.hover\:bg-emerald-400:hover { background-color:#e2e8f0 !important; color:#000000 !important; }
+
+/* Tinted backgrounds (badges, pills, cards) */
+.bg-emerald-500\/10, .bg-emerald-500\/15,
+.bg-emerald-500\/20, .bg-emerald-500\/25 { background-color:rgba(255,255,255,.07) !important; }
+
+/* Text colours */
+.text-emerald-400 { color:#e2e8f0 !important; }
+.text-emerald-300 { color:#cbd5e1 !important; }
+.text-emerald-500 { color:#f1f5f9 !important; }
+
+/* Borders */
+.border-emerald-500\/20 { border-color:rgba(255,255,255,.15) !important; }
+.border-emerald-500\/25 { border-color:rgba(255,255,255,.18) !important; }
+.border-emerald-500\/30 { border-color:rgba(255,255,255,.22) !important; }
+
+/* Focus ring */
+.focus\:border-emerald-500:focus { border-color:rgba(255,255,255,.5) !important; }
+
+/* Drop shadow */
+.shadow-emerald-500\/20 { --tw-shadow-color:rgba(255,255,255,.1) !important; }
+
+/* Active nav link */
+.nav-link.active   { background:rgba(255,255,255,.1) !important; color:#ffffff !important; }
+.nav-link.active i { color:#ffffff !important; }
+
+/* Sidebar radial glow */
+#sidebar::before {
+  background: radial-gradient(circle,rgba(255,255,255,.03) 0%,transparent 70%) !important;
+}
+
+/* User avatar ring */
+.bg-emerald-500\/20  { background-color:rgba(255,255,255,.07) !important; }
+.border-emerald-500\/30 { border-color:rgba(255,255,255,.15) !important; }
+
+/* Site editor page tab active */
+.page-tab.active { background:#ffffff !important; color:#000000 !important; }
+
+/* Editor toolbar hover */
+.tb-btn:hover  { background:rgba(255,255,255,.15) !important; color:#ffffff !important; }
+.tb-btn.active { background:rgba(255,255,255,.2)  !important; color:#ffffff !important; }

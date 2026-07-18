@@ -1,8 +1,7 @@
 <?php
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.'; }
 $loggedIn = function_exists('is_logged_in') && is_logged_in();
-// Logo: place your PNG at /assets/images/logo.png
-// If the file exists it shows as an img tag; otherwise falls back to the bolt icon + wordmark.
+// Logo: place your image at /assets/images/logo.png
 $_logo_path = __DIR__ . '/../assets/images/logo.png';
 $_logo_url  = '/assets/images/logo.png';
 $_has_logo  = file_exists($_logo_path);
@@ -20,27 +19,26 @@ $_has_logo  = file_exists($_logo_path);
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
 <nav class="sticky top-0 z-50 backdrop-blur-lg bg-slate-950/80 border-b border-white/10">
   <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-    <a href="/" class="flex items-center gap-2">
+    <a href="/" class="flex items-center">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Logo" class="h-8 w-auto">
       <?php else: ?>
-        <i class="fa-solid fa-bolt text-emerald-400 text-xl"></i>
-        <span class="text-xl font-bold">Utiligo</span>
+        <i class="fa-solid fa-bolt text-white text-xl"></i>
       <?php endif; ?>
     </a>
     <div class="hidden md:flex gap-8 text-sm font-medium text-slate-300">
       <a href="/#how-it-works" class="hover:text-white">How It Works</a>
-      <a href="/#features" class="hover:text-white">Features</a>
-      <a href="/#pricing" class="hover:text-white">Pricing</a>
-      <a href="/#faq" class="hover:text-white">FAQ</a>
+      <a href="/#features"     class="hover:text-white">Features</a>
+      <a href="/#pricing"      class="hover:text-white">Pricing</a>
+      <a href="/#faq"          class="hover:text-white">FAQ</a>
     </div>
     <div class="flex items-center gap-3">
       <?php if ($loggedIn): ?>
         <a href="/portal/index.php" class="text-sm font-semibold px-5 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">Dashboard</a>
         <a href="/includes/auth.php?action=logout" class="text-sm text-slate-400 hover:text-white">Logout</a>
       <?php else: ?>
-        <a href="/login.php" class="text-sm text-slate-300 hover:text-white">Log In</a>
-        <a href="/register.php" class="text-sm font-semibold px-5 py-2 rounded-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 transition">Start Free</a>
+        <a href="/login.php"    class="text-sm text-slate-300 hover:text-white">Log In</a>
+        <a href="/register.php" class="text-sm font-semibold px-5 py-2 rounded-full bg-white hover:bg-slate-200 text-black transition">Start Free</a>
       <?php endif; ?>
     </div>
   </div>

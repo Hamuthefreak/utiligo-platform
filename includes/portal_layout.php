@@ -12,7 +12,6 @@ $_name     = htmlspecialchars(trim($_user['full_name'] ?? 'User'));
 $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 
-// Logo: same source as public header — /assets/images/logo.png
 $_logo_path = __DIR__ . '/../assets/images/logo.png';
 $_logo_url  = '/assets/images/logo.png';
 $_has_logo  = file_exists($_logo_path);
@@ -33,8 +32,8 @@ function _nav_active(string $href, string $current): string {
 <style>
   .nav-link { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; font-size:.875rem; font-weight:500; color:#94a3b8; transition:all .15s; white-space:nowrap; }
   .nav-link:hover  { background:rgba(255,255,255,.06); color:#fff; }
-  .nav-link.active { background:rgba(16,185,129,.12); color:#34d399; }
-  .nav-link.active i { color:#34d399; }
+  .nav-link.active { background:rgba(255,255,255,.1); color:#ffffff; }
+  .nav-link.active i { color:#ffffff; }
   .nav-link i { width:16px; text-align:center; font-size:.85rem; color:#64748b; transition:color .15s; }
   .nav-link:hover i { color:#e2e8f0; }
   #sidebar { transition: transform .25s cubic-bezier(.4,0,.2,1); }
@@ -44,10 +43,13 @@ function _nav_active(string $href, string $current): string {
   }
   #sidebar::before {
     content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%);
-    width:200px; height:200px; background:radial-gradient(circle, rgba(16,185,129,.07) 0%, transparent 70%);
+    width:200px; height:200px;
+    background: radial-gradient(circle, rgba(255,255,255,.03) 0%, transparent 70%);
     border-radius:50%; pointer-events:none;
   }
-  ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+  ::-webkit-scrollbar { width:4px; }
+  ::-webkit-scrollbar-track { background:transparent; }
+  ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
 </style>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
@@ -56,16 +58,15 @@ function _nav_active(string $href, string $current): string {
 
 <aside id="sidebar" class="w-64 h-screen bg-slate-900/95 border-r border-white/5 flex flex-col lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl">
 
-  <!-- Logo -->
+  <!-- Logo only — no text label -->
   <div class="px-5 py-5 border-b border-white/5">
-    <a href="/portal/index.php" class="flex items-center gap-2.5">
+    <a href="/portal/index.php" class="flex items-center">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Logo" class="h-8 w-auto">
       <?php else: ?>
-        <div class="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shrink-0">
-          <i class="fa-solid fa-bolt text-slate-950 text-sm"></i>
+        <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-bolt text-black text-sm"></i>
         </div>
-        <span class="text-lg font-black tracking-tight">Utiligo</span>
       <?php endif; ?>
     </a>
   </div>
@@ -87,11 +88,11 @@ function _nav_active(string $href, string $current): string {
 
   <!-- Plan badge -->
   <?php if (!$_is_pro): ?>
-  <div class="mx-3 mb-3 p-3 rounded-2xl" style="background:linear-gradient(135deg,#0f2d1f,#0d1f2d)">
+  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
     <p class="text-xs font-bold text-white mb-0.5">Free Plan</p>
     <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; sites</p>
     <a href="/portal/billing.php?upgrade=1"
-       class="block w-full text-center bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2 rounded-xl text-xs font-bold transition">
+       class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
       <i class="fa-solid fa-crown mr-1"></i> Upgrade to Pro
     </a>
   </div>
@@ -99,7 +100,7 @@ function _nav_active(string $href, string $current): string {
 
   <!-- User footer -->
   <div class="px-4 py-4 border-t border-white/5 flex items-center gap-3">
-    <div class="w-8 h-8 rounded-full bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center shrink-0 text-sm font-bold text-emerald-400">
+    <div class="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center shrink-0 text-sm font-bold text-white">
       <?= $_initials ?>
     </div>
     <div class="flex-1 min-w-0">
@@ -118,14 +119,13 @@ function _nav_active(string $href, string $current): string {
   <button onclick="openSidebar()" class="text-slate-400 hover:text-white">
     <i class="fa-solid fa-bars text-lg"></i>
   </button>
-  <a href="/portal/index.php" class="flex items-center gap-2">
+  <a href="/portal/index.php" class="flex items-center">
     <?php if ($_has_logo): ?>
-      <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-7 w-auto">
+      <img src="<?= $_logo_url ?>" alt="Logo" class="h-7 w-auto">
     <?php else: ?>
-      <div class="w-6 h-6 rounded-md bg-emerald-500 flex items-center justify-center">
-        <i class="fa-solid fa-bolt text-slate-950 text-xs"></i>
+      <div class="w-6 h-6 rounded-md bg-white flex items-center justify-center">
+        <i class="fa-solid fa-bolt text-black text-xs"></i>
       </div>
-      <span class="font-black text-base">Utiligo</span>
     <?php endif; ?>
   </a>
   <a href="/includes/auth.php?action=logout" class="text-slate-400 hover:text-white text-sm">
