@@ -7,9 +7,10 @@ require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/site_templates.php';
 
 require_login();
-$user   = current_user();
-$is_pro = ($user['plan'] ?? 'free') === 'pro';
-$pdo    = get_platform_db();
+$user    = current_user();
+$plan    = $user['plan'] ?? 'free';
+$is_paid = in_array($plan, ['pro','entrepreneur'], true);
+$pdo     = get_platform_db();
 
 $stmt = $pdo->prepare("SELECT * FROM utiligo_generated_sites WHERE user_id = ? AND status = 'completed' ORDER BY created_at DESC");
 $stmt->execute([$user['id']]);
@@ -17,8 +18,13 @@ $sites = $stmt->fetchAll();
 
 $allTpls     = get_all_site_templates();
 $totalSites  = count($sites);
-$activeSites = count(array_filter($sites, fn($s) => !empty($s['public_slug']) && !empty($s['link_active'])));
+$activeSites = count(array_filter($sites, fn($s) => !empty($s['link_active'])));
 $thisMonth   = count(array_filter($sites, fn($s) => date('Y-m', strtotime($s['created_at'])) === date('Y-m')));
+
+$site_limit = plan_site_limit($plan); // 1 free, 200 pro, 500 ent, -1 unlimited
+$sl_pct     = ($site_limit > 0) ? min(100, round(($activeSites / $site_limit) * 100)) : 0;
+$sl_colour  = $sl_pct >= 90 ? 'bg-red-500' : ($sl_pct >= 70 ? 'bg-amber-500' : 'bg-white/60');
+$sl_hit     = $site_limit > 0 && $activeSites >= $site_limit;
 
 $pageTitle = 'My Sites — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
@@ -31,26 +37,62 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <p class="text-slate-500 text-sm mt-1">Manage, share &amp; download your generated websites.</p>
   </div>
   <a href="/portal/generate.php"
-     class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 px-5 py-2.5 rounded-xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/20">
+     class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 active:scale-95 text-black px-5 py-2.5 rounded-xl font-bold text-sm transition-all">
     <i class="fa-solid fa-bolt text-xs"></i> Generate New Site
   </a>
 </div>
 
 <!-- Stats strip -->
-<div class="grid grid-cols-3 gap-3 mb-8">
+<div class="grid grid-cols-3 gap-3 mb-5">
   <div class="glass rounded-2xl p-5 border border-white/5">
     <p class="text-xs text-slate-500 uppercase tracking-widest mb-1">Total</p>
     <p class="text-3xl font-black"><?= $totalSites ?></p>
   </div>
   <div class="glass rounded-2xl p-5 border border-white/5">
     <p class="text-xs text-slate-500 uppercase tracking-widest mb-1">Live</p>
-    <p class="text-3xl font-black text-emerald-400"><?= $activeSites ?></p>
+    <p class="text-3xl font-black text-white"><?= $activeSites ?></p>
   </div>
   <div class="glass rounded-2xl p-5 border border-white/5">
     <p class="text-xs text-slate-500 uppercase tracking-widest mb-1">This Month</p>
-    <p class="text-3xl font-black text-blue-400"><?= $thisMonth ?></p>
+    <p class="text-3xl font-black"><?= $thisMonth ?></p>
   </div>
 </div>
+
+<!-- Site limit bar (paid plans) -->
+<?php if ($site_limit > 0): ?>
+<div class="glass rounded-2xl p-4 border <?= $sl_hit ? 'border-red-500/30' : 'border-white/5' ?> mb-8">
+  <div class="flex items-center justify-between mb-2">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-globe text-slate-400 text-xs"></i>
+      <span class="text-xs font-semibold text-slate-300">Active Site Slots</span>
+    </div>
+    <div class="flex items-center gap-3">
+      <span class="text-xs font-bold <?= $sl_hit ? 'text-red-400' : 'text-white' ?>">
+        <?= $activeSites ?> / <?= $site_limit ?> used
+      </span>
+      <?php if ($sl_hit && $plan === 'pro'): ?>
+      <a href="/portal/billing.php?upgrade=1&plan=entrepreneur"
+         class="text-xs bg-white hover:bg-slate-200 text-black px-3 py-1 rounded-full font-bold">
+        <i class="fa-solid fa-rocket mr-1"></i>Upgrade
+      </a>
+      <?php elseif ($sl_hit && $plan === 'free'): ?>
+      <a href="/portal/billing.php?upgrade=1"
+         class="text-xs bg-white hover:bg-slate-200 text-black px-3 py-1 rounded-full font-bold">
+        Upgrade
+      </a>
+      <?php endif; ?>
+    </div>
+  </div>
+  <div class="w-full bg-white/5 rounded-full h-1.5 overflow-hidden">
+    <div class="h-1.5 rounded-full transition-all <?= $sl_colour ?>" style="width:<?= $sl_pct ?>%"></div>
+  </div>
+  <?php if ($sl_hit): ?>
+  <p class="text-xs text-red-400 mt-2"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Limit reached. Deactivate or delete a site to generate a new one.</p>
+  <?php endif; ?>
+</div>
+<?php else: ?>
+<div class="mb-8"></div>
+<?php endif; ?>
 
 <!-- Sites list -->
 <div id="sitesList" class="space-y-3">
@@ -63,7 +105,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <p class="font-bold text-slate-300 mb-1">No sites yet</p>
     <p class="text-slate-500 text-sm mb-5">Generate your first site in under 60 seconds.</p>
     <a href="/portal/generate.php"
-       class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-6 py-2.5 rounded-xl text-sm font-bold">
+       class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 text-black px-6 py-2.5 rounded-xl text-sm font-bold">
       <i class="fa-solid fa-bolt"></i> Generate Now
     </a>
   </div>
@@ -83,16 +125,16 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   $diff = $expiresTs ? ($expiresTs - time()) : null;
   if ($diff === null)         $exLabel = null;
   elseif ($diff <= 0)        $exLabel = 'Expired';
-  elseif ($diff < 3600)      $exLabel = 'Expires in ' . floor($diff/60) . 'm ' . ($diff%60) . 's';
+  elseif ($diff < 3600)      $exLabel = 'Expires in ' . floor($diff/60) . 'm';
   elseif ($diff < 86400)     $exLabel = 'Expires in ' . floor($diff/3600) . 'h ' . floor(($diff%3600)/60) . 'm';
   else                       $exLabel = 'Expires ' . date('M j', $expiresTs);
 ?>
 
-  <div class="glass rounded-2xl border <?= $isLive ? 'border-emerald-500/20' : 'border-white/5' ?> hover:border-white/10 transition-all"
+  <div class="group glass rounded-2xl border <?= $isLive ? 'border-white/15' : 'border-white/5' ?> hover:border-white/20 transition-all"
        data-site-id="<?= (int)$site['id'] ?>">
     <div class="flex items-center gap-4 p-4 flex-wrap sm:flex-nowrap">
 
-      <!-- Color dot / template identity -->
+      <!-- Template colour dot -->
       <div class="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center"
            style="background:linear-gradient(135deg,<?= $tpl['secondary'] ?> 0%,<?= $tpl['primary'] ?> 100%);">
         <i class="fa-solid fa-globe text-white/70 text-sm"></i>
@@ -105,32 +147,27 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
           <!-- Status pill -->
           <?php if ($isLive): ?>
-            <span class="status-badge text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 ring-1 ring-emerald-500/30">● Live</span>
+            <span class="status-badge text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white ring-1 ring-white/20">● Live</span>
           <?php elseif ($isExpired): ?>
             <span class="status-badge text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30">⏱ Expired</span>
           <?php else: ?>
-            <span class="status-badge text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/8 text-slate-500">Offline</span>
+            <span class="status-badge text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/5 text-slate-500">Offline</span>
           <?php endif; ?>
 
-          <!-- Template chip -->
           <span class="text-[10px] text-slate-600 px-2 py-0.5 rounded-full bg-white/5"><?= htmlspecialchars($tpl['label']) ?></span>
         </div>
 
         <div class="flex items-center gap-3 mt-1 flex-wrap">
           <span class="text-xs text-slate-500">Generated <?= date('M j, Y', strtotime($site['created_at'])) ?></span>
-
-          <!-- Countdown -->
           <?php if ($expiresIso && $exLabel): ?>
             <span class="expiry-label text-xs <?= $isExpired ? 'text-red-400' : 'text-slate-500' ?>"
                   data-expires-at="<?= htmlspecialchars($expiresIso) ?>">
               <i class="fa-regular fa-clock mr-0.5 text-[10px]"></i><?= $exLabel ?>
             </span>
           <?php endif; ?>
-
-          <!-- Share link -->
           <?php if ($publicUrl && $isLive): ?>
             <a href="<?= $publicUrl ?>" target="_blank"
-               class="text-xs text-emerald-400 hover:text-emerald-300 inline-flex items-center gap-1 truncate max-w-[200px]">
+               class="text-xs text-slate-400 hover:text-white inline-flex items-center gap-1 truncate max-w-[200px]">
               <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
               utiligo.ca<?= $publicUrl ?>
             </a>
@@ -147,28 +184,40 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
         <?php if ($publicUrl && $isLive): ?>
           <a href="<?= $publicUrl ?>" target="_blank"
-             class="inline-flex items-center gap-1.5 text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-3 py-1.5 rounded-lg font-semibold transition">
+             class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg font-semibold transition">
             <i class="fa-solid fa-eye text-[10px]"></i> Preview
           </a>
         <?php endif; ?>
 
-        <?php if ($is_pro && $hasSlug): ?>
+        <!-- Deactivate toggle (frees up a slot) -->
+        <?php if ($isLive): ?>
+        <button class="deactivate-btn inline-flex items-center gap-1.5 text-xs bg-white/5 hover:bg-amber-500/10 text-slate-400 hover:text-amber-400 px-3 py-1.5 rounded-lg font-semibold transition"
+                data-id="<?= (int)$site['id'] ?>" title="Deactivate (frees up a slot)">
+          <i class="fa-solid fa-link-slash text-[10px]"></i> Deactivate
+        </button>
+        <?php elseif ($hasSlug && !$isLive): ?>
+        <button class="reactivate-btn inline-flex items-center gap-1.5 text-xs bg-white/5 hover:bg-white/12 text-slate-400 hover:text-white px-3 py-1.5 rounded-lg font-semibold transition"
+                data-id="<?= (int)$site['id'] ?>" title="Reactivate">
+          <i class="fa-solid fa-rotate-right text-[10px]"></i> Activate
+        </button>
+        <?php endif; ?>
+
+        <?php if ($is_paid && $hasSlug && ($isExpired || !$isLive)): ?>
           <button class="extend-btn inline-flex items-center gap-1.5 text-xs bg-white/6 hover:bg-white/12 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition"
                   data-id="<?= (int)$site['id'] ?>">
-            <i class="fa-solid fa-clock-rotate-left text-[10px]"></i>
-            <?= $isExpired ? 'Reactivate' : 'Extend' ?>
+            <i class="fa-solid fa-clock-rotate-left text-[10px]"></i> Extend
           </button>
         <?php endif; ?>
 
         <?php if ($zipUrl): ?>
           <a href="<?= htmlspecialchars($zipUrl) ?>"
-             class="inline-flex items-center gap-1.5 text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg font-semibold transition">
+             class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg font-semibold transition">
             <i class="fa-solid fa-download text-[10px]"></i> ZIP
           </a>
         <?php endif; ?>
 
         <button class="delete-btn inline-flex items-center gap-1 text-xs bg-red-500/8 hover:bg-red-500/20 text-red-500 px-2.5 py-1.5 rounded-lg transition"
-                data-id="<?= (int)$site['id'] ?>">
+                data-id="<?= (int)$site['id'] ?>" title="Delete site permanently">
           <i class="fa-solid fa-trash text-[10px]"></i>
         </button>
       </div>
@@ -179,4 +228,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endforeach; endif; ?>
 </div>
 
-<script src="/assets/js/my_sites.js?v=v203"></script>
+<script src="/assets/js/my_sites.js?v=v500"></script>
