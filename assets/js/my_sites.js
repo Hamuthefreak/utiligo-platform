@@ -1,6 +1,51 @@
 document.addEventListener('DOMContentLoaded', function () {
   const csrfToken = document.body.dataset.csrf;
 
+  // ── Live expiry countdowns ───────────────────────────────────────────────
+  // PHP renders data-expires-at="<ISO timestamp>" on each card.
+  // We tick every second and rewrite the label live.
+  function formatCountdown(ms) {
+    if (ms <= 0) return { text: 'Expired', cls: 'text-red-400' };
+    const totalSec = Math.floor(ms / 1000);
+    const d = Math.floor(totalSec / 86400);
+    const h = Math.floor((totalSec % 86400) / 3600);
+    const m = Math.floor((totalSec % 3600) / 60);
+    const s = totalSec % 60;
+    let text;
+    if (d > 0)      text = `Expires in ${d}d ${h}h`;
+    else if (h > 0) text = `Expires in ${h}h ${m}m`;
+    else if (m > 0) text = `Expires in ${m}m ${s}s`;
+    else            text = `Expires in ${s}s`;
+    const cls = d === 0 && h < 24 ? 'text-amber-400' : 'text-slate-400';
+    return { text, cls };
+  }
+
+  function tickCountdowns() {
+    document.querySelectorAll('[data-expires-at]').forEach(el => {
+      const ts  = el.dataset.expiresAt;
+      if (!ts) return;
+      const ms  = new Date(ts) - new Date();
+      const { text, cls } = formatCountdown(ms);
+      if (el.textContent !== text) {
+        el.textContent = text;
+        el.className = 'expiry-label text-xs ' + cls;
+        // If just expired, flip the card badge too
+        if (ms <= 0) {
+          const card  = el.closest('[data-site-id]');
+          const badge = card && card.querySelector('.status-badge');
+          if (badge && badge.textContent.trim() === 'Active') {
+            badge.textContent = 'Expired';
+            badge.className = 'status-badge text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400';
+          }
+        }
+      }
+    });
+  }
+
+  tickCountdowns();
+  setInterval(tickCountdowns, 1000);
+
+  // ── API helper ─────────────────────────────────────────────────────────
   function callApi(siteId, action) {
     return fetch('/api/manage-site.php', {
       method: 'POST',
@@ -9,7 +54,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }).then(r => r.json());
   }
 
-  // ── Extend ───────────────────────────────────────────────────────────
+  // ── Extend ────────────────────────────────────────────────────────────
   document.querySelectorAll('.extend-btn').forEach(btn => {
     btn.addEventListener('click', function () {
       const id   = this.dataset.id;
@@ -19,20 +64,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
       callApi(id, 'extend').then(data => {
         if (data.success) {
-          // Update expiry label in the card without a full reload
           const card = document.querySelector(`[data-site-id="${id}"]`);
-          if (card) {
-            const expEl = card.querySelector('.expiry-label');
-            if (expEl && data.link_expires_at) {
-              const diff = new Date(data.link_expires_at) - new Date();
-              const days = Math.round(diff / 86400000);
-              expEl.textContent = `Expires in ${days} day${days !== 1 ? 's' : ''}`;
-              expEl.classList.remove('text-amber-400');
-              expEl.classList.add('text-slate-500');
-            }
-            // Flip badge from Expired → Active
+          if (card && data.link_expires_at) {
+            // Update the data attribute so the live ticker takes over immediately
+            const expEl = card.querySelector('[data-expires-at]');
+            if (expEl) expEl.dataset.expiresAt = data.link_expires_at;
+            // Flip badge if it was Expired
             const badge = card.querySelector('.status-badge');
-            if (badge && badge.textContent.trim() === 'Expired') {
+            if (badge && (badge.textContent.trim() === 'Expired' || badge.textContent.trim() === 'Inactive')) {
               badge.textContent = 'Active';
               badge.className = 'status-badge text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400';
             }
@@ -66,9 +105,9 @@ document.addEventListener('DOMContentLoaded', function () {
           const card = document.querySelector(`[data-site-id="${id}"]`);
           if (card) {
             card.style.transition = 'opacity .3s, transform .3s';
-            card.style.opacity = '0';
-            card.style.transform = 'scale(.97)';
-            setTimeout(() => card.remove(), 300);
+            card.style.opacity    = '0';
+            card.style.transform  = 'scale(.97)';
+            setTimeout(() => card.remove(), 310);
           }
         } else {
           alert(data.error || 'Failed to delete site.');
