@@ -1,6 +1,11 @@
 <?php
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.'; }
 $loggedIn = function_exists('is_logged_in') && is_logged_in();
+// Logo: place your PNG at /assets/images/logo.png
+// If the file exists it shows as an img tag; otherwise falls back to the bolt icon + wordmark.
+$_logo_path = __DIR__ . '/../assets/images/logo.png';
+$_logo_url  = '/assets/images/logo.png';
+$_has_logo  = file_exists($_logo_path);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -15,7 +20,14 @@ $loggedIn = function_exists('is_logged_in') && is_logged_in();
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
 <nav class="sticky top-0 z-50 backdrop-blur-lg bg-slate-950/80 border-b border-white/10">
   <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-    <a href="/" class="text-xl font-bold flex items-center gap-2"><i class="fa-solid fa-bolt text-emerald-400"></i>Utiligo</a>
+    <a href="/" class="flex items-center gap-2">
+      <?php if ($_has_logo): ?>
+        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
+      <?php else: ?>
+        <i class="fa-solid fa-bolt text-emerald-400 text-xl"></i>
+        <span class="text-xl font-bold">Utiligo</span>
+      <?php endif; ?>
+    </a>
     <div class="hidden md:flex gap-8 text-sm font-medium text-slate-300">
       <a href="/#how-it-works" class="hover:text-white">How It Works</a>
       <a href="/#features" class="hover:text-white">Features</a>
