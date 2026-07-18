@@ -1,7 +1,6 @@
 <?php
 /**
  * includes/portal_layout.php
- * Shared sidebar layout wrapper for all portal pages.
  */
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo Portal'; }
 $loggedIn  = function_exists('is_logged_in') && is_logged_in();
@@ -41,15 +40,8 @@ function _nav_active(string $href, string $current): string {
     #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); }
     #sidebar.open { transform:translateX(0); }
   }
-  #sidebar::before {
-    content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%);
-    width:200px; height:200px;
-    background: radial-gradient(circle, rgba(255,255,255,.03) 0%, transparent 70%);
-    border-radius:50%; pointer-events:none;
-  }
-  ::-webkit-scrollbar { width:4px; }
-  ::-webkit-scrollbar-track { background:transparent; }
-  ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+  #sidebar::before { content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%); width:200px; height:200px; background:radial-gradient(circle,rgba(255,255,255,.03) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
+  ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
 </style>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
@@ -58,16 +50,17 @@ function _nav_active(string $href, string $current): string {
 
 <aside id="sidebar" class="w-64 h-screen bg-slate-900/95 border-r border-white/5 flex flex-col lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl">
 
-  <!-- Logo only — no text label -->
+  <!-- Logo + wordmark -->
   <div class="px-5 py-5 border-b border-white/5">
-    <a href="/portal/index.php" class="flex items-center">
+    <a href="/portal/index.php" class="flex items-center gap-2.5">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Logo" class="h-8 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
       <?php else: ?>
         <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0">
           <i class="fa-solid fa-bolt text-black text-sm"></i>
         </div>
       <?php endif; ?>
+      <span class="text-lg font-black tracking-tight">Utiligo</span>
     </a>
   </div>
 
@@ -119,14 +112,15 @@ function _nav_active(string $href, string $current): string {
   <button onclick="openSidebar()" class="text-slate-400 hover:text-white">
     <i class="fa-solid fa-bars text-lg"></i>
   </button>
-  <a href="/portal/index.php" class="flex items-center">
+  <a href="/portal/index.php" class="flex items-center gap-2">
     <?php if ($_has_logo): ?>
-      <img src="<?= $_logo_url ?>" alt="Logo" class="h-7 w-auto">
+      <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-7 w-auto">
     <?php else: ?>
       <div class="w-6 h-6 rounded-md bg-white flex items-center justify-center">
         <i class="fa-solid fa-bolt text-black text-xs"></i>
       </div>
     <?php endif; ?>
+    <span class="font-black text-base">Utiligo</span>
   </a>
   <a href="/includes/auth.php?action=logout" class="text-slate-400 hover:text-white text-sm">
     <i class="fa-solid fa-arrow-right-from-bracket"></i>

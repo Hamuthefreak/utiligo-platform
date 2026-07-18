@@ -1,7 +1,6 @@
 <?php
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.'; }
 $loggedIn = function_exists('is_logged_in') && is_logged_in();
-// Logo: place your image at /assets/images/logo.png
 $_logo_path = __DIR__ . '/../assets/images/logo.png';
 $_logo_url  = '/assets/images/logo.png';
 $_has_logo  = file_exists($_logo_path);
@@ -19,12 +18,13 @@ $_has_logo  = file_exists($_logo_path);
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
 <nav class="sticky top-0 z-50 backdrop-blur-lg bg-slate-950/80 border-b border-white/10">
   <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-    <a href="/" class="flex items-center">
+    <a href="/" class="flex items-center gap-2.5">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Logo" class="h-8 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
       <?php else: ?>
         <i class="fa-solid fa-bolt text-white text-xl"></i>
       <?php endif; ?>
+      <span class="text-lg font-black tracking-tight">Utiligo</span>
     </a>
     <div class="hidden md:flex gap-8 text-sm font-medium text-slate-300">
       <a href="/#how-it-works" class="hover:text-white">How It Works</a>
