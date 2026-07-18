@@ -1,13 +1,12 @@
 <?php
 /**
  * includes/site_templates.php
- * Template definitions for generated websites.
- * Each template defines a visual identity used by includes/site_builder.php.
+ * Template definitions for generated websites (25 total).
  */
 
 const SITE_TEMPLATES = [
 
-    // ── Professional ─────────────────────────────────────────────────────────────────
+    // ── Professional ────────────────────────────────────────────────────────
     'modern' => [
         'label'       => 'Modern Emerald',
         'description' => 'Clean, spacious, rounded corners. Great for contractors and home services.',
@@ -49,7 +48,7 @@ const SITE_TEMPLATES = [
     ],
     'executive' => [
         'label'       => 'Executive Midnight',
-        'description' => 'Dark navy with silver accents, authoritative serif. Perfect for C-suite consultants, brokerages, law firms.',
+        'description' => 'Dark navy with silver accents, authoritative serif. Perfect for C-suite, brokerages, law.',
         'category'    => 'Professional',
         'primary'     => '#94A3B8',
         'secondary'   => '#020617',
@@ -75,8 +74,22 @@ const SITE_TEMPLATES = [
         'radius'      => '12px',
         'dark'        => true,
     ],
+    'agency' => [
+        'label'       => 'Agency Black',
+        'description' => 'All-black, bold white type, accent red. Great for marketing agencies, PR, media.',
+        'category'    => 'Professional',
+        'primary'     => '#EF4444',
+        'secondary'   => '#000000',
+        'accent'      => '#0D0D0D',
+        'text'        => '#FAFAFA',
+        'font'        => "'Bebas Neue', Impact, sans-serif",
+        'font_url'    => 'https://fonts.googleapis.com/css2?family=Bebas+Neue&display=swap',
+        'hero_style'  => 'centered-dark',
+        'radius'      => '0px',
+        'dark'        => true,
+    ],
 
-    // ── Vibrant ─────────────────────────────────────────────────────────────────────
+    // ── Vibrant ──────────────────────────────────────────────────────────────
     'bold' => [
         'label'       => 'Bold Orange',
         'description' => 'High-energy, big type, strong contrast. Great for fitness, food, events.',
@@ -105,7 +118,7 @@ const SITE_TEMPLATES = [
     ],
     'sunset' => [
         'label'       => 'Sunset Gradient',
-        'description' => 'Warm purple-to-orange gradient, modern type. Great for events, creative agencies, nightlife.',
+        'description' => 'Warm purple-to-pink gradient, modern type. Great for events, creative agencies, nightlife.',
         'category'    => 'Vibrant',
         'primary'     => '#EC4899',
         'secondary'   => '#1C0033',
@@ -131,8 +144,21 @@ const SITE_TEMPLATES = [
         'radius'      => '4px',
         'dark'        => true,
     ],
+    'tropical' => [
+        'label'       => 'Tropical Teal',
+        'description' => 'Bright teal and yellow, island vibe. Great for travel, tours, spas, resorts.',
+        'category'    => 'Vibrant',
+        'primary'     => '#06B6D4',
+        'secondary'   => '#042F2E',
+        'accent'      => '#F0FDFA',
+        'text'        => '#134E4A',
+        'font'        => "'Quicksand', system-ui, sans-serif",
+        'font_url'    => 'https://fonts.googleapis.com/css2?family=Quicksand:wght@400;600;700&display=swap',
+        'hero_style'  => 'centered',
+        'radius'      => '20px',
+    ],
 
-    // ── Premium ─────────────────────────────────────────────────────────────────────
+    // ── Premium ──────────────────────────────────────────────────────────────
     'luxury' => [
         'label'       => 'Luxury Gold',
         'description' => 'Dark background, gold accents, elegant serif. Great for salons, jewelers, high-end retail.',
@@ -162,7 +188,7 @@ const SITE_TEMPLATES = [
     ],
     'obsidian' => [
         'label'       => 'Obsidian',
-        'description' => 'Deep charcoal with ice-blue highlights, angular grid. Great for architecture, high-end contractors, tech.',
+        'description' => 'Deep charcoal with ice-blue highlights, angular grid. Great for architecture, high-end contractors.',
         'category'    => 'Premium',
         'primary'     => '#38BDF8',
         'secondary'   => '#0C0C0F',
@@ -175,7 +201,7 @@ const SITE_TEMPLATES = [
         'dark'        => true,
     ],
 
-    // ── Natural ─────────────────────────────────────────────────────────────────────
+    // ── Natural ──────────────────────────────────────────────────────────────
     'earthy' => [
         'label'       => 'Earthy Sage',
         'description' => 'Natural greens and browns, organic feel. Great for landscaping, wellness, farms.',
@@ -216,7 +242,7 @@ const SITE_TEMPLATES = [
         'radius'      => '8px',
     ],
 
-    // ── Minimal ─────────────────────────────────────────────────────────────────────
+    // ── Minimal ──────────────────────────────────────────────────────────────
     'minimal' => [
         'label'       => 'Minimal Mono',
         'description' => 'Black, white, lots of whitespace. Great for design studios, photographers.',
@@ -245,7 +271,7 @@ const SITE_TEMPLATES = [
     ],
     'nordic' => [
         'label'       => 'Nordic Clean',
-        'description' => 'Off-white, cool greys, wide tracking. Great for architecture firms, interior design, real estate.',
+        'description' => 'Off-white, cool greys, wide tracking. Great for architecture, interior design, real estate.',
         'category'    => 'Minimal',
         'primary'     => '#64748B',
         'secondary'   => '#F8FAFC',
@@ -256,8 +282,21 @@ const SITE_TEMPLATES = [
         'hero_style'  => 'left',
         'radius'      => '0px',
     ],
+    'paper' => [
+        'label'       => 'Paper & Ink',
+        'description' => 'Warm ivory background, dark ink type, handwritten accent. Great for writers, tutors, coaches.',
+        'category'    => 'Minimal',
+        'primary'     => '#92400E',
+        'secondary'   => '#1C1917',
+        'accent'      => '#FEFCE8',
+        'text'        => '#1C1917',
+        'font'        => "'Lora', Georgia, serif",
+        'font_url'    => 'https://fonts.googleapis.com/css2?family=Lora:wght@400;600;700&display=swap',
+        'hero_style'  => 'left',
+        'radius'      => '4px',
+    ],
 
-    // ── Soft ─────────────────────────────────────────────────────────────────────────
+    // ── Soft ─────────────────────────────────────────────────────────────────
     'pastel' => [
         'label'       => 'Pastel Lavender',
         'description' => 'Soft, calm, friendly. Great for childcare, therapy, beauty, boutique retail.',
@@ -284,8 +323,21 @@ const SITE_TEMPLATES = [
         'hero_style'  => 'centered',
         'radius'      => '20px',
     ],
+    'mint' => [
+        'label'       => 'Mint Fresh',
+        'description' => 'Cool mint green on white, clean and welcoming. Great for spas, yoga, health coaches.',
+        'category'    => 'Soft',
+        'primary'     => '#34D399',
+        'secondary'   => '#F0FDF9',
+        'accent'      => '#CCFBF1',
+        'text'        => '#064E3B',
+        'font'        => "'Plus Jakarta Sans', system-ui, sans-serif",
+        'font_url'    => 'https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap',
+        'hero_style'  => 'centered',
+        'radius'      => '16px',
+    ],
 
-    // ── Bold ─────────────────────────────────────────────────────────────────────────
+    // ── Bold ─────────────────────────────────────────────────────────────────
     'industrial' => [
         'label'       => 'Industrial Steel',
         'description' => 'Rugged, high-contrast, angular. Great for construction, auto, manufacturing.',
@@ -315,7 +367,7 @@ const SITE_TEMPLATES = [
         'dark'        => true,
     ],
 
-    // ── Fresh ─────────────────────────────────────────────────────────────────────────
+    // ── Fresh ─────────────────────────────────────────────────────────────────
     'ocean' => [
         'label'       => 'Ocean Blue',
         'description' => 'Fresh, breezy, coastal blues. Great for cleaning, marine, travel, pools.',

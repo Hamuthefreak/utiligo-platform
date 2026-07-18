@@ -6,28 +6,21 @@ require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/site_templates.php';
 
-// Free users CAN access generate — they just get a daily quota + limited templates
 require_login();
 $user   = current_user();
 $is_pro = ($user['plan'] ?? 'free') === 'pro';
 $pdo    = get_platform_db();
 
-// Safe constant fallbacks
 if (!defined('FREE_GENERATE_DAILY_LIMIT')) define('FREE_GENERATE_DAILY_LIMIT', 1);
 if (!defined('FREE_TEMPLATE_LIMIT'))       define('FREE_TEMPLATE_LIMIT', 2);
 
-// ---- Daily generation quota (free users only) ----
 $gen_limit     = (int)FREE_GENERATE_DAILY_LIMIT;
 $gen_used      = 0;
 $gen_resets_at = null;
 if (!$is_pro) {
     try {
         $cutoff = date('Y-m-d H:i:s', strtotime('-24 hours'));
-        $stmt   = $pdo->prepare(
-            "SELECT COUNT(*) AS c, MIN(created_at) AS first_at
-             FROM utiligo_generated_sites
-             WHERE user_id = ? AND created_at > ?"
-        );
+        $stmt   = $pdo->prepare("SELECT COUNT(*) AS c, MIN(created_at) AS first_at FROM utiligo_generated_sites WHERE user_id = ? AND created_at > ?");
         $stmt->execute([$user['id'], $cutoff]);
         $row       = $stmt->fetch(PDO::FETCH_ASSOC);
         $gen_used  = (int)($row['c'] ?? 0);
@@ -38,13 +31,11 @@ $gen_remaining = $is_pro ? PHP_INT_MAX : max(0, $gen_limit - $gen_used);
 $gen_pct       = ($gen_limit > 0 && !$is_pro) ? min(100, round(($gen_used / $gen_limit) * 100)) : 0;
 $gen_locked    = !$is_pro && $gen_remaining === 0;
 
-// ---- Template access ----
 $free_template_limit = (int)FREE_TEMPLATE_LIMIT;
 $all_templates       = get_all_site_templates();
 $template_keys       = array_keys($all_templates);
 $free_keys           = array_slice($template_keys, 0, $free_template_limit);
 
-// ---- Lead prefill ----
 $prefill = ['business_name'=>'','business_category'=>'','business_city'=>'','business_phone'=>'','business_email'=>''];
 if (!empty($_GET['lead_id'])) {
     $stmt = $pdo->prepare('SELECT * FROM utiligo_leads WHERE id = ? LIMIT 1');
@@ -175,7 +166,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <p class="text-xs text-slate-500 mt-0.5">
           <?php if(!$is_pro): ?>
             <span class="text-amber-400 font-semibold"><?= $free_template_limit ?> free</span> &mdash;
-            <?= count($all_templates) - $free_template_limit ?> more unlocked with Pro
+            <?= count($all_templates) - $free_template_limit ?> more with Pro
           <?php else: ?>
             <?= count($all_templates) ?> templates available
           <?php endif; ?>
@@ -192,23 +183,39 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         $locked      = !$is_pro && !$is_free_tpl;
       ?>
       <button type="button"
-              class="template-card relative text-left rounded-xl overflow-hidden border-2 <?= $locked ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-transparent hover:border-emerald-400/60' ?> transition glass"
+              class="template-card relative text-left rounded-xl overflow-hidden border-2 <?= $locked ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-transparent hover:border-emerald-400/60' ?> transition glass group"
               data-template="<?= $key ?>"
               data-label="<?= htmlspecialchars($tpl['label']) ?>"
+              data-primary="<?= htmlspecialchars($tpl['primary']) ?>"
+              data-secondary="<?= htmlspecialchars($tpl['secondary']) ?>"
+              data-accent="<?= htmlspecialchars($tpl['accent']) ?>"
+              data-font="<?= htmlspecialchars($tpl['label']) ?>"
+              data-description="<?= htmlspecialchars($tpl['description']) ?>"
+              data-radius="<?= htmlspecialchars($tpl['radius']) ?>"
+              data-dark="<?= ($tpl['dark'] ?? false) ? '1' : '0' ?>"
               <?= $locked ? 'data-locked="1"' : '' ?>>
         <?php if($locked): ?>
         <div class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/70 backdrop-blur-sm">
-          <div class="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center mb-1.5">
-            <i class="fa-solid fa-crown text-amber-400 text-xs"></i>
+          <div class="w-7 h-7 rounded-full bg-amber-500/20 flex items-center justify-center mb-1">
+            <i class="fa-solid fa-crown text-amber-400 text-[10px]"></i>
           </div>
-          <span class="text-xs font-bold text-amber-300">Pro Only</span>
+          <span class="text-[10px] font-bold text-amber-300">Pro Only</span>
         </div>
         <?php endif; ?>
+        <!-- Preview eye button (top-right, only on hover) -->
+        <?php if (!$locked): ?>
+        <button type="button"
+                class="preview-tpl-btn absolute top-2 right-2 z-20 w-6 h-6 rounded-full bg-black/40 hover:bg-black/70 text-white/80 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                data-tpl-key="<?= $key ?>"
+                title="Preview template">
+          <i class="fa-solid fa-eye text-[9px]"></i>
+        </button>
+        <?php endif; ?>
         <div class="h-20 flex flex-col justify-center px-4"
-             style="background:<?= $tpl['dark'] ?? false ? $tpl['secondary'] : $tpl['accent'] ?>;">
-          <div class="w-10 h-2 rounded-full mb-2" style="background:<?= $tpl['primary'] ?>;"></div>
-          <div class="w-full h-1.5 rounded-full mb-1" style="background:<?= $tpl['dark'] ?? false ? '#ffffff22' : '#00000012' ?>;"></div>
-          <div class="w-2/3 h-1.5 rounded-full" style="background:<?= $tpl['dark'] ?? false ? '#ffffff22' : '#00000012' ?>;"></div>
+             style="background:linear-gradient(135deg,<?= $tpl['secondary'] ?> 0%,<?= $tpl['primary'] ?> 100%);">
+          <div class="w-10 h-2 rounded-full mb-2" style="background:<?= $tpl['primary'] ?>;opacity:0.6;"></div>
+          <div class="w-full h-1.5 rounded-full mb-1" style="background:rgba(255,255,255,0.15);"></div>
+          <div class="w-2/3 h-1.5 rounded-full" style="background:rgba(255,255,255,0.1);"></div>
         </div>
         <div class="p-3">
           <p class="font-semibold text-xs flex items-center gap-1.5">
@@ -217,7 +224,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
               <span class="text-[10px] bg-emerald-500/20 text-emerald-400 px-1.5 py-0.5 rounded-full">Free</span>
             <?php endif; ?>
           </p>
-          <p class="text-[11px] text-slate-400 mt-1 leading-snug"><?= htmlspecialchars($tpl['description']) ?></p>
+          <p class="text-[10px] text-slate-400 mt-0.5 leading-snug"><?= htmlspecialchars($tpl['description']) ?></p>
         </div>
       </button>
       <?php endforeach; ?>
@@ -275,7 +282,48 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </button>
 </form>
 
-<?php endif; // !gen_locked ?>
+<?php endif; ?>
+
+<!-- Template Preview Modal -->
+<div id="tplPreviewModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4" style="background:rgba(0,0,0,.7);backdrop-filter:blur(6px);">
+  <div class="glass rounded-2xl border border-white/10 shadow-2xl w-full max-w-sm overflow-hidden">
+    <!-- gradient banner -->
+    <div id="tplPreviewBanner" class="h-28 flex flex-col justify-end px-5 pb-4 relative">
+      <button type="button" id="tplPreviewClose"
+              class="absolute top-3 right-3 w-7 h-7 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center">
+        <i class="fa-solid fa-xmark text-xs"></i>
+      </button>
+      <p id="tplPreviewName" class="text-white font-black text-lg leading-tight"></p>
+      <p id="tplPreviewCat"  class="text-white/60 text-xs font-semibold"></p>
+    </div>
+    <!-- details -->
+    <div class="p-5 space-y-3">
+      <p id="tplPreviewDesc" class="text-sm text-slate-300 leading-relaxed"></p>
+      <!-- color swatches -->
+      <div class="flex items-center gap-2">
+        <div id="tplSwatch1" class="w-7 h-7 rounded-full border-2 border-white/20" title="Primary"></div>
+        <div id="tplSwatch2" class="w-7 h-7 rounded-full border-2 border-white/20" title="Secondary"></div>
+        <div id="tplSwatch3" class="w-7 h-7 rounded-full border-2 border-white/10" title="Accent"></div>
+        <span id="tplPreviewFont" class="text-[11px] text-slate-500 ml-2 italic"></span>
+      </div>
+      <!-- radius demo -->
+      <div class="flex items-center gap-2">
+        <div id="tplRadiusDemo" class="h-7 px-4 bg-white/10 text-xs text-white flex items-center font-semibold">Button</div>
+        <span class="text-[10px] text-slate-600">border-radius style</span>
+      </div>
+      <!-- pages list -->
+      <div class="flex gap-1.5 flex-wrap">
+        <?php foreach (['Home','About','Services','Gallery','Contact'] as $pg): ?>
+          <span class="text-[10px] bg-white/8 text-slate-400 px-2 py-0.5 rounded-full"><?= $pg ?></span>
+        <?php endforeach; ?>
+      </div>
+      <button type="button" id="tplPreviewSelect"
+              class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-2.5 rounded-xl font-bold text-sm transition">
+        Use This Template
+      </button>
+    </div>
+  </div>
+</div>
 
 <div id="genProgressWrap" class="hidden glass rounded-2xl p-10 text-center border border-white/5">
   <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-500/10 mb-4">
@@ -315,10 +363,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <script>
+// Template card selection
 document.addEventListener('click', function(e) {
   const card = e.target.closest('.template-card');
   if (!card) return;
   if (card.dataset.locked === '1') { window.location.href = '/portal/billing.php?upgrade=1'; return; }
+  // don't select if clicking the preview button
+  if (e.target.closest('.preview-tpl-btn')) return;
   document.querySelectorAll('.template-card').forEach(c => c.classList.remove('border-emerald-400'));
   card.classList.add('border-emerald-400');
   document.getElementById('selectedTemplateInput').value = card.dataset.template;
@@ -330,9 +381,49 @@ window.addEventListener('DOMContentLoaded', function() {
   const first = document.querySelector('.template-card:not([data-locked])');
   if (first) first.click();
 });
+
+// Template preview modal
+const modal       = document.getElementById('tplPreviewModal');
+const mBanner     = document.getElementById('tplPreviewBanner');
+const mName       = document.getElementById('tplPreviewName');
+const mCat        = document.getElementById('tplPreviewCat');
+const mDesc       = document.getElementById('tplPreviewDesc');
+const mSwatch1    = document.getElementById('tplSwatch1');
+const mSwatch2    = document.getElementById('tplSwatch2');
+const mSwatch3    = document.getElementById('tplSwatch3');
+const mFont       = document.getElementById('tplPreviewFont');
+const mRadius     = document.getElementById('tplRadiusDemo');
+const mSelectBtn  = document.getElementById('tplPreviewSelect');
+let   previewKey  = null;
+
+document.addEventListener('click', function(e) {
+  const btn = e.target.closest('.preview-tpl-btn');
+  if (!btn) return;
+  e.stopPropagation();
+  const card = btn.closest('.template-card');
+  previewKey = card.dataset.template;
+  mBanner.style.background = `linear-gradient(135deg,${card.dataset.secondary} 0%,${card.dataset.primary} 100%)`;
+  mName.textContent  = card.dataset.label;
+  mCat.textContent   = card.dataset.font;
+  mDesc.textContent  = card.dataset.description;
+  mSwatch1.style.background = card.dataset.primary;
+  mSwatch2.style.background = card.dataset.secondary;
+  mSwatch3.style.background = card.dataset.accent;
+  mFont.textContent  = card.dataset.font;
+  mRadius.style.borderRadius = card.dataset.radius;
+  modal.classList.remove('hidden');
+});
+document.getElementById('tplPreviewClose').addEventListener('click', () => modal.classList.add('hidden'));
+modal.addEventListener('click', e => { if (e.target === modal) modal.classList.add('hidden'); });
+mSelectBtn.addEventListener('click', function() {
+  if (!previewKey) return;
+  const card = document.querySelector(`.template-card[data-template="${previewKey}"]`);
+  if (card) card.click();
+  modal.classList.add('hidden');
+});
 </script>
 
 </div></main>
-<script src="/assets/js/image_uploader.js?v=v167"></script>
-<script src="/assets/js/generator.js?v=v167"></script>
+<script src="/assets/js/image_uploader.js?v=v201"></script>
+<script src="/assets/js/generator.js?v=v201"></script>
 </body></html>

@@ -4,6 +4,7 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/site_templates.php';
 
 require_login();
 $user   = current_user();
@@ -14,7 +15,8 @@ $stmt = $pdo->prepare("SELECT * FROM utiligo_generated_sites WHERE user_id = ? A
 $stmt->execute([$user['id']]);
 $sites = $stmt->fetchAll();
 
-$totalSites  = count($sites);
+$allTpls    = get_all_site_templates();
+$totalSites = count($sites);
 $activeSites = count(array_filter($sites, fn($s) => !empty($s['public_slug']) && !empty($s['link_active'])));
 $thisMonth   = count(array_filter($sites, fn($s) => date('Y-m', strtotime($s['created_at'])) === date('Y-m')));
 
@@ -22,146 +24,164 @@ $pageTitle = 'My Sites — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
-<div class="mb-8 flex items-center justify-between flex-wrap gap-4">
+<div class="mb-6 flex items-center justify-between flex-wrap gap-3">
   <div>
-    <h1 class="text-3xl font-bold tracking-tight">My Sites</h1>
-    <p class="text-slate-400 text-sm mt-1">Manage generated websites, share preview links, and download ZIPs.</p>
+    <h1 class="text-2xl font-black tracking-tight">My Sites</h1>
+    <p class="text-slate-500 text-xs mt-0.5">Manage, share, and download your generated websites.</p>
   </div>
   <a href="/portal/generate.php"
-     class="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 px-5 py-2.5 rounded-xl font-bold text-sm transition-all">
-    <i class="fa-solid fa-plus"></i> New Site
+     class="flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-slate-950 px-4 py-2 rounded-xl font-bold text-sm transition-all shadow-lg shadow-emerald-500/20">
+    <i class="fa-solid fa-plus text-xs"></i> New Site
   </a>
 </div>
 
-<div class="grid grid-cols-3 gap-4 mb-8">
-  <div class="glass rounded-2xl p-5 border border-white/5">
-    <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Total Sites</p>
-    <p class="text-3xl font-black"><?= $totalSites ?></p>
+<!-- Stats row -->
+<div class="grid grid-cols-3 gap-3 mb-7">
+  <div class="glass rounded-2xl p-4 border border-white/5 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+      <i class="fa-solid fa-layer-group text-slate-400 text-sm"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-black leading-none"><?= $totalSites ?></p>
+      <p class="text-[11px] text-slate-500 mt-0.5">Total Sites</p>
+    </div>
   </div>
-  <div class="glass rounded-2xl p-5 border border-white/5">
-    <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">Active Links</p>
-    <p class="text-3xl font-black text-emerald-400"><?= $activeSites ?></p>
+  <div class="glass rounded-2xl p-4 border border-white/5 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+      <i class="fa-solid fa-signal text-emerald-400 text-sm"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-black leading-none text-emerald-400"><?= $activeSites ?></p>
+      <p class="text-[11px] text-slate-500 mt-0.5">Live Links</p>
+    </div>
   </div>
-  <div class="glass rounded-2xl p-5 border border-white/5">
-    <p class="text-xs text-slate-500 uppercase tracking-wider mb-1">This Month</p>
-    <p class="text-3xl font-black text-blue-400"><?= $thisMonth ?></p>
+  <div class="glass rounded-2xl p-4 border border-white/5 flex items-center gap-3">
+    <div class="w-9 h-9 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+      <i class="fa-solid fa-calendar-check text-blue-400 text-sm"></i>
+    </div>
+    <div>
+      <p class="text-2xl font-black leading-none text-blue-400"><?= $thisMonth ?></p>
+      <p class="text-[11px] text-slate-500 mt-0.5">This Month</p>
+    </div>
   </div>
 </div>
 
-<div id="sitesList" class="space-y-4">
+<!-- Sites grid -->
+<div id="sitesList">
 <?php if (empty($sites)): ?>
-  <div class="glass rounded-2xl p-12 text-center border border-white/5">
-    <div class="w-16 h-16 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
-      <i class="fa-solid fa-globe text-slate-500 text-2xl"></i>
+  <div class="glass rounded-2xl p-14 text-center border border-dashed border-white/10">
+    <div class="w-14 h-14 rounded-full bg-white/5 flex items-center justify-center mx-auto mb-4">
+      <i class="fa-solid fa-globe text-slate-500 text-xl"></i>
     </div>
-    <p class="font-semibold text-slate-300 mb-1">No sites generated yet</p>
-    <p class="text-slate-500 text-sm mb-5">Find a lead and generate their website in 60 seconds.</p>
+    <p class="font-bold text-slate-300 mb-1">No sites yet</p>
+    <p class="text-slate-500 text-sm mb-5">Generate your first site in under 60 seconds.</p>
     <a href="/portal/generate.php"
-       class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-6 py-2.5 rounded-xl text-sm font-bold">
-      <i class="fa-solid fa-bolt"></i> Generate a Site
+       class="inline-flex items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-5 py-2.5 rounded-xl text-sm font-bold">
+      <i class="fa-solid fa-bolt"></i> Generate Now
     </a>
   </div>
-<?php else: foreach ($sites as $site):
-  $hasSlug   = !empty($site['public_slug']);
-  $isActive  = $hasSlug && !empty($site['link_active']);
-  $expiresTs = ($hasSlug && !empty($site['link_expires_at'])) ? strtotime($site['link_expires_at']) : null;
-  $isExpired = $isActive && $expiresTs && $expiresTs < time();
-  $isLive    = $isActive && !$isExpired;
-  $publicUrl = $hasSlug ? '/s/' . $site['public_slug'] : null;
-  $zipUrl    = !empty($site['zip_file_path']) ? $site['zip_file_path'] : null;
-  // ISO timestamp for JS countdown tick
-  $expiresIso = $expiresTs ? date('c', $expiresTs) : null;
-?>
-  <div class="glass rounded-2xl p-5 border <?= $isLive ? 'border-emerald-500/20' : 'border-white/5' ?> hover:border-white/10 transition-all"
-       data-site-id="<?= (int)$site['id'] ?>">
-    <div class="flex items-start justify-between gap-4 flex-wrap">
+<?php else: ?>
+  <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+  <?php foreach ($sites as $site):
+    $hasSlug    = !empty($site['public_slug']);
+    $isActive   = $hasSlug && !empty($site['link_active']);
+    $expiresTs  = ($hasSlug && !empty($site['link_expires_at'])) ? strtotime($site['link_expires_at']) : null;
+    $isExpired  = $isActive && $expiresTs && $expiresTs < time();
+    $isLive     = $isActive && !$isExpired;
+    $publicUrl  = $hasSlug ? '/s/' . $site['public_slug'] : null;
+    $zipUrl     = !empty($site['zip_file_path']) ? $site['zip_file_path'] : null;
+    $expiresIso = $expiresTs ? date('c', $expiresTs) : null;
+    $tplKey     = $site['template_name'] ?? 'modern';
+    $tpl        = $allTpls[$tplKey] ?? $allTpls['modern'];
+    $dark       = $tpl['dark'] ?? false;
+    $swatchBg   = $dark ? $tpl['accent'] : $tpl['accent'];
+  ?>
+    <div class="glass rounded-2xl overflow-hidden border <?= $isLive ? 'border-emerald-500/25' : 'border-white/5' ?> hover:border-white/10 transition-all group"
+         data-site-id="<?= (int)$site['id'] ?>">
 
-      <!-- Left -->
-      <div class="flex items-start gap-3 flex-1 min-w-0">
-        <div class="w-10 h-10 rounded-xl <?= $isLive ? 'bg-emerald-500/15' : 'bg-blue-500/15' ?> flex items-center justify-center shrink-0 mt-0.5">
-          <i class="fa-solid fa-globe <?= $isLive ? 'text-emerald-400' : 'text-blue-400' ?> text-sm"></i>
-        </div>
-        <div class="min-w-0">
-          <div class="flex items-center gap-2 flex-wrap">
-            <h3 class="font-semibold truncate"><?= htmlspecialchars($site['business_name']) ?></h3>
-            <?php if ($isLive): ?>
-              <span class="status-badge text-xs px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400">Active</span>
-            <?php elseif ($isExpired): ?>
-              <span class="status-badge text-xs px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-400">Expired</span>
-            <?php elseif ($hasSlug && !$isActive): ?>
-              <span class="status-badge text-xs px-2 py-0.5 rounded-full bg-slate-500/20 text-slate-400">Inactive</span>
-            <?php else: ?>
-              <span class="status-badge text-xs px-2 py-0.5 rounded-full bg-slate-500/20 text-slate-400">No Share Link</span>
-            <?php endif; ?>
-          </div>
-
-          <p class="text-xs text-slate-500 mt-0.5">
-            Generated <?= date('M j, Y', strtotime($site['created_at'])) ?>
-            <?php if (!empty($site['template_name'])): ?>
-              &middot; <span class="capitalize"><?= htmlspecialchars($site['template_name']) ?></span>
-            <?php endif; ?>
-          </p>
-
-          <?php if ($publicUrl && $isLive): ?>
-            <a href="<?= $publicUrl ?>" target="_blank"
-               class="text-xs text-emerald-400 hover:text-emerald-300 mt-1 inline-flex items-center gap-1">
-              <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
-              utiligo.ca<?= $publicUrl ?>
-            </a>
-          <?php endif; ?>
-
-          <!-- Live countdown label — JS ticker updates this every second -->
-          <?php if ($expiresIso): ?>
-            <p class="expiry-label text-xs mt-1 <?= $isExpired ? 'text-red-400' : 'text-slate-400' ?>"
-               data-expires-at="<?= htmlspecialchars($expiresIso) ?>">
-              <?php
-                $diff = $expiresTs - time();
-                if ($diff <= 0) echo 'Expired';
-                elseif ($diff < 3600)  echo 'Expires in ' . floor($diff/60) . 'm ' . ($diff%60) . 's';
-                elseif ($diff < 86400) echo 'Expires in ' . floor($diff/3600) . 'h ' . floor(($diff%3600)/60) . 'm';
-                else                   echo 'Expires ' . date('M j', $expiresTs);
-              ?>
-            </p>
-          <?php endif; ?>
-        </div>
+      <!-- Template colour swatch banner -->
+      <div class="h-16 relative flex items-end px-4 pb-3"
+           style="background:linear-gradient(135deg,<?= $tpl['secondary'] ?> 0%,<?= $tpl['primary'] ?> 100%);">
+        <!-- Status badge -->
+        <span class="status-badge absolute top-3 right-3 text-[10px] font-bold px-2 py-0.5 rounded-full
+          <?= $isLive ? 'bg-emerald-400/20 text-emerald-300 ring-1 ring-emerald-400/30' : ($isExpired ? 'bg-amber-400/20 text-amber-300 ring-1 ring-amber-400/30' : 'bg-white/10 text-slate-400') ?>">
+          <?= $isLive ? '● Live' : ($isExpired ? '⏱ Expired' : 'Offline') ?>
+        </span>
+        <!-- Template label chip -->
+        <span class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-black/30 text-white/80">
+          <?= htmlspecialchars($tpl['label']) ?>
+        </span>
       </div>
 
-      <!-- Right: actions -->
-      <div class="flex gap-2 items-center flex-wrap shrink-0">
-        <?php if ($is_pro && $hasSlug): ?>
-          <button class="extend-btn text-xs bg-white/5 hover:bg-white/10 text-slate-300 px-3 py-2 rounded-xl font-semibold transition"
-                  data-id="<?= (int)$site['id'] ?>">
-            <i class="fa-solid fa-clock-rotate-left mr-1"></i><?= $isExpired ? 'Reactivate' : 'Extend' ?>
-          </button>
+      <!-- Card body -->
+      <div class="p-4">
+        <h3 class="font-bold text-sm truncate leading-tight"><?= htmlspecialchars($site['business_name']) ?></h3>
+        <p class="text-[11px] text-slate-500 mt-0.5">Generated <?= date('M j, Y', strtotime($site['created_at'])) ?></p>
+
+        <!-- Live countdown -->
+        <?php if ($expiresIso): ?>
+          <?php
+            $diff = $expiresTs - time();
+            if ($diff <= 0)        $exLabel = 'Expired';
+            elseif ($diff < 3600)  $exLabel = 'Expires in ' . floor($diff/60) . 'm ' . ($diff%60) . 's';
+            elseif ($diff < 86400) $exLabel = 'Expires in ' . floor($diff/3600) . 'h ' . floor(($diff%3600)/60) . 'm';
+            else                   $exLabel = 'Expires ' . date('M j', $expiresTs);
+          ?>
+          <p class="expiry-label text-[11px] mt-1 <?= $isExpired ? 'text-red-400' : 'text-slate-500' ?>"
+             data-expires-at="<?= htmlspecialchars($expiresIso) ?>">
+            <i class="fa-regular fa-clock mr-0.5"></i><?= $exLabel ?>
+          </p>
         <?php endif; ?>
 
+        <!-- Share link -->
+        <?php if ($publicUrl && $isLive): ?>
+          <a href="<?= $publicUrl ?>" target="_blank"
+             class="text-[11px] text-emerald-400 hover:text-emerald-300 mt-1.5 inline-flex items-center gap-1 truncate max-w-full">
+            <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i>
+            utiligo.ca<?= $publicUrl ?>
+          </a>
+        <?php endif; ?>
+      </div>
+
+      <!-- Action row -->
+      <div class="border-t border-white/5 px-3 py-2.5 flex items-center gap-1.5 flex-wrap">
+
         <a href="/portal/site_editor.php?site_id=<?= (int)$site['id'] ?>"
-           class="text-xs bg-white/5 hover:bg-white/10 text-slate-300 px-3 py-2 rounded-xl font-semibold transition">
-          <i class="fa-solid fa-pen mr-1"></i>Edit
+           class="action-btn flex items-center gap-1.5 text-[11px] bg-white/5 hover:bg-white/10 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition">
+          <i class="fa-solid fa-pen text-[9px]"></i> Edit
         </a>
 
         <?php if ($publicUrl && $isLive): ?>
           <a href="<?= $publicUrl ?>" target="_blank"
-             class="text-xs bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-3 py-2 rounded-xl font-semibold transition">
-            <i class="fa-solid fa-eye mr-1"></i>Preview
+             class="action-btn flex items-center gap-1.5 text-[11px] bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 px-3 py-1.5 rounded-lg font-semibold transition">
+            <i class="fa-solid fa-eye text-[9px]"></i> Preview
           </a>
+        <?php endif; ?>
+
+        <?php if ($is_pro && $hasSlug): ?>
+          <button class="extend-btn action-btn flex items-center gap-1.5 text-[11px] bg-white/5 hover:bg-white/10 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition"
+                  data-id="<?= (int)$site['id'] ?>">
+            <i class="fa-solid fa-clock-rotate-left text-[9px]"></i>
+            <?= $isExpired ? 'Reactivate' : 'Extend' ?>
+          </button>
         <?php endif; ?>
 
         <?php if ($zipUrl): ?>
           <a href="<?= htmlspecialchars($zipUrl) ?>"
-             class="text-xs bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-2 rounded-xl font-semibold transition">
-            <i class="fa-solid fa-download mr-1"></i>ZIP
+             class="action-btn flex items-center gap-1.5 text-[11px] bg-blue-500/10 hover:bg-blue-500/20 text-blue-400 px-3 py-1.5 rounded-lg font-semibold transition">
+            <i class="fa-solid fa-download text-[9px]"></i> ZIP
           </a>
         <?php endif; ?>
 
-        <button class="delete-btn text-xs bg-red-500/10 hover:bg-red-500/20 text-red-400 px-3 py-2 rounded-xl font-semibold transition"
+        <button class="delete-btn action-btn ml-auto flex items-center gap-1 text-[11px] bg-red-500/8 hover:bg-red-500/20 text-red-500 px-2.5 py-1.5 rounded-lg transition"
                 data-id="<?= (int)$site['id'] ?>">
-          <i class="fa-solid fa-trash"></i>
+          <i class="fa-solid fa-trash text-[9px]"></i>
         </button>
       </div>
     </div>
+  <?php endforeach; ?>
   </div>
-<?php endforeach; endif; ?>
+<?php endif; ?>
 </div>
 
-<script src="/assets/js/my_sites.js?v=v201"></script>
+<script src="/assets/js/my_sites.js?v=v202"></script>
