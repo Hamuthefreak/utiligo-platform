@@ -2,17 +2,33 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
+
+// Config-driven plan limits (single source of truth from config.php)
+$FREE_LEAD_LIMIT  = FREE_LEAD_LIMIT;          // 3
+$FREE_SEARCH_LIMIT= FREE_SEARCH_DAILY_LIMIT;  // 2
+$FREE_SITE_LIMIT  = FREE_SITE_LIMIT;          // 1
+$PRO_LEAD_LIMIT   = PRO_LEAD_LIMIT;           // 120
+$PRO_SITE_LIMIT   = PRO_SITE_LIMIT;           // 200
+$ENT_SITE_LIMIT   = ENT_SITE_LIMIT;           // 500
+$PRO_PRICE        = PRO_PLAN_PRICE;           // 21.99
+$ENT_PRICE        = ENTREPRENEUR_PLAN_PRICE;  // 49.99
+$TMPL_COUNT       = defined('TEMPLATE_COUNT') ? TEMPLATE_COUNT : 25;
+
 $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
+<!-- HERO -->
 <section class="max-w-5xl mx-auto px-6 py-24 text-center">
   <span class="text-sm font-semibold uppercase tracking-wide text-slate-400">For Freelancers &amp; Agencies</span>
-  <h1 class="text-4xl md:text-6xl font-extrabold mt-4 mb-6">Find Clients. Build Websites. <span class="text-white underline decoration-white/20">Get Paid.</span></h1>
+  <h1 class="text-4xl md:text-6xl font-extrabold mt-4 mb-6 leading-tight">
+    Find Clients. Build Websites. <span class="whitespace-nowrap"><span class="underline decoration-white/20">Get Paid.</span></span>
+  </h1>
   <p class="text-xl text-slate-400 max-w-2xl mx-auto mb-10">Utiligo finds local businesses without a website, then generates a professional site for them in 60 seconds. No lock-in &mdash; export a clean ZIP anytime.</p>
   <a href="/register.php" class="inline-block bg-white hover:bg-slate-200 text-black px-8 py-4 rounded-full font-semibold text-lg transition">Start Finding Clients Free &rarr;</a>
 </section>
 
+<!-- CALCULATOR -->
 <section id="calculator" class="max-w-4xl mx-auto px-6 py-20">
   <div class="text-center mb-10">
     <span class="text-sm font-semibold uppercase tracking-wide text-slate-400">Unique to Utiligo</span>
@@ -39,7 +55,7 @@ require_once __DIR__ . '/includes/header.php';
       </div>
       <div class="flex justify-between text-slate-400">
         <span>Minus Utiligo subscription</span>
-        <span>-$21.99/month</span>
+        <span>-$<?= number_format($PRO_PRICE, 2) ?>/month</span>
       </div>
       <div class="flex justify-between items-baseline pt-4">
         <span class="text-lg font-semibold">Your net profit</span>
@@ -53,6 +69,7 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
+<!-- HOW IT WORKS -->
 <section id="how-it-works" class="max-w-6xl mx-auto px-6 py-20">
   <div class="text-center mb-14">
     <span class="text-sm font-semibold uppercase tracking-wide text-slate-400">The Process</span>
@@ -83,73 +100,54 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
+<!-- TESTIMONIALS -->
 <section id="testimonials" class="max-w-6xl mx-auto px-6 py-20">
   <div class="text-center mb-14">
     <span class="text-sm font-semibold uppercase tracking-wide text-slate-400">Real Results</span>
     <h2 class="text-3xl md:text-4xl font-bold mt-2">People Are Already Winning With This</h2>
   </div>
   <div class="grid md:grid-cols-3 gap-6">
+    <?php foreach ([
+      ['J','Jordan M.','Freelance Web Designer','Found 12 leads in my first search, closed 2 within a week. This basically does the prospecting for you.'],
+      ['P','Priya S.','Digital Agency Owner','The site generation is insanely fast. I close deals same day now — show the preview, they say yes, done.'],
+      ['D','Devon R.','Side-Hustle Developer','I was skeptical about the 60-second claim but it\'s real. Generated a site, tweaked the copy, sent it same day.'],
+    ] as [$init,$name,$role,$quote]): ?>
     <div class="glass rounded-xl p-6">
-      <div class="flex text-white mb-4"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
-      <p class="text-slate-300 text-sm mb-5">&ldquo;Found 12 leads in my first search, closed 2 within a week. This basically does the prospecting for you.&rdquo;</p>
+      <div class="flex text-white mb-4"><?= str_repeat('<i class="fa-solid fa-star"></i>',5) ?></div>
+      <p class="text-slate-300 text-sm mb-5">&ldquo;<?= htmlspecialchars($quote) ?>&rdquo;</p>
       <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white font-bold text-sm">J</div>
-        <div>
-          <p class="text-sm font-semibold">Jordan M.</p>
-          <p class="text-xs text-slate-500">Freelance Web Designer</p>
-        </div>
+        <div class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white font-bold text-sm"><?= $init ?></div>
+        <div><p class="text-sm font-semibold"><?= $name ?></p><p class="text-xs text-slate-500"><?= $role ?></p></div>
       </div>
     </div>
-    <div class="glass rounded-xl p-6">
-      <div class="flex text-white mb-4"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
-      <p class="text-slate-300 text-sm mb-5">&ldquo;The site generation is insanely fast. I close deals same day now &mdash; show the preview, they say yes, done.&rdquo;</p>
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white font-bold text-sm">P</div>
-        <div>
-          <p class="text-sm font-semibold">Priya S.</p>
-          <p class="text-xs text-slate-500">Digital Agency Owner</p>
-        </div>
-      </div>
-    </div>
-    <div class="glass rounded-xl p-6">
-      <div class="flex text-white mb-4"><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i><i class="fa-solid fa-star"></i></div>
-      <p class="text-slate-300 text-sm mb-5">&ldquo;I was skeptical about the 60-second claim but it&rsquo;s real. Generated a site, tweaked the copy, sent it same day.&rdquo;</p>
-      <div class="flex items-center gap-3">
-        <div class="w-9 h-9 rounded-full bg-white/10 flex items-center justify-center text-white font-bold text-sm">D</div>
-        <div>
-          <p class="text-sm font-semibold">Devon R.</p>
-          <p class="text-xs text-slate-500">Side-Hustle Developer</p>
-        </div>
-      </div>
-    </div>
+    <?php endforeach; ?>
   </div>
 </section>
 
+<!-- FEATURES -->
 <section id="features" class="max-w-6xl mx-auto px-6 py-20">
   <div class="text-center mb-14">
     <h2 class="text-3xl md:text-4xl font-bold">Everything You Need. Nothing You Don&rsquo;t.</h2>
   </div>
   <div class="grid md:grid-cols-3 gap-6">
-    <?php
-    $features = [
-      ['fa-magnifying-glass', 'AI Lead Finder',        'Search any city, any industry. Find businesses with no website in seconds.'],
-      ['fa-bolt',             '60-Second Site Builder', 'Enter business info, get a complete, deployable website instantly.'],
-      ['fa-paintbrush',       'Site Designer',          'Edit text, images, colours and sections live — right inside the dashboard.'],
-      ['fa-file-zipper',      'No Lock-In',             'Every site exports as a clean ZIP. Deploy it anywhere, forever.'],
-      ['fa-chart-line',       'Revenue Dashboard',      'Track leads, sites generated, and money earned in one place.'],
-      ['fa-shield-halved',    'Secure by Default',      'CSRF protection, rate limiting, and 2FA on every account.'],
-    ];
-    foreach ($features as [$icon, $title, $desc]): ?>
-      <div class="glass rounded-xl p-6">
-        <i class="fa-solid <?= $icon ?> text-2xl text-white mb-4"></i>
-        <h3 class="font-semibold mb-2"><?= $title ?></h3>
-        <p class="text-slate-400 text-sm"><?= $desc ?></p>
-      </div>
+    <?php foreach ([
+      ['fa-magnifying-glass', 'AI Lead Finder',         'Search any city, any industry. Find businesses with no website in seconds.'],
+      ['fa-bolt',             '60-Second Site Builder',  'Enter business info, get a complete, deployable website instantly.'],
+      ['fa-paintbrush',       'Site Designer',           'Edit text, images, colours and sections live — right inside the dashboard.'],
+      ['fa-file-zipper',      'No Lock-In',              'Every site exports as a clean ZIP. Deploy it anywhere, forever.'],
+      ['fa-chart-line',       'Revenue Dashboard',       'Track leads, sites generated, and money earned in one place.'],
+      ['fa-shield-halved',    'Secure by Default',       'CSRF protection, rate limiting, and 2FA on every account.'],
+    ] as [$icon,$title,$desc]): ?>
+    <div class="glass rounded-xl p-6">
+      <i class="fa-solid <?= $icon ?> text-2xl text-white mb-4"></i>
+      <h3 class="font-semibold mb-2"><?= $title ?></h3>
+      <p class="text-slate-400 text-sm"><?= $desc ?></p>
+    </div>
     <?php endforeach; ?>
   </div>
 </section>
 
-<!-- ===== PRICING ===== -->
+<!-- PRICING — 100% config-driven -->
 <section id="pricing" class="max-w-6xl mx-auto px-6 py-20">
   <div class="text-center mb-14">
     <h2 class="text-3xl md:text-4xl font-bold">Simple Pricing. Real Value.</h2>
@@ -163,8 +161,8 @@ require_once __DIR__ . '/includes/header.php';
       <p class="text-slate-400 text-sm mb-6">Explore Utiligo with no commitment.</p>
       <p class="text-4xl font-extrabold mb-6">$0</p>
       <ul class="space-y-3 text-sm text-slate-300 mb-8">
-        <li><i class="fa-solid fa-check text-white mr-2"></i>2&ndash;3 leads per search</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>1 site generation / day</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $FREE_LEAD_LIMIT ?> leads per search</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $FREE_SITE_LIMIT ?> site generation / day</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>2 free templates</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Basic dashboard</li>
         <li><i class="fa-solid fa-xmark text-slate-600 mr-2"></i>ZIP export locked</li>
@@ -178,11 +176,11 @@ require_once __DIR__ . '/includes/header.php';
       <span class="absolute -top-3 right-8 bg-white text-black text-xs font-bold px-3 py-1 rounded-full">Most Popular</span>
       <h3 class="text-xl font-bold mb-1">Pro</h3>
       <p class="text-slate-400 text-sm mb-6">For freelancers ready to land real clients.</p>
-      <p class="text-4xl font-extrabold mb-6">$21.99<span class="text-base font-medium text-slate-400">/mo</span></p>
+      <p class="text-4xl font-extrabold mb-6">$<?= number_format($PRO_PRICE, 2) ?><span class="text-base font-medium text-slate-400">/mo</span></p>
       <ul class="space-y-3 text-sm text-slate-200 mb-8">
-        <li><i class="fa-solid fa-check text-white mr-2"></i>120 leads unlocked / period</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>200 active websites</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= defined('TEMPLATE_COUNT') ? TEMPLATE_COUNT : '25' ?> templates</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $PRO_LEAD_LIMIT ?> leads unlocked / period</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $PRO_SITE_LIMIT ?> active websites</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= $TMPL_COUNT ?> templates</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>ZIP export</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Full revenue dashboard</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Priority support</li>
@@ -195,11 +193,11 @@ require_once __DIR__ . '/includes/header.php';
       <span class="absolute -top-3 right-8 bg-slate-700 text-white text-xs font-bold px-3 py-1 rounded-full">Best for Agencies</span>
       <h3 class="text-xl font-bold mb-1">Entrepreneur</h3>
       <p class="text-slate-400 text-sm mb-6">Scale with a full agency operation.</p>
-      <p class="text-4xl font-extrabold mb-6">$49.99<span class="text-base font-medium text-slate-400">/mo</span></p>
+      <p class="text-4xl font-extrabold mb-6">$<?= number_format($ENT_PRICE, 2) ?><span class="text-base font-medium text-slate-400">/mo</span></p>
       <ul class="space-y-3 text-sm text-slate-200 mb-8">
         <li><i class="fa-solid fa-infinity text-white mr-2"></i>Unlimited leads</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>500 active websites</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= defined('TEMPLATE_COUNT') ? TEMPLATE_COUNT : '25' ?> templates</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $ENT_SITE_LIMIT ?> active websites</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= $TMPL_COUNT ?> templates</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>ZIP export</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Full revenue dashboard</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Priority support</li>
@@ -213,32 +211,37 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
+<!-- FAQ -->
 <section id="faq" class="max-w-3xl mx-auto px-6 py-20">
   <div class="text-center mb-12">
     <span class="text-sm font-semibold uppercase tracking-wide text-slate-400">Questions</span>
     <h2 class="text-3xl md:text-4xl font-bold mt-2">Frequently Asked Questions</h2>
   </div>
   <div class="space-y-4">
-    <?php
-    $faqs = [
-      ['Do I need any coding or design experience?', 'No. Utiligo generates the entire website for you — you just enter the business details and pick a template. You can also edit text, images, and colours live inside the dashboard.'],
-      ['What happens to the websites I generate?', 'Every site exports as a clean, standalone ZIP file. You can host it anywhere — there\'s no lock-in to our platform.'],
-      ['What\'s the difference between Pro and Entrepreneur?', 'Pro gives you 120 lead unlocks and 200 active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and 500 active websites, plus custom domains, client reports, and team seats for agencies running at scale.'],
-      ['Is the free plan actually usable, or just a teaser?', 'The free plan lets you run searches, see a limited lead preview, and generate 1 site per day with 2 templates. ZIP export and all templates require a paid plan.'],
-      ['How does billing work?', 'Pro is $21.99/month and Entrepreneur is $49.99/month — cancel anytime. You keep access through the end of your current billing period after cancelling.'],
-    ];
-    foreach ($faqs as $i => [$q, $a]): ?>
-      <details class="glass rounded-xl p-5 group">
-        <summary class="cursor-pointer font-semibold text-sm flex justify-between items-center list-none">
-          <?= htmlspecialchars($q) ?>
-          <i class="fa-solid fa-chevron-down text-white text-xs group-open:rotate-180 transition-transform"></i>
-        </summary>
-        <p class="text-slate-400 text-sm mt-3"><?= htmlspecialchars($a) ?></p>
-      </details>
+    <?php foreach ([
+      ['Do I need any coding or design experience?',
+       'No. Utiligo generates the entire website for you — you just enter the business details and pick a template. You can also edit text, images, and colours live inside the dashboard.'],
+      ['What happens to the websites I generate?',
+       'Every site exports as a clean, standalone ZIP file. You can host it anywhere — there\'s no lock-in to our platform.'],
+      ['What\'s the difference between Pro and Entrepreneur?',
+       'Pro gives you '.PRO_LEAD_LIMIT.' lead unlocks and '.PRO_SITE_LIMIT.' active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and '.ENT_SITE_LIMIT.' active websites, plus custom domains, client reports, and team seats for agencies running at scale.'],
+      ['Is the free plan actually usable, or just a teaser?',
+       'The free plan lets you run searches, see '.FREE_LEAD_LIMIT.' leads per search, and generate '.FREE_SITE_LIMIT.' site per day with 2 templates. ZIP export and all templates require a paid plan.'],
+      ['How does billing work?',
+       'Pro is $'.number_format(PRO_PLAN_PRICE,2).'/month and Entrepreneur is $'.number_format(ENTREPRENEUR_PLAN_PRICE,2).'/month — cancel anytime. You keep access through the end of your current billing period after cancelling.'],
+    ] as [$q,$a]): ?>
+    <details class="glass rounded-xl p-5 group">
+      <summary class="cursor-pointer font-semibold text-sm flex justify-between items-center list-none">
+        <?= htmlspecialchars($q) ?>
+        <i class="fa-solid fa-chevron-down text-white text-xs group-open:rotate-180 transition-transform"></i>
+      </summary>
+      <p class="text-slate-400 text-sm mt-3"><?= $a ?></p>
+    </details>
     <?php endforeach; ?>
   </div>
 </section>
 
+<!-- CTA -->
 <section class="max-w-4xl mx-auto px-6 py-20 text-center">
   <div class="backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-10 md:p-14">
     <h2 class="text-3xl md:text-4xl font-bold mb-4">Ready to Find Your First Client?</h2>

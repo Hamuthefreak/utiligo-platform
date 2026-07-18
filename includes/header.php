@@ -13,18 +13,30 @@ $_has_logo  = file_exists($_logo_path);
 <title><?= htmlspecialchars($pageTitle) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/assets/css/style.css">
+<style>
+  .logo-wordmark {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+    font-size: 1.15rem;
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+</style>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
 <nav class="sticky top-0 z-50 backdrop-blur-lg bg-slate-950/80 border-b border-white/10">
   <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-    <a href="/" class="flex items-center gap-2.5">
+    <a href="/" class="flex items-center gap-2">
       <?php if ($_has_logo): ?>
         <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
       <?php else: ?>
         <i class="fa-solid fa-bolt text-white text-xl"></i>
       <?php endif; ?>
-      <span class="text-lg font-black tracking-tight">Utiligo</span>
+      <span class="logo-wordmark text-white">Utiligo</span>
     </a>
     <div class="hidden md:flex gap-8 text-sm font-medium text-slate-300">
       <a href="/#how-it-works" class="hover:text-white">How It Works</a>
