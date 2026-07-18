@@ -28,11 +28,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $error = 'Please enter a valid CVC.';
         } else {
             $userdb = get_user_db();
-            $userdb->prepare("UPDATE utiligo_users SET plan='pro', subscription_status='active', subscription_started_at=NOW() WHERE id=?")
-                ->execute([$user['id']]);
+            // Try with subscription_started_at first; fall back if column missing
+            try {
+                $userdb->prepare("UPDATE utiligo_users SET plan='pro', subscription_status='active', subscription_started_at=NOW() WHERE id=?")
+                    ->execute([$user['id']]);
+            } catch (\PDOException $e) {
+                $userdb->prepare("UPDATE utiligo_users SET plan='pro', subscription_status='active' WHERE id=?")
+                    ->execute([$user['id']]);
+            }
             brevo_upsert_contact($user['email'], ['FIRSTNAME' => $user['full_name']], [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS]);
             send_welcome_email($user['email'], $user['full_name']);
-            header('Location: /portal/onboarding.php?step=1'); exit;
+            header('Location: /portal/index.php?upgraded=1'); exit;
         }
     } elseif ($_POST['action'] === 'cancel') {
         $userdb = get_user_db();
@@ -42,8 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 }
 
-$is_pro      = ($user['plan'] ?? 'free') === 'pro';
-$is_active   = ($user['subscription_status'] ?? '') === 'active';
+$is_pro       = ($user['plan'] ?? 'free') === 'pro';
+$is_active    = ($user['subscription_status'] ?? '') === 'active';
 $is_cancelled = ($user['subscription_status'] ?? '') === 'cancelled';
 
 $pageTitle = 'Billing — Utiligo';
@@ -76,9 +82,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <div>
         <p class="font-bold text-lg"><?= $is_pro ? 'Utiligo Pro' : 'Free Plan' ?></p>
         <p class="text-slate-400 text-sm"><?php
-          if ($is_pro && $is_active)      echo '$21.99 / month &mdash; Active';
+          if ($is_pro && $is_active)        echo '$21.99 / month &mdash; Active';
           elseif ($is_pro && $is_cancelled) echo 'Cancelled &mdash; Active until end of period';
-          else                              echo 'Limited to 3 leads &bull; 2 searches/day';
+          else                              echo 'Limited to 3 leads &bull; 1 site/day &bull; 2 templates';
         ?></p>
       </div>
     </div>
@@ -86,13 +92,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <?= $is_pro && $is_active ? 'Active' : ($is_cancelled ? 'Cancelled' : 'Free') ?>
     </span>
   </div>
-
   <?php if ($is_pro && $is_active): ?>
   <div class="mt-5 pt-5 border-t border-white/5">
     <form method="POST" onsubmit="return confirm('Cancel your Pro subscription?');">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="cancel">
-      <button type="submit" class="text-sm text-red-400 hover:text-red-300 transition"><i class="fa-solid fa-xmark mr-1"></i>Cancel Subscription</button>
+      <button type="submit" class="text-sm text-red-400 hover:text-red-300 transition">
+        <i class="fa-solid fa-xmark mr-1"></i>Cancel Subscription
+      </button>
     </form>
   </div>
   <?php endif; ?>
@@ -114,7 +121,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <div class="space-y-2 text-sm">
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-4"></i>Unlimited lead searches</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-4"></i>Full phone numbers</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-4"></i>Website generator</div>
+        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-4"></i>Unlimited site generation</div>
+        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-4"></i>All 12 templates</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-4"></i>White-label branding</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-4"></i>Priority support</div>
       </div>
@@ -173,5 +181,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 <?php endif; ?>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
-<script src="/assets/js/billing_card.js?v=v162"></script>
+</div></main>
+<script src="/assets/js/billing_card.js?v=v166"></script>
+</body></html>

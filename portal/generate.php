@@ -6,12 +6,13 @@ require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/site_templates.php';
 
+// Free users CAN access generate — they just get a daily quota + limited templates
 require_login();
 $user   = current_user();
 $is_pro = ($user['plan'] ?? 'free') === 'pro';
 $pdo    = get_platform_db();
 
-// Safe constant fallbacks — in case config.php on the live server hasn't updated yet
+// Safe constant fallbacks
 if (!defined('FREE_GENERATE_DAILY_LIMIT')) define('FREE_GENERATE_DAILY_LIMIT', 1);
 if (!defined('FREE_TEMPLATE_LIMIT'))       define('FREE_TEMPLATE_LIMIT', 2);
 
@@ -182,7 +183,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <span id="selectedTemplateLabel" class="text-xs px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-400 hidden"></span>
     </div>
-
     <?php foreach ($templateCategories as $categoryName => $keys): ?>
     <p class="text-xs uppercase tracking-wider text-slate-600 mt-5 mb-3"><?= htmlspecialchars($categoryName) ?></p>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -223,7 +223,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <?php endforeach; ?>
     </div>
     <?php endforeach; ?>
-
     <?php if(!$is_pro): ?>
     <div class="mt-5 p-4 rounded-xl border border-amber-500/20 bg-amber-500/5 flex items-center gap-3">
       <i class="fa-solid fa-crown text-amber-400"></i>
@@ -333,6 +332,7 @@ window.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
-<script src="/assets/js/image_uploader.js?v=v166"></script>
-<script src="/assets/js/generator.js?v=v166"></script>
+</div></main>
+<script src="/assets/js/image_uploader.js?v=v167"></script>
+<script src="/assets/js/generator.js?v=v167"></script>
+</body></html>
