@@ -78,8 +78,13 @@ if (!$businessName || !$category || !$city) {
     json_response(['success' => false, 'error' => 'Business name, category, and city are required.'], 400);
 }
 
-// Dynamic INSERT — only include columns that exist in the live table
-$candidateCols = [
+// ---------------------------------------------------------------
+// Dynamic INSERT — only columns that (a) exist and (b) are NOT
+// share-link columns we set later (public_slug, link_expires_at,
+// link_active, zip_file_path). Including those here would insert
+// NULL/empty and blow up the unique constraint on public_slug.
+// ---------------------------------------------------------------
+$INSERT_ONLY_COLS = [
     'lead_id'           => $leadId,
     'business_name'     => $businessName,
     'business_category' => $category,
@@ -88,11 +93,14 @@ $candidateCols = [
     'business_email'    => $email,
     'template_name'     => $template,
 ];
+// Columns managed in the later UPDATE — never touch in INSERT
+$DEFERRED_COLS = ['public_slug','link_expires_at','link_active','zip_file_path','share_token'];
 
 $insertCols = ['user_id'];
 $insertVals = [$user['id']];
-foreach ($candidateCols as $col => $val) {
-    if (db_table_has_column($pdo, 'utiligo_generated_sites', $col)) {
+foreach ($INSERT_ONLY_COLS as $col => $val) {
+    if (!in_array($col, $DEFERRED_COLS, true) &&
+        db_table_has_column($pdo, 'utiligo_generated_sites', $col)) {
         $insertCols[] = $col;
         $insertVals[] = $val;
     }
@@ -106,10 +114,12 @@ $pdo->prepare("INSERT INTO utiligo_generated_sites ($colList) VALUES ($placehold
     ->execute($insertVals);
 $siteId = (int)$pdo->lastInsertId();
 
-// Build a guaranteed-unique slug: prefer slugified name, fall back to site ID
-$nameSlug = function_exists('slugify') ? slugify($businessName) : '';
-$nameSlug = preg_replace('/[^a-z0-9]+/', '-', strtolower($nameSlug ?? ''));
-$nameSlug = trim($nameSlug, '-');
+// Guaranteed-unique slug: slugified name + site ID, fallback to site-{id}
+$nameSlug = '';
+if (function_exists('slugify')) {
+    $nameSlug = slugify($businessName) ?? '';
+}
+$nameSlug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($nameSlug)), '-');
 $slug     = ($nameSlug !== '') ? $nameSlug . '-' . $siteId : 'site-' . $siteId;
 
 $siteDir = __DIR__ . '/../assets/uploads/generated_sites/' . $slug;
@@ -146,7 +156,6 @@ if ($hasShareCols) {
              WHERE id=?'
         )->execute([$relativeZipPath, $publicSlug, $linkExpiresAt, $siteId]);
     } catch (\PDOException $e) {
-        // Slug collision edge-case: update without the slug so the ZIP is still saved
         $publicSlug = $publicUrl = $linkExpiresAt = null;
         $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed", zip_file_path=? WHERE id=?')
             ->execute([$relativeZipPath, $siteId]);
@@ -161,12 +170,12 @@ if ($leadId) {
 }
 
 json_response([
-    'success'            => true,
-    'zip_url'            => $relativeZipPath,
-    'preview_url'        => $previewUrl,
-    'public_url'         => $publicUrl,
-    'link_expires_at'    => $linkExpiresAt,
-    'site_id'            => $siteId,
-    'page_count'         => count($pages),
-    'share_links_enabled'=> $hasShareCols,
+    'success'             => true,
+    'zip_url'             => $relativeZipPath,
+    'preview_url'         => $previewUrl,
+    'public_url'          => $publicUrl,
+    'link_expires_at'     => $linkExpiresAt,
+    'site_id'             => $siteId,
+    'page_count'          => count($pages),
+    'share_links_enabled' => $hasShareCols,
 ]);
