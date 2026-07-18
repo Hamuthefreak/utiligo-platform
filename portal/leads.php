@@ -10,8 +10,18 @@ $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 
-// Daily search quota (free only)
-$quota_used = 0; $quota_limit = (int)FREE_SEARCH_DAILY_LIMIT; $quota_resets_at = null;
+// ---- Resolved limits (all guarded for older config deploys) ----
+$FREE_LEAD_LIMIT    = defined('FREE_LEAD_LIMIT')          ? (int)FREE_LEAD_LIMIT          : 3;
+$FREE_SEARCH_LIMIT  = defined('FREE_SEARCH_DAILY_LIMIT')  ? (int)FREE_SEARCH_DAILY_LIMIT  : 2;
+$FREE_SITE_LIMIT    = defined('FREE_SITE_LIMIT')          ? (int)FREE_SITE_LIMIT          : 1;
+$FREE_GEN_LIMIT     = defined('FREE_GENERATE_DAILY_LIMIT')? (int)FREE_GENERATE_DAILY_LIMIT: 1;
+$FREE_TMPL_LIMIT    = defined('FREE_TEMPLATE_LIMIT')      ? (int)FREE_TEMPLATE_LIMIT      : 2;
+$PRO_LEAD_LIMIT     = defined('PRO_LEAD_LIMIT')           ? (int)PRO_LEAD_LIMIT           : 120;
+$PRO_SITE_LIMIT     = defined('PRO_SITE_LIMIT')           ? (int)PRO_SITE_LIMIT           : 200;
+$ENT_SITE_LIMIT     = defined('ENT_SITE_LIMIT')           ? (int)ENT_SITE_LIMIT           : 500;
+
+// ---- Quota data ----
+$quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
         $pdo         = get_platform_db();
@@ -24,12 +34,11 @@ if (!$is_paid) {
         if ($row) { $quota_used = (int)$row['count']; $quota_resets_at = strtotime($row['window_start'])+86400; }
     } catch (\Throwable $e) {}
 }
-$quota_remaining = max(0, $quota_limit - $quota_used);
-$quota_pct       = $quota_limit > 0 ? round(($quota_used/$quota_limit)*100) : 0;
+$quota_remaining = max(0, $FREE_SEARCH_LIMIT - $quota_used);
+$quota_pct       = $FREE_SEARCH_LIMIT > 0 ? min(100, round(($quota_used/$FREE_SEARCH_LIMIT)*100)) : 0;
 
-// Pro/Ent lead counts
+// ---- Pro lead unlock count ----
 $pro_lead_count = 0;
-$pro_lead_limit = plan_lead_limit($plan);
 if ($plan === 'pro') {
     try {
         $pdo  = get_platform_db();
@@ -39,8 +48,19 @@ if ($plan === 'pro') {
     } catch (\Throwable $e) {}
 }
 
-// Max slider values per plan
-$slider_max = match($plan) { 'entrepreneur' => 40, 'pro' => 30, default => 10 };
+// ---- Active site count (paid) ----
+$active_site_count = 0;
+if ($is_paid) {
+    try {
+        $pdo  = get_platform_db();
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM utiligo_generated_sites WHERE user_id = ? AND link_active = 1');
+        $stmt->execute([$user['id']]);
+        $active_site_count = (int)$stmt->fetchColumn();
+    } catch (\Throwable $e) {}
+}
+
+// ---- Slider config ----
+$slider_max     = match($plan) { 'entrepreneur' => 40, 'pro' => 30, default => 10 };
 $slider_default = match($plan) { 'entrepreneur' => 20, 'pro' => 10, default => 5 };
 
 $pageTitle = 'Find Leads — Utiligo';
@@ -52,75 +72,153 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <p class="text-slate-400 text-sm mt-1">Discover local businesses with no website &mdash; your next paying clients.</p>
 </div>
 
+<!-- ====== LIMITS PANEL (shows ALL relevant limits for the user's plan) ====== -->
 <?php if (!$is_paid): ?>
-<!-- Free daily quota -->
-<div id="quotaBanner" class="glass rounded-2xl p-5 mb-8 border border-white/5">
-  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-    <div class="flex items-center gap-2">
-      <div class="w-8 h-8 rounded-xl bg-white/8 flex items-center justify-center"><i class="fa-solid fa-magnifying-glass text-slate-300 text-xs"></i></div>
-      <div><p class="text-sm font-semibold text-white">Daily Search Quota</p><p class="text-xs text-slate-400">Resets every 24 hours</p></div>
-    </div>
-    <div class="flex items-center gap-3">
-      <div id="quotaBadge" class="flex items-center gap-1.5 <?= $quota_remaining===0?'bg-red-500/10 border border-red-500/20 text-red-400':($quota_remaining===1?'bg-amber-500/10 border border-amber-500/20 text-amber-400':'bg-white/8 border border-white/10 text-slate-300') ?> rounded-full px-3 py-1 text-xs font-bold">
-        <?= $quota_remaining===0 ? 'No searches left today' : $quota_remaining.' search'.($quota_remaining!==1?'es':'').' left' ?>
+<!-- FREE: search quota + all plan caps in a mini grid -->
+<div class="space-y-3 mb-8">
+
+  <!-- Search quota bar -->
+  <div class="glass rounded-2xl p-5 border border-white/5">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-xl bg-white/8 flex items-center justify-center"><i class="fa-solid fa-magnifying-glass text-slate-300 text-xs"></i></div>
+        <div>
+          <p class="text-sm font-semibold text-white">Daily Search Quota</p>
+          <p class="text-xs text-slate-400">Resets every 24 hours</p>
+        </div>
       </div>
-      <a href="/portal/billing.php?upgrade=1" class="text-xs bg-white hover:bg-slate-200 text-black px-4 py-1.5 rounded-full font-bold"><i class="fa-solid fa-crown mr-1"></i>Upgrade</a>
+      <div class="flex items-center gap-3">
+        <div id="quotaBadge" class="flex items-center gap-1.5 <?= $quota_remaining===0?'bg-red-500/10 border border-red-500/20 text-red-400':($quota_remaining===1?'bg-amber-500/10 border border-amber-500/20 text-amber-400':'bg-white/8 border border-white/10 text-slate-300') ?> rounded-full px-3 py-1 text-xs font-bold">
+          <?= $quota_remaining===0 ? 'No searches left today' : $quota_remaining.' search'.($quota_remaining!==1?'es':'').' left' ?>
+        </div>
+        <a href="/portal/billing.php?upgrade=1" class="text-xs bg-white hover:bg-slate-200 text-black px-4 py-1.5 rounded-full font-bold">
+          <i class="fa-solid fa-crown mr-1"></i>Upgrade
+        </a>
+      </div>
+    </div>
+    <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+      <div id="quotaBar" class="h-2 rounded-full transition-all duration-500 <?= $quota_pct>=100?'bg-red-500':($quota_pct>=50?'bg-amber-500':'bg-white/60') ?>" style="width:<?= $quota_pct ?>%"></div>
+    </div>
+    <div class="flex justify-between text-xs text-slate-500 mt-1.5">
+      <span id="quotaText"><?= $quota_used ?> of <?= $FREE_SEARCH_LIMIT ?> searches used</span>
+      <?php if($quota_resets_at): ?><span>Resets at <?= date('g:i A',$quota_resets_at) ?></span><?php else: ?><span>Resets 24h after first search</span><?php endif; ?>
     </div>
   </div>
-  <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-    <div id="quotaBar" class="h-2 rounded-full transition-all duration-500 <?= $quota_pct>=100?'bg-red-500':($quota_pct>=50?'bg-amber-500':'bg-white/60') ?>" style="width:<?= $quota_pct ?>%"></div>
+
+  <!-- Plan cap mini-cards -->
+  <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+    <div class="glass rounded-xl p-3 border border-white/5 text-center">
+      <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Leads / search</p>
+      <p class="text-2xl font-extrabold text-white"><?= $FREE_LEAD_LIMIT ?></p>
+    </div>
+    <div class="glass rounded-xl p-3 border border-white/5 text-center">
+      <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Searches / day</p>
+      <p class="text-2xl font-extrabold text-white"><?= $FREE_SEARCH_LIMIT ?></p>
+    </div>
+    <div class="glass rounded-xl p-3 border border-white/5 text-center">
+      <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Sites / day</p>
+      <p class="text-2xl font-extrabold text-white"><?= $FREE_GEN_LIMIT ?></p>
+    </div>
+    <div class="glass rounded-xl p-3 border border-white/5 text-center">
+      <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Templates</p>
+      <p class="text-2xl font-extrabold text-white"><?= $FREE_TMPL_LIMIT ?></p>
+    </div>
   </div>
-  <div class="flex justify-between text-xs text-slate-500 mt-1.5">
-    <span id="quotaText"><?= $quota_used ?> of <?= $quota_limit ?> searches used</span>
-    <?php if($quota_resets_at): ?><span>Resets at <?= date('g:i A',$quota_resets_at) ?></span><?php else: ?><span>Resets 24h after first search</span><?php endif; ?>
+
+  <div class="flex items-center gap-3 bg-white/3 border border-white/8 rounded-xl px-4 py-3">
+    <i class="fa-solid fa-arrow-up text-white text-sm"></i>
+    <p class="text-xs text-slate-400 flex-1">
+      Upgrade to <strong class="text-white">Pro</strong> for <?= $PRO_LEAD_LIMIT ?> lead unlocks,
+      <?= $PRO_SITE_LIMIT ?> active sites &amp; unlimited searches.
+    </p>
+    <a href="/portal/billing.php?upgrade=1" class="text-xs bg-white hover:bg-slate-200 text-black px-4 py-1.5 rounded-full font-bold whitespace-nowrap">Go Pro</a>
   </div>
 </div>
 
-<?php elseif ($plan === 'pro' && $pro_lead_limit > 0): ?>
-<?php $ll_pct = min(100, round(($pro_lead_count/$pro_lead_limit)*100)); ?>
-<div class="glass rounded-2xl p-5 mb-8 border border-white/5" id="leadLimitBanner">
-  <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-    <div class="flex items-center gap-2">
-      <div class="w-8 h-8 rounded-xl bg-white/8 flex items-center justify-center"><i class="fa-solid fa-users text-slate-300 text-xs"></i></div>
-      <div>
-        <p class="text-sm font-semibold text-white">Lead Unlock Limit</p>
-        <p class="text-xs text-slate-400" id="leadLimitSubtitle"><?= $pro_lead_count ?> of <?= $pro_lead_limit ?> leads unlocked</p>
+<?php elseif ($plan === 'pro'): ?>
+<!-- PRO: lead unlock bar + active sites bar -->
+<?php
+  $ll_pct  = $PRO_LEAD_LIMIT > 0 ? min(100, round(($pro_lead_count/$PRO_LEAD_LIMIT)*100)) : 0;
+  $ll_col  = $ll_pct>=100?'bg-red-500':($ll_pct>=80?'bg-amber-500':'bg-white/60');
+  $sl_pct  = $PRO_SITE_LIMIT > 0 ? min(100, round(($active_site_count/$PRO_SITE_LIMIT)*100)) : 0;
+  $sl_col  = $sl_pct>=100?'bg-red-500':($sl_pct>=80?'bg-amber-500':'bg-white/60');
+?>
+<div class="grid sm:grid-cols-2 gap-3 mb-8">
+
+  <!-- Lead unlocks -->
+  <div class="glass rounded-2xl p-5 border border-white/5">
+    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div class="flex items-center gap-2">
+        <div class="w-8 h-8 rounded-xl bg-white/8 flex items-center justify-center"><i class="fa-solid fa-users text-slate-300 text-xs"></i></div>
+        <div>
+          <p class="text-sm font-semibold text-white">Lead Unlocks</p>
+          <p class="text-xs text-slate-400" id="leadLimitSubtitle"><?= $pro_lead_count ?> of <?= $PRO_LEAD_LIMIT ?> used</p>
+        </div>
       </div>
-    </div>
-    <div class="flex items-center gap-3">
-      <span class="text-xs font-bold" id="leadLimitCount"><?= $pro_lead_count ?> / <?= $pro_lead_limit ?></span>
-      <?php if ($ll_pct >= 80): ?>
-      <a href="/portal/billing.php?upgrade=1&plan=entrepreneur" id="leadUpgradeBtn"
-         class="text-xs bg-white hover:bg-slate-200 text-black px-4 py-1.5 rounded-full font-bold hidden">
+      <?php if($ll_pct>=80): ?>
+      <a href="/portal/billing.php?upgrade=1&plan=entrepreneur" class="text-xs bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full font-bold">
         <i class="fa-solid fa-rocket mr-1"></i>Upgrade
       </a>
       <?php endif; ?>
     </div>
+    <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+      <div id="leadLimitBar" class="h-2 rounded-full transition-all <?= $ll_col ?>" style="width:<?= $ll_pct ?>%"
+           data-used="<?= $pro_lead_count ?>" data-limit="<?= $PRO_LEAD_LIMIT ?>"></div>
+    </div>
+    <p class="text-xs text-slate-500 mt-1.5"><?= max(0,$PRO_LEAD_LIMIT-$pro_lead_count) ?> remaining</p>
   </div>
-  <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
-    <div id="leadLimitBar" class="h-2 rounded-full transition-all duration-700
-      <?= $ll_pct>=100?'bg-red-500':($ll_pct>=80?'bg-amber-500':'bg-white/60') ?>"
-      style="width:<?= $ll_pct ?>%"
-      data-used="<?= $pro_lead_count ?>"
-      data-limit="<?= $pro_lead_limit ?>">
+
+  <!-- Active sites -->
+  <div class="glass rounded-2xl p-5 border border-white/5">
+    <div class="flex items-center gap-2 mb-3">
+      <div class="w-8 h-8 rounded-xl bg-white/8 flex items-center justify-center"><i class="fa-solid fa-globe text-slate-300 text-xs"></i></div>
+      <div>
+        <p class="text-sm font-semibold text-white">Active Sites</p>
+        <p class="text-xs text-slate-400"><?= $active_site_count ?> of <?= $PRO_SITE_LIMIT ?> used</p>
+      </div>
+    </div>
+    <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+      <div class="h-2 rounded-full transition-all <?= $sl_col ?>" style="width:<?= $sl_pct ?>%"></div>
+    </div>
+    <p class="text-xs text-slate-500 mt-1.5"><?= max(0,$PRO_SITE_LIMIT-$active_site_count) ?> slots remaining</p>
+  </div>
+
+</div>
+
+<?php else: /* entrepreneur */ ?>
+<!-- ENTREPRENEUR: unlimited leads + active sites bar -->
+<?php
+  $sl_pct = $ENT_SITE_LIMIT > 0 ? min(100, round(($active_site_count/$ENT_SITE_LIMIT)*100)) : 0;
+  $sl_col = $sl_pct>=90?'bg-red-500':($sl_pct>=70?'bg-amber-500':'bg-white/60');
+?>
+<div class="grid sm:grid-cols-2 gap-3 mb-8">
+  <div class="flex items-center gap-3 glass rounded-2xl px-5 py-4 border border-white/5">
+    <i class="fa-solid fa-infinity text-white text-xl"></i>
+    <div>
+      <p class="text-sm font-semibold text-white">Unlimited Lead Searches</p>
+      <p class="text-xs text-slate-400">Entrepreneur plan &mdash; no cap</p>
     </div>
   </div>
-  <p class="text-xs text-slate-500 mt-1.5" id="leadLimitNote">
-    <?= $pro_lead_limit - $pro_lead_count ?> leads remaining on your Pro plan
-  </p>
-</div>
-<?php else: ?>
-<div class="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-2 text-sm mb-8 w-fit">
-  <i class="fa-solid fa-infinity text-white"></i>
-  <span class="text-slate-300 font-semibold">Entrepreneur &mdash; Unlimited leads</span>
+  <div class="glass rounded-2xl p-5 border border-white/5">
+    <div class="flex items-center gap-2 mb-3">
+      <div class="w-8 h-8 rounded-xl bg-white/8 flex items-center justify-center"><i class="fa-solid fa-globe text-slate-300 text-xs"></i></div>
+      <div>
+        <p class="text-sm font-semibold text-white">Active Sites</p>
+        <p class="text-xs text-slate-400"><?= $active_site_count ?> of <?= $ENT_SITE_LIMIT ?> used</p>
+      </div>
+    </div>
+    <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
+      <div class="h-2 rounded-full transition-all <?= $sl_col ?>" style="width:<?= $sl_pct ?>%"></div>
+    </div>
+    <p class="text-xs text-slate-500 mt-1.5"><?= max(0,$ENT_SITE_LIMIT-$active_site_count) ?> slots remaining</p>
+  </div>
 </div>
 <?php endif; ?>
 
-<!-- Search form -->
+<!-- ====== SEARCH FORM ====== -->
 <div class="glass rounded-2xl p-6 mb-6 border border-white/5">
   <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-5">Search Parameters</p>
   <form id="leadSearchForm">
-    <!-- Row 1: City + Industry + Keywords -->
     <div class="grid sm:grid-cols-3 gap-3 mb-5">
       <div>
         <label class="block text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5">City <span class="text-red-400">*</span></label>
@@ -150,9 +248,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
     </div>
 
-    <!-- Row 2: Slider + seen-leads checkbox + submit -->
     <div class="flex flex-col sm:flex-row sm:items-end gap-4">
-
       <!-- Lead count slider -->
       <div class="flex-1">
         <label class="flex justify-between text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">
@@ -162,22 +258,15 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <input type="range" id="leadCountSlider" name="lead_count_slider"
                min="1" max="<?= $slider_max ?>" value="<?= $slider_default ?>"
                class="w-full accent-white h-2 cursor-pointer">
-        <div class="flex justify-between text-[10px] text-slate-600 mt-1">
-          <span>1</span>
-          <span><?= $slider_max ?></span>
-        </div>
+        <div class="flex justify-between text-[10px] text-slate-600 mt-1"><span>1</span><span><?= $slider_max ?></span></div>
       </div>
       <input type="hidden" id="leadCountHidden" name="lead_count" value="<?= $slider_default ?>">
 
       <!-- Seen leads checkbox -->
       <div class="flex flex-col gap-1 pb-0.5">
         <label class="flex items-center gap-2.5 cursor-pointer group">
-          <div class="relative">
-            <input type="checkbox" id="includeSeenLeads" name="include_seen" class="sr-only peer">
-            <div class="w-4 h-4 rounded border border-slate-600 bg-slate-800 peer-checked:bg-white peer-checked:border-white transition-all flex items-center justify-center">
-              <i class="fa-solid fa-check text-black text-[8px] hidden peer-checked-show"></i>
-            </div>
-          </div>
+          <input type="checkbox" id="includeSeenLeads" name="include_seen"
+                 class="w-4 h-4 rounded border-slate-600 bg-slate-800 accent-white cursor-pointer">
           <span class="text-xs text-slate-400 group-hover:text-white transition">Include already-seen leads</span>
         </label>
         <p class="text-[10px] text-slate-600 pl-6">
@@ -204,7 +293,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <!-- Results -->
 <div id="leadsResultsWrap" class="hidden">
-
   <!-- Dot map -->
   <div id="leadMapWrap" class="hidden glass rounded-2xl border border-white/5 mb-5 overflow-hidden">
     <div class="flex items-center justify-between px-5 py-3 border-b border-white/5">
@@ -218,9 +306,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <span><span class="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1"></span>Has website</span>
       </div>
     </div>
-    <div id="leadMap" class="relative bg-slate-900 w-full" style="height:220px;">
-      <!-- dots injected by JS -->
-    </div>
+    <div id="leadMap" class="relative bg-slate-900 w-full" style="height:220px;"></div>
   </div>
 
   <div id="leadsList" class="space-y-3"></div>
@@ -233,7 +319,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </div>
         <h3 class="text-lg font-bold text-white mb-2">More Leads Are Waiting</h3>
         <p class="text-slate-400 text-sm max-w-xs mx-auto">
-          You&rsquo;re seeing <strong class="text-white"><?= (int)FREE_LEAD_LIMIT ?> of the top results.</strong> Upgrade to unlock every lead.
+          You&rsquo;re seeing <strong class="text-white"><?= $FREE_LEAD_LIMIT ?> of the top results.</strong> Upgrade to unlock every lead.
         </p>
       </div>
       <div class="px-6 pb-6 flex flex-col sm:flex-row items-center justify-center gap-3 mt-3">
@@ -246,20 +332,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<style>
-/* Custom checkbox check icon visibility */
-#includeSeenLeads:checked ~ div .peer-checked-show { display: inline !important; }
-/* Slider thumb */
-input[type=range] { height: 6px; border-radius: 99px; }
-</style>
-
 <script
   id="leadsPageConfig"
   data-plan="<?= htmlspecialchars($plan) ?>"
   data-lead-used="<?= $pro_lead_count ?>"
-  data-lead-limit="<?= $pro_lead_limit ?>"
+  data-lead-limit="<?= $PRO_LEAD_LIMIT ?>"
   data-quota-used="<?= $quota_used ?>"
-  data-quota-limit="<?= $quota_limit ?>"
+  data-quota-limit="<?= $FREE_SEARCH_LIMIT ?>"
   data-slider-max="<?= $slider_max ?>"
 ></script>
 <script src="/assets/js/leads.js?v=v700"></script>
