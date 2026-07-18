@@ -19,15 +19,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
         $error = 'Invalid session. Please try again.';
     } else {
-        $email = trim($_POST['email'] ?? '');
+        $email    = trim($_POST['email'] ?? '');
         $password = $_POST['password'] ?? '';
-        $result = attempt_login($email, $password);
+        $result   = attempt_login($email, $password);
 
         if ($result['success']) {
             $userdb = get_user_db();
-            $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified, two_factor_enabled FROM utiligo_users WHERE email = ? LIMIT 1');
-            $stmt->execute([strtolower(trim($email))]);
+
+            // Detect whether two_factor_enabled column exists yet.
+            // If the migration hasn't run, fall back to a query without it.
+            try {
+                $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified, two_factor_enabled FROM utiligo_users WHERE email = ? LIMIT 1');
+                $stmt->execute([strtolower(trim($email))]);
+            } catch (\PDOException $e) {
+                // Column missing — run without it (2FA treated as disabled)
+                $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified FROM utiligo_users WHERE email = ? LIMIT 1');
+                $stmt->execute([strtolower(trim($email))]);
+            }
             $u = $stmt->fetch();
+            $u['two_factor_enabled'] = $u['two_factor_enabled'] ?? 0;
 
             if (EMAIL_VERIFICATION_REQUIRED && !$u['email_verified']) {
                 $unverifiedEmail = $u['email'];
@@ -85,11 +95,9 @@ require_once __DIR__ . '/includes/header.php';
       <?php if (isset($_GET['resent'])): ?>
         <div class="bg-emerald-500/10 border border-emerald-400/30 text-emerald-400 rounded-lg px-4 py-3 mb-6 text-sm">Verification email resent — check your inbox.</div>
       <?php endif; ?>
-
       <?php if (isset($_GET['expired'])): ?>
         <div class="bg-amber-500/10 border border-amber-400/30 text-amber-400 rounded-lg px-4 py-3 mb-6 text-sm">Your session expired. Please log in again.</div>
       <?php endif; ?>
-
       <?php if ($error): ?>
         <div class="bg-red-500/10 border border-red-400/30 text-red-400 rounded-lg px-4 py-3 mb-6 text-sm">
           <?= htmlspecialchars($error) ?>
