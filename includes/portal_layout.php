@@ -6,7 +6,7 @@ if (!isset($pageTitle)) { $pageTitle = 'Utiligo Portal'; }
 $loggedIn  = function_exists('is_logged_in') && is_logged_in();
 $_user     = function_exists('current_user')  ? current_user()  : [];
 $_plan     = $_user['plan'] ?? 'free';
-$_is_paid  = in_array($_plan, ['pro','entrepreneur']);
+$_is_pro   = $_plan === 'pro';
 $_name     = htmlspecialchars(trim($_user['full_name'] ?? 'User'));
 $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
@@ -79,13 +79,13 @@ function _nav_active(string $href, string $current): string {
   </nav>
 
   <!-- Plan badge -->
-  <?php if (!$_is_paid): ?>
+  <?php if (!$_is_pro): ?>
   <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
     <p class="text-xs font-bold text-white mb-0.5">Free Plan</p>
-    <p class="text-xs text-slate-400 mb-3">Unlock leads, sites &amp; more</p>
+    <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; sites</p>
     <a href="/portal/billing.php?upgrade=1"
        class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
-      <i class="fa-solid fa-crown mr-1"></i> Upgrade Plan
+      <i class="fa-solid fa-crown mr-1"></i> Upgrade to Pro
     </a>
   </div>
   <?php endif; ?>
@@ -97,7 +97,7 @@ function _nav_active(string $href, string $current): string {
     </div>
     <div class="flex-1 min-w-0">
       <p class="text-xs font-semibold text-white truncate"><?= $_name ?></p>
-      <p class="text-xs text-slate-500"><?= ucfirst($_plan) ?> Plan</p>
+      <p class="text-xs text-slate-500"><?= $_is_pro ? 'Pro' : 'Free' ?> Plan</p>
     </div>
     <a href="/includes/auth.php?action=logout" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>

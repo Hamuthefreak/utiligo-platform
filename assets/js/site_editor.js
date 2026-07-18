@@ -17,6 +17,34 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (!iframe || !siteId) return;
 
+  // ── How-to-edit hint toggle ───────────────────────────────────────────────
+  const hintToggle = document.getElementById('toolHintToggle');
+  const hintBox    = document.getElementById('sbHint');
+  if (hintToggle && hintBox) {
+    const HINT_KEY   = 'utiligo_editor_hint_open';
+    const initialOpen = localStorage.getItem(HINT_KEY) === '1';
+    hintBox.style.display = initialOpen ? 'block' : 'none';
+    hintToggle.setAttribute('aria-expanded', String(initialOpen));
+    // Update button icon to reflect state
+    const _syncHintIcon = (open) => {
+      const ico = hintToggle.querySelector('i');
+      if (ico) {
+        ico.className = open
+          ? 'fa-solid fa-circle-question'
+          : 'fa-regular fa-circle-question';
+      }
+      hintToggle.style.color = open ? '#ffffff' : '';
+    };
+    _syncHintIcon(initialOpen);
+    hintToggle.addEventListener('click', () => {
+      const nowOpen = hintBox.style.display === 'none';
+      hintBox.style.display = nowOpen ? 'block' : 'none';
+      hintToggle.setAttribute('aria-expanded', String(nowOpen));
+      localStorage.setItem(HINT_KEY, nowOpen ? '1' : '0');
+      _syncHintIcon(nowOpen);
+    });
+  }
+
   const currentPage   = new URLSearchParams(window.location.search).get('page') || 'index';
   let activeTextEl    = null;
   let activeImageEl   = null;
@@ -55,8 +83,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   function syncHistoryBtns() {
-    undoBtn.disabled = undoStack.length === 0;
-    redoBtn.disabled = redoStack.length === 0;
+    if (undoBtn) undoBtn.disabled = undoStack.length === 0;
+    if (redoBtn) redoBtn.disabled = redoStack.length === 0;
   }
 
   function undo() {
@@ -77,8 +105,8 @@ document.addEventListener('DOMContentLoaded', function () {
     restoreState(next); syncHistoryBtns(); setSaveStatus('Redone');
   }
 
-  undoBtn.addEventListener('click', undo);
-  redoBtn.addEventListener('click', redo);
+  if (undoBtn) undoBtn.addEventListener('click', undo);
+  if (redoBtn) redoBtn.addEventListener('click', redo);
   document.addEventListener('keydown', e => {
     if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
     e.preventDefault(); e.shiftKey ? redo() : undo();
@@ -86,14 +114,14 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // ── Save ─────────────────────────────────────────────────────────────────
   function setSaveStatus(msg, type = 'idle') {
-    const el = saveStatus;
-    el.textContent = msg;
-    el.className = 'text-xs ml-1 transition-colors duration-200 ';
-    if (type === 'saving')  el.className += 'text-amber-400';
-    else if (type === 'ok') el.className += 'text-emerald-400';
-    else if (type === 'err') el.className += 'text-red-400';
-    else el.className += 'text-slate-500';
-    if (type === 'ok') setTimeout(() => { if (saveStatus.textContent === msg) { saveStatus.textContent = ''; } }, 2500);
+    if (!saveStatus) return;
+    saveStatus.textContent = msg;
+    saveStatus.className = 'text-xs ml-1 transition-colors duration-200 ';
+    if (type === 'saving')  saveStatus.className += 'text-amber-400';
+    else if (type === 'ok') saveStatus.className += 'text-white';
+    else if (type === 'err') saveStatus.className += 'text-red-400';
+    else saveStatus.className += 'text-slate-500';
+    if (type === 'ok') setTimeout(() => { if (saveStatus && saveStatus.textContent === msg) { saveStatus.textContent = ''; } }, 2500);
   }
 
   function queueEdit(editId, type, payload) {
@@ -120,37 +148,24 @@ document.addEventListener('DOMContentLoaded', function () {
   window.addEventListener('beforeunload', flushEdits);
 
   // ── Toolbar positioning ───────────────────────────────────────────────────
-  // Places toolbar above or below the target, and clamps it inside viewport.
-  // Also detects if the area it would sit on is dark/light and flips theme.
   function positionToolbar(bar, targetRect, ifRect) {
     bar.style.visibility = 'hidden';
     bar.classList.remove('hidden');
     const bw = bar.offsetWidth;
     const bh = bar.offsetHeight;
-
-    // Preferred: above the element
     let top  = ifRect.top  + targetRect.top  - bh - 10;
     let left = ifRect.left + targetRect.left;
-
-    // If it would go above viewport, place below instead
     if (top < 8) top = ifRect.top + targetRect.bottom + 10;
-
-    // Clamp horizontally
     const maxLeft = window.innerWidth - bw - 8;
     left = Math.max(8, Math.min(left, maxLeft));
-    // Clamp vertically (in case below also clips)
     const maxTop = window.innerHeight - bh - 8;
     top  = Math.max(8, Math.min(top, maxTop));
-
     bar.style.top  = top  + 'px';
     bar.style.left = left + 'px';
     bar.style.visibility = '';
-
     applyContrastTheme(bar, ifRect, targetRect);
   }
 
-  // Sample background colour at the target position in the iframe and
-  // switch the popover between its light / dark variant accordingly.
   function applyContrastTheme(bar, ifRect, targetRect) {
     try {
       const doc  = iframe.contentDocument;
@@ -160,7 +175,6 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!el) return;
       const bg   = getComputedStyleRecursive(el, doc);
       const lum  = luminance(bg);
-      // Light background → use dark popover; dark bg → use light popover
       if (lum > 0.35) {
         bar.classList.add('theme-light-bg');
         bar.classList.remove('theme-dark-bg');
@@ -195,14 +209,14 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ── Hide toolbars ─────────────────────────────────────────────────────────
-  // Only hide if focus truly left the toolbar (not just moved inside it).
   let hideTimer = null;
 
   function scheduleHide() {
     hideTimer = setTimeout(() => {
-      // Check if focus is now inside any toolbar
       const active = document.activeElement;
-      if (fmtBar.contains(active) || imgBar.contains(active) || bgBar.contains(active)) return;
+      if (fmtBar && fmtBar.contains(active)) return;
+      if (imgBar && imgBar.contains(active)) return;
+      if (bgBar  && bgBar.contains(active))  return;
       hideAll();
     }, 180);
   }
@@ -210,16 +224,14 @@ document.addEventListener('DOMContentLoaded', function () {
   function cancelHide() { clearTimeout(hideTimer); }
 
   function hideAll() {
-    fmtBar.classList.add('hidden');
-    imgBar.classList.add('hidden');
-    bgBar.classList.add('hidden');
+    if (fmtBar) fmtBar.classList.add('hidden');
+    if (imgBar) imgBar.classList.add('hidden');
+    if (bgBar)  bgBar.classList.add('hidden');
   }
 
-  // Keep toolbar alive while cursor is inside it
-  [fmtBar, imgBar, bgBar].forEach(bar => {
+  [fmtBar, imgBar, bgBar].filter(Boolean).forEach(bar => {
     bar.addEventListener('mouseenter', cancelHide);
     bar.addEventListener('focusin',    cancelHide);
-    bar.addEventListener('mouseleave', () => {});
   });
 
   // ── iframe init ───────────────────────────────────────────────────────────
@@ -229,18 +241,18 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const style = doc.createElement('style');
     style.textContent = `
-      [data-edit-type="text"]:hover  { outline: 2px dashed rgba(16,185,129,.55); outline-offset:2px; cursor:text; border-radius:2px; }
-      [data-edit-type="text"]:focus  { outline: 2px solid #10B981; outline-offset:2px; cursor:text; border-radius:2px; }
-      [data-edit-type="image"]:hover { outline: 2px dashed rgba(99,102,241,.7); outline-offset:2px; cursor:pointer; border-radius:4px; }
-      [data-edit-bg="1"]:hover       { box-shadow: inset 0 0 0 3px rgba(16,185,129,.3); cursor:pointer; }
+      [data-edit-type="text"]:hover  { outline: 2px dashed rgba(255,255,255,.4); outline-offset:2px; cursor:text; border-radius:2px; }
+      [data-edit-type="text"]:focus  { outline: 2px solid #ffffff; outline-offset:2px; cursor:text; border-radius:2px; }
+      [data-edit-type="image"]:hover { outline: 2px dashed rgba(255,255,255,.5); outline-offset:2px; cursor:pointer; border-radius:4px; }
+      [data-edit-bg="1"]:hover       { box-shadow: inset 0 0 0 3px rgba(255,255,255,.25); cursor:pointer; }
       [data-sortable-section="1"]    { position:relative; transition:transform .15s,opacity .15s; }
       [data-sortable-section="1"].section-dragging { opacity:.35; }
-      [data-sortable-section="1"].section-drop-target { box-shadow: inset 0 4px 0 0 #10B981; }
+      [data-sortable-section="1"].section-drop-target { box-shadow: inset 0 4px 0 0 rgba(255,255,255,.6); }
       .section-drag-handle {
         position:absolute; top:10px; right:10px; z-index:99;
-        width:32px; height:32px; background:rgba(16,185,129,.9);
+        width:32px; height:32px; background:rgba(255,255,255,.9);
         border-radius:8px; display:flex; align-items:center; justify-content:center;
-        cursor:grab; color:#052e1f; font-size:15px;
+        cursor:grab; color:#000; font-size:15px;
         box-shadow:0 2px 10px rgba(0,0,0,.3);
         opacity:0; transition:opacity .15s;
       }
@@ -274,7 +286,6 @@ document.addEventListener('DOMContentLoaded', function () {
       });
     });
 
-    // Click on blank area → hide
     doc.addEventListener('mousedown', e => {
       if (!e.target.closest('[data-edit-id]')) scheduleHide();
     });
@@ -307,8 +318,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ── Format toolbar actions ────────────────────────────────────────────────
-  fmtBar.querySelectorAll('.toolbar-btn[data-cmd]').forEach(btn => {
-    btn.addEventListener('mousedown', e => e.preventDefault()); // keep focus in iframe
+  if (fmtBar) fmtBar.querySelectorAll('.toolbar-btn[data-cmd]').forEach(btn => {
+    btn.addEventListener('mousedown', e => e.preventDefault());
     btn.addEventListener('click', () => {
       if (!activeTextEl) return;
       pushHistory(captureState(activeTextEl, 'text'));
@@ -317,29 +328,35 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  textColor.addEventListener('input', () => {
-    if (!activeTextEl) return;
-    if (!textColor.dataset.snap) { textColor.dataset.snap = '1'; pushHistory(captureState(activeTextEl, 'text')); }
-    iframe.contentDocument.execCommand('foreColor', false, textColor.value);
-    queueEdit(activeTextEl.dataset.editId, 'text', { html: activeTextEl.innerHTML, text: activeTextEl.textContent });
-  });
-  textColor.addEventListener('change', () => { delete textColor.dataset.snap; });
+  if (textColor) {
+    textColor.addEventListener('input', () => {
+      if (!activeTextEl) return;
+      if (!textColor.dataset.snap) { textColor.dataset.snap = '1'; pushHistory(captureState(activeTextEl, 'text')); }
+      iframe.contentDocument.execCommand('foreColor', false, textColor.value);
+      queueEdit(activeTextEl.dataset.editId, 'text', { html: activeTextEl.innerHTML, text: activeTextEl.textContent });
+    });
+    textColor.addEventListener('change', () => { delete textColor.dataset.snap; });
+  }
 
-  clearFmt.addEventListener('mousedown', e => e.preventDefault());
-  clearFmt.addEventListener('click', () => {
-    if (!activeTextEl) return;
-    pushHistory(captureState(activeTextEl, 'text'));
-    iframe.contentDocument.execCommand('removeFormat', false, null);
-    queueEdit(activeTextEl.dataset.editId, 'text', { html: activeTextEl.innerHTML, text: activeTextEl.textContent });
-  });
+  if (clearFmt) {
+    clearFmt.addEventListener('mousedown', e => e.preventDefault());
+    clearFmt.addEventListener('click', () => {
+      if (!activeTextEl) return;
+      pushHistory(captureState(activeTextEl, 'text'));
+      iframe.contentDocument.execCommand('removeFormat', false, null);
+      queueEdit(activeTextEl.dataset.editId, 'text', { html: activeTextEl.innerHTML, text: activeTextEl.textContent });
+    });
+  }
 
-  bgColor.addEventListener('input', () => {
-    if (!activeBgEl) return;
-    if (!bgColor.dataset.snap) { bgColor.dataset.snap = '1'; pushHistory(captureState(activeBgEl, 'bg_color')); }
-    activeBgEl.style.background = bgColor.value;
-    queueEdit(activeBgEl.dataset.editId, 'bg_color', { color: bgColor.value });
-  });
-  bgColor.addEventListener('change', () => { delete bgColor.dataset.snap; });
+  if (bgColor) {
+    bgColor.addEventListener('input', () => {
+      if (!activeBgEl) return;
+      if (!bgColor.dataset.snap) { bgColor.dataset.snap = '1'; pushHistory(captureState(activeBgEl, 'bg_color')); }
+      activeBgEl.style.background = bgColor.value;
+      queueEdit(activeBgEl.dataset.editId, 'bg_color', { color: bgColor.value });
+    });
+    bgColor.addEventListener('change', () => { delete bgColor.dataset.snap; });
+  }
 
   // ── Image upload ──────────────────────────────────────────────────────────
   function uploadImage(file) {
@@ -361,11 +378,13 @@ document.addEventListener('DOMContentLoaded', function () {
       .catch(() => setSaveStatus('Upload failed', 'err'));
   }
 
-  imgDrop.addEventListener('click', () => imgInput.click());
-  imgInput.addEventListener('change', e => { if (e.target.files[0]) uploadImage(e.target.files[0]); });
-  ['dragenter','dragover'].forEach(ev => imgDrop.addEventListener(ev, e => { e.preventDefault(); imgDrop.classList.add('dragover'); }));
-  ['dragleave','drop'].forEach(ev => imgDrop.addEventListener(ev, e => { e.preventDefault(); imgDrop.classList.remove('dragover'); }));
-  imgDrop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) uploadImage(e.dataTransfer.files[0]); });
+  if (imgDrop) imgDrop.addEventListener('click', () => imgInput && imgInput.click());
+  if (imgInput) imgInput.addEventListener('change', e => { if (e.target.files[0]) uploadImage(e.target.files[0]); });
+  if (imgDrop) {
+    ['dragenter','dragover'].forEach(ev => imgDrop.addEventListener(ev, e => { e.preventDefault(); imgDrop.classList.add('dragover'); }));
+    ['dragleave','drop'].forEach(ev => imgDrop.addEventListener(ev, e => { e.preventDefault(); imgDrop.classList.remove('dragover'); }));
+    imgDrop.addEventListener('drop', e => { if (e.dataTransfer.files[0]) uploadImage(e.dataTransfer.files[0]); });
+  }
 
   // ── Section reordering ────────────────────────────────────────────────────
   function initSectionReorder(doc) {
