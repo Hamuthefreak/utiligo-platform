@@ -6,54 +6,67 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 
-require_pro();
-$user = current_user();
-$pdo  = get_platform_db();
+// All users can VIEW settings; only Pro can save white-label branding
+require_login();
+$user   = current_user();
+$is_pro = ($user['plan'] ?? 'free') === 'pro';
+$pdo    = get_platform_db();
 
-$stmt = $pdo->prepare('SELECT * FROM utiligo_whitelabel WHERE user_id = ? LIMIT 1');
-$stmt->execute([$user['id']]);
-$wl = $stmt->fetch() ?: ['brand_name'=>'Utiligo','logo_path'=>null,'primary_color'=>'#10B981','secondary_color'=>'#1E293B','show_powered_by'=>1];
+$wl = ['brand_name'=>'Utiligo','logo_path'=>null,'primary_color'=>'#10B981','secondary_color'=>'#1E293B','show_powered_by'=>1];
+if ($is_pro) {
+    $stmt = $pdo->prepare('SELECT * FROM utiligo_whitelabel WHERE user_id = ? LIMIT 1');
+    $stmt->execute([$user['id']]);
+    $wl = $stmt->fetch() ?: $wl;
+}
 
-$saved = false; $twoFaSaved = false;
+$saved = false; $twoFaSaved = false; $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['toggle_2fa'])) {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) die('Invalid CSRF token.');
     $enable2fa = isset($_POST['two_factor_enabled']) ? 1 : 0;
-    $userdb = get_user_db();
-    $userdb->prepare('UPDATE utiligo_users SET two_factor_enabled = ? WHERE id = ?')->execute([$enable2fa, $user['id']]);
+    $userdb    = get_user_db();
+    try {
+        $userdb->prepare('UPDATE utiligo_users SET two_factor_enabled=? WHERE id=?')->execute([$enable2fa,$user['id']]);
+    } catch (\PDOException $e) {} // column may not exist yet
     $user['two_factor_enabled'] = $enable2fa;
     $twoFaSaved = true;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['toggle_2fa'])) {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) die('Invalid CSRF token.');
-    $brandName     = sanitize($_POST['brand_name'] ?? 'Utiligo');
-    $primaryColor  = sanitize($_POST['primary_color'] ?? '#10B981');
-    $secondaryColor= sanitize($_POST['secondary_color'] ?? '#1E293B');
-    $showPoweredBy = isset($_POST['show_powered_by']) ? 1 : 0;
-    $logoPath      = $wl['logo_path'];
-    if (!empty($_FILES['logo']['name'])) {
-        $file = $_FILES['logo'];
-        if ($file['size'] > MAX_LOGO_UPLOAD_BYTES) { $error = 'Logo too large (max 2MB).'; }
-        elseif (!in_array($file['type'], ALLOWED_LOGO_TYPES, true)) { $error = 'Invalid file type.'; }
-        else {
-            $ext = pathinfo($file['name'], PATHINFO_EXTENSION);
-            $filename = 'logo_' . $user['id'] . '_' . time() . '.' . $ext;
-            $dest = __DIR__ . '/../assets/uploads/logos/' . $filename;
-            if (move_uploaded_file($file['tmp_name'], $dest)) $logoPath = '/assets/uploads/logos/' . $filename;
+    if (!$is_pro) {
+        $error = 'White-label branding requires a Pro plan.';
+    } else {
+        $brandName      = sanitize($_POST['brand_name'] ?? 'Utiligo');
+        $primaryColor   = sanitize($_POST['primary_color'] ?? '#10B981');
+        $secondaryColor = sanitize($_POST['secondary_color'] ?? '#1E293B');
+        $showPoweredBy  = isset($_POST['show_powered_by']) ? 1 : 0;
+        $logoPath       = $wl['logo_path'];
+        if (!empty($_FILES['logo']['name'])) {
+            $file = $_FILES['logo'];
+            if ($file['size'] > MAX_LOGO_UPLOAD_BYTES)             { $error = 'Logo too large (max 2MB).'; }
+            elseif (!in_array($file['type'], ALLOWED_LOGO_TYPES, true)) { $error = 'Invalid file type.'; }
+            else {
+                $ext      = pathinfo($file['name'], PATHINFO_EXTENSION);
+                $filename = 'logo_' . $user['id'] . '_' . time() . '.' . $ext;
+                $dest     = __DIR__ . '/../assets/uploads/logos/' . $filename;
+                if (move_uploaded_file($file['tmp_name'], $dest)) $logoPath = '/assets/uploads/logos/' . $filename;
+            }
+        }
+        if (!$error) {
+            $exists = $pdo->prepare('SELECT id FROM utiligo_whitelabel WHERE user_id=?');
+            $exists->execute([$user['id']]);
+            if ($exists->fetch()) {
+                $pdo->prepare('UPDATE utiligo_whitelabel SET brand_name=?,logo_path=?,primary_color=?,secondary_color=?,show_powered_by=? WHERE user_id=?')
+                    ->execute([$brandName,$logoPath,$primaryColor,$secondaryColor,$showPoweredBy,$user['id']]);
+            } else {
+                $pdo->prepare('INSERT INTO utiligo_whitelabel (user_id,brand_name,logo_path,primary_color,secondary_color,show_powered_by) VALUES (?,?,?,?,?,?)')
+                    ->execute([$user['id'],$brandName,$logoPath,$primaryColor,$secondaryColor,$showPoweredBy]);
+            }
+            $stmt = $pdo->prepare('SELECT * FROM utiligo_whitelabel WHERE user_id=? LIMIT 1');
+            $stmt->execute([$user['id']]); $wl = $stmt->fetch(); $saved = true;
         }
     }
-    $exists = $pdo->prepare('SELECT id FROM utiligo_whitelabel WHERE user_id = ?');
-    $exists->execute([$user['id']]);
-    if ($exists->fetch()) {
-        $pdo->prepare('UPDATE utiligo_whitelabel SET brand_name=?,logo_path=?,primary_color=?,secondary_color=?,show_powered_by=? WHERE user_id=?')
-            ->execute([$brandName,$logoPath,$primaryColor,$secondaryColor,$showPoweredBy,$user['id']]);
-    } else {
-        $pdo->prepare('INSERT INTO utiligo_whitelabel (user_id,brand_name,logo_path,primary_color,secondary_color,show_powered_by) VALUES (?,?,?,?,?,?)')
-            ->execute([$user['id'],$brandName,$logoPath,$primaryColor,$secondaryColor,$showPoweredBy]);
-    }
-    $stmt = $pdo->prepare('SELECT * FROM utiligo_whitelabel WHERE user_id = ? LIMIT 1');
-    $stmt->execute([$user['id']]); $wl = $stmt->fetch(); $saved = true;
 }
 
 $pageTitle = 'White-Label — Utiligo';
@@ -75,8 +88,31 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <i class="fa-solid fa-circle-check shrink-0"></i> Two-factor authentication settings updated.
 </div>
 <?php endif; ?>
+<?php if ($error): ?>
+<div class="flex items-center gap-3 bg-red-500/10 border border-red-400/20 text-red-400 rounded-2xl px-5 py-4 mb-6 text-sm">
+  <i class="fa-solid fa-triangle-exclamation shrink-0"></i><?= htmlspecialchars($error) ?>
+</div>
+<?php endif; ?>
 
-<div class="grid md:grid-cols-2 gap-6 mb-6">
+<?php if (!$is_pro): ?>
+<!-- Free user upgrade prompt -->
+<div class="glass rounded-2xl p-8 border border-amber-500/20 mb-6 text-center" style="background:linear-gradient(135deg,#1c1400,#0d1520)">
+  <div class="w-14 h-14 rounded-full bg-amber-500/15 flex items-center justify-center mx-auto mb-4">
+    <i class="fa-solid fa-crown text-amber-400 text-2xl"></i>
+  </div>
+  <h2 class="text-xl font-bold mb-2">White-Label is a Pro Feature</h2>
+  <p class="text-slate-400 text-sm mb-6 max-w-md mx-auto">
+    Remove &ldquo;Powered by Utiligo&rdquo;, add your own logo and brand colours,
+    and deliver a fully branded experience to your clients.
+  </p>
+  <a href="/portal/billing.php?upgrade=1"
+     class="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-slate-950 px-8 py-3 rounded-xl font-bold transition">
+    <i class="fa-solid fa-crown"></i> Upgrade to Pro
+  </a>
+</div>
+<?php endif; ?>
+
+<div class="grid md:grid-cols-2 gap-6 mb-6 <?= !$is_pro ? 'opacity-40 pointer-events-none select-none' : '' ?>">
   <!-- Branding form -->
   <div class="glass rounded-2xl p-6 border border-white/5">
     <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-5">Branding</p>
@@ -111,7 +147,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <div class="flex items-center justify-between p-4 bg-white/3 rounded-xl">
         <div>
           <p class="text-sm font-medium">&ldquo;Powered by Utiligo&rdquo; badge</p>
-          <p class="text-xs text-slate-500 mt-0.5">We&rsquo;d love it if you kept this on &mdash; helps us grow!</p>
+          <p class="text-xs text-slate-500 mt-0.5">We&rsquo;d love it if you kept this on!</p>
         </div>
         <input type="checkbox" name="show_powered_by" <?= $wl['show_powered_by'] ? 'checked' : '' ?> class="w-5 h-5 accent-emerald-500 cursor-pointer">
       </div>
@@ -142,7 +178,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<!-- Security -->
+<!-- Security (available to all users) -->
 <div class="glass rounded-2xl p-6 border border-white/5">
   <div class="flex items-center gap-2 mb-5">
     <div class="w-8 h-8 rounded-xl bg-violet-500/15 flex items-center justify-center">
@@ -166,25 +202,27 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </form>
 </div>
 
+</div></main>
 <script>
 document.addEventListener('DOMContentLoaded', function () {
-  const brandField    = document.getElementById('brandNameField');
-  const primaryField  = document.getElementById('primaryColorField');
-  const secondaryField= document.getElementById('secondaryColorField');
-  const previewBrand  = document.getElementById('previewBrandName');
-  const previewBtn    = document.getElementById('previewBtn');
-  const livePreview   = document.getElementById('livePreview');
-  brandField.addEventListener('input', function () { previewBrand.innerHTML = '<i class="fa-solid fa-bolt"></i> ' + (this.value || 'Utiligo'); });
-  primaryField.addEventListener('input', function () { previewBtn.style.background = this.value; });
-  secondaryField.addEventListener('input', function () { livePreview.style.background = this.value; });
+  const brandField     = document.getElementById('brandNameField');
+  const primaryField   = document.getElementById('primaryColorField');
+  const secondaryField = document.getElementById('secondaryColorField');
+  const previewBrand   = document.getElementById('previewBrandName');
+  const previewBtn     = document.getElementById('previewBtn');
+  const livePreview    = document.getElementById('livePreview');
+  if (brandField)     brandField.addEventListener('input',     function () { previewBrand.innerHTML = '<i class="fa-solid fa-bolt"></i> ' + (this.value || 'Utiligo'); });
+  if (primaryField)   primaryField.addEventListener('input',   function () { previewBtn.style.background = this.value; });
+  if (secondaryField) secondaryField.addEventListener('input', function () { livePreview.style.background = this.value; });
   const dz = document.getElementById('logoDropzone');
   const fi = document.getElementById('logoFileInput');
-  dz.addEventListener('click', function () { fi.click(); });
-  ['dragover','dragleave','drop'].forEach(function (evt) {
-    dz.addEventListener(evt, function (e) { e.preventDefault(); dz.classList.toggle('dragover', evt === 'dragover'); });
-  });
-  dz.addEventListener('drop', function (e) { if (e.dataTransfer.files.length) fi.files = e.dataTransfer.files; });
+  if (dz && fi) {
+    dz.addEventListener('click', function () { fi.click(); });
+    ['dragover','dragleave','drop'].forEach(function (evt) {
+      dz.addEventListener(evt, function (e) { e.preventDefault(); dz.classList.toggle('dragover', evt === 'dragover'); });
+    });
+    dz.addEventListener('drop', function (e) { if (e.dataTransfer.files.length) fi.files = e.dataTransfer.files; });
+  }
 });
 </script>
-
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+</body></html>

@@ -1,10 +1,8 @@
 <?php
 /**
- * api/upload-image.php — Handles drag-and-drop image uploads used to
- * replace stock photos in a generated site (hero, about, gallery images).
- * Pro feature. Accepts multipart/form-data with a single 'image' file plus
- * 'slot' (hero|about|gallery) and optional 'site_id' to attach the upload
- * to a specific generated site record for later reference/cleanup.
+ * api/upload-image.php
+ * Free users: uploads are not available — friendly message shown.
+ * Pro users: full upload support.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -13,19 +11,24 @@ require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 api_bootstrap();
-
 require_login();
 header('Content-Type: application/json');
 
-$user = current_user();
-if ($user['plan'] !== 'pro') {
-    json_response(['success' => false, 'error' => 'Image uploads are a Pro feature.'], 403);
+$user   = current_user();
+$is_pro = ($user['plan'] ?? 'free') === 'pro';
+
+// Free users get a clear, friendly message instead of a silent failure
+if (!$is_pro) {
+    json_response([
+        'success' => false,
+        'pro_required' => true,
+        'error' => 'Custom image uploads are available on the Pro plan. Your site will be generated with beautiful stock photos instead — upgrade anytime to use your own images.',
+    ], 403);
 }
 
 if (!csrf_verify($_POST['csrf_token'] ?? null)) {
     json_response(['success' => false, 'error' => 'Invalid session.'], 403);
 }
-
 if (!rate_limit_check('upload_image', defined('RATE_LIMIT_UPLOAD_IMAGE') ? RATE_LIMIT_UPLOAD_IMAGE : 30)) {
     json_response(['success' => false, 'error' => 'Too many uploads. Please wait a moment.'], 429);
 }
@@ -36,30 +39,29 @@ if (empty($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
     json_response(['success' => false, 'error' => $msg], 400);
 }
 
-$file = $_FILES['image'];
-$maxBytes = 5 * 1024 * 1024; // 5MB
+$file     = $_FILES['image'];
+$maxBytes = 5 * 1024 * 1024;
 if ($file['size'] > $maxBytes) {
     json_response(['success' => false, 'error' => 'Image must be under 5MB.'], 400);
 }
 
-$allowedMimes = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'image/webp' => 'webp', 'image/gif' => 'gif'];
-$finfo = finfo_open(FILEINFO_MIME_TYPE);
+$allowedMimes = ['image/jpeg'=>'jpg','image/png'=>'png','image/webp'=>'webp','image/gif'=>'gif'];
+$finfo        = finfo_open(FILEINFO_MIME_TYPE);
 $detectedMime = finfo_file($finfo, $file['tmp_name']);
 finfo_close($finfo);
-
 if (!isset($allowedMimes[$detectedMime])) {
     json_response(['success' => false, 'error' => 'Only JPG, PNG, WEBP, and GIF images are allowed.'], 400);
 }
 
-$slot = preg_replace('/[^a-z_]/', '', $_POST['slot'] ?? 'custom');
-$siteId = !empty($_POST['site_id']) ? (int)$_POST['site_id'] : null;
-
+$slot      = preg_replace('/[^a-z_]/', '', $_POST['slot'] ?? 'custom');
+$siteId    = !empty($_POST['site_id']) ? (int)$_POST['site_id'] : null;
 $uploadDir = __DIR__ . '/../assets/uploads/user_images/' . $user['id'];
+
 if (!is_dir($uploadDir) && !@mkdir($uploadDir, 0755, true)) {
     json_response(['success' => false, 'error' => 'Could not create upload directory.'], 500);
 }
 
-$ext = $allowedMimes[$detectedMime];
+$ext      = $allowedMimes[$detectedMime];
 $filename = $slot . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
 $destPath = $uploadDir . '/' . $filename;
 
@@ -70,18 +72,13 @@ if (!move_uploaded_file($file['tmp_name'], $destPath)) {
 $relativePath = '/assets/uploads/user_images/' . $user['id'] . '/' . $filename;
 
 if ($siteId) {
-    $pdo = get_platform_db();
-    $stmt = $pdo->prepare('SELECT id FROM utiligo_generated_sites WHERE id = ? AND user_id = ? LIMIT 1');
+    $pdo  = get_platform_db();
+    $stmt = $pdo->prepare('SELECT id FROM utiligo_generated_sites WHERE id=? AND user_id=? LIMIT 1');
     $stmt->execute([$siteId, $user['id']]);
     if ($stmt->fetch()) {
-        $pdo->prepare(
-            'INSERT INTO utiligo_site_uploads (site_id, user_id, file_path, original_name, mime_type, file_size) VALUES (?,?,?,?,?,?)'
-        )->execute([$siteId, $user['id'], $relativePath, $file['name'], $detectedMime, $file['size']]);
+        $pdo->prepare('INSERT INTO utiligo_site_uploads (site_id,user_id,file_path,original_name,mime_type,file_size) VALUES (?,?,?,?,?,?)')
+            ->execute([$siteId,$user['id'],$relativePath,$file['name'],$detectedMime,$file['size']]);
     }
 }
 
-json_response([
-    'success' => true,
-    'slot' => $slot,
-    'url' => $relativePath,
-]);
+json_response(['success'=>true,'slot'=>$slot,'url'=>$relativePath]);
