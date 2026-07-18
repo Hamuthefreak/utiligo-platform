@@ -78,12 +78,9 @@ if (!$businessName || !$category || !$city) {
     json_response(['success' => false, 'error' => 'Business name, category, and city are required.'], 400);
 }
 
-// ---------------------------------------------------------------
-// Dynamic INSERT — only columns that (a) exist and (b) are NOT
-// share-link columns we set later (public_slug, link_expires_at,
-// link_active, zip_file_path). Including those here would insert
-// NULL/empty and blow up the unique constraint on public_slug.
-// ---------------------------------------------------------------
+// Columns managed in the later UPDATE — never include in INSERT
+$DEFERRED_COLS = ['public_slug','link_expires_at','link_active','zip_file_path','share_token'];
+
 $INSERT_ONLY_COLS = [
     'lead_id'           => $leadId,
     'business_name'     => $businessName,
@@ -93,8 +90,6 @@ $INSERT_ONLY_COLS = [
     'business_email'    => $email,
     'template_name'     => $template,
 ];
-// Columns managed in the later UPDATE — never touch in INSERT
-$DEFERRED_COLS = ['public_slug','link_expires_at','link_active','zip_file_path','share_token'];
 
 $insertCols = ['user_id'];
 $insertVals = [$user['id']];
@@ -114,13 +109,10 @@ $pdo->prepare("INSERT INTO utiligo_generated_sites ($colList) VALUES ($placehold
     ->execute($insertVals);
 $siteId = (int)$pdo->lastInsertId();
 
-// Guaranteed-unique slug: slugified name + site ID, fallback to site-{id}
-$nameSlug = '';
-if (function_exists('slugify')) {
-    $nameSlug = slugify($businessName) ?? '';
-}
-$nameSlug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower($nameSlug)), '-');
-$slug     = ($nameSlug !== '') ? $nameSlug . '-' . $siteId : 'site-' . $siteId;
+// Build a collision-proof slug: sanitized name + site ID + unique token
+$nameSlug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(strip_tags($businessName))), '-');
+if ($nameSlug === '') $nameSlug = 'site';
+$slug = $nameSlug . '-' . $siteId . '-' . substr(uniqid(), -6);
 
 $siteDir = __DIR__ . '/../assets/uploads/generated_sites/' . $slug;
 @mkdir($siteDir, 0755, true);
@@ -156,6 +148,7 @@ if ($hasShareCols) {
              WHERE id=?'
         )->execute([$relativeZipPath, $publicSlug, $linkExpiresAt, $siteId]);
     } catch (\PDOException $e) {
+        // Last-resort fallback: save ZIP without share link
         $publicSlug = $publicUrl = $linkExpiresAt = null;
         $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed", zip_file_path=? WHERE id=?')
             ->execute([$relativeZipPath, $siteId]);
