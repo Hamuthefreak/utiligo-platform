@@ -59,6 +59,27 @@ function validate_upload_path(?string $path): ?string {
     return (strpos($path, '/assets/uploads/user_images/') === 0) ? $path : null;
 }
 
+/**
+ * Build a dynamic UPDATE query from a col=>value map,
+ * skipping any column that doesn't exist in the table.
+ * Always appends WHERE id=? at the end.
+ */
+function dynamic_update(PDO $pdo, string $table, array $colVals, int $id): void
+{
+    $setClauses = [];
+    $vals       = [];
+    foreach ($colVals as $col => $val) {
+        if (db_table_has_column($pdo, $table, $col)) {
+            $setClauses[] = "`$col` = ?";
+            $vals[]       = $val;
+        }
+    }
+    if (empty($setClauses)) return;
+    $vals[] = $id;
+    $sql    = "UPDATE `$table` SET " . implode(', ', $setClauses) . ' WHERE id = ?';
+    $pdo->prepare($sql)->execute($vals);
+}
+
 $customImages = [];
 $heroImg = validate_upload_path($input['custom_image_hero'] ?? null);
 if ($heroImg) $customImages['hero'] = $heroImg;
@@ -78,7 +99,7 @@ if (!$businessName || !$category || !$city) {
     json_response(['success' => false, 'error' => 'Business name, category, and city are required.'], 400);
 }
 
-// Columns managed in the later UPDATE — never include in INSERT
+// Columns set later in UPDATE — never touch in INSERT
 $DEFERRED_COLS = ['public_slug','link_expires_at','link_active','zip_file_path','share_token'];
 
 $INSERT_ONLY_COLS = [
@@ -109,7 +130,7 @@ $pdo->prepare("INSERT INTO utiligo_generated_sites ($colList) VALUES ($placehold
     ->execute($insertVals);
 $siteId = (int)$pdo->lastInsertId();
 
-// Build a collision-proof slug: sanitized name + site ID + unique token
+// Collision-proof slug: name + siteId + uniqid suffix
 $nameSlug = trim(preg_replace('/[^a-z0-9]+/', '-', strtolower(strip_tags($businessName))), '-');
 if ($nameSlug === '') $nameSlug = 'site';
 $slug = $nameSlug . '-' . $siteId . '-' . substr(uniqid(), -6);
@@ -128,34 +149,30 @@ $zipPath     = __DIR__ . '/../exports/' . $zipFilename;
 $zipped      = generate_zip($siteDir, $zipPath);
 
 if (!$zipped) {
-    $pdo->prepare('UPDATE utiligo_generated_sites SET status="failed" WHERE id=?')->execute([$siteId]);
+    dynamic_update($pdo, 'utiligo_generated_sites', ['status' => 'failed'], $siteId);
     json_response(['success' => false, 'error' => 'Failed to package website ZIP.'], 500);
 }
 
 $relativeZipPath = '/exports/' . $zipFilename;
 $previewUrl      = '/assets/uploads/generated_sites/' . $slug . '/index.html';
-$hasShareCols    = db_table_has_column($pdo, 'utiligo_generated_sites', 'public_slug');
 
-$publicSlug = $publicUrl = $linkExpiresAt = null;
-if ($hasShareCols) {
-    $publicSlug    = $slug;
-    $linkExpiresAt = date('Y-m-d H:i:s', strtotime('+7 days'));
-    $publicUrl     = '/s/' . $publicSlug;
-    try {
-        $pdo->prepare(
-            'UPDATE utiligo_generated_sites
-             SET status="completed", zip_file_path=?, public_slug=?, link_expires_at=?, link_active=1
-             WHERE id=?'
-        )->execute([$relativeZipPath, $publicSlug, $linkExpiresAt, $siteId]);
-    } catch (\PDOException $e) {
-        // Last-resort fallback: save ZIP without share link
-        $publicSlug = $publicUrl = $linkExpiresAt = null;
-        $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed", zip_file_path=? WHERE id=?')
-            ->execute([$relativeZipPath, $siteId]);
-    }
-} else {
-    $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed", zip_file_path=? WHERE id=?')
-        ->execute([$relativeZipPath, $siteId]);
+$publicSlug    = $slug;
+$linkExpiresAt = date('Y-m-d H:i:s', strtotime('+7 days'));
+$publicUrl     = '/s/' . $publicSlug;
+
+// One dynamic UPDATE covers all optional columns gracefully
+dynamic_update($pdo, 'utiligo_generated_sites', [
+    'status'          => 'completed',
+    'zip_file_path'   => $relativeZipPath,
+    'public_slug'     => $publicSlug,
+    'link_expires_at' => $linkExpiresAt,
+    'link_active'     => 1,
+], $siteId);
+
+// If public_slug column doesn't exist, we can't build a share URL
+$hasShareCols = db_table_has_column($pdo, 'utiligo_generated_sites', 'public_slug');
+if (!$hasShareCols) {
+    $publicSlug = $publicUrl = $linkExpiresAt = null;
 }
 
 if ($leadId) {
