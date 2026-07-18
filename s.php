@@ -2,8 +2,6 @@
 /**
  * s.php — Public shareable link for a generated website.
  * URL pattern: utiligo.ca/s/{slug}
- * Serves the site's index.html (or a specific page via ?page=about etc.)
- * as long as the link is active and hasn't passed its expiry date.
  */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
@@ -25,13 +23,13 @@ $stmt = $pdo->prepare('SELECT * FROM utiligo_generated_sites WHERE public_slug =
 $stmt->execute([$slug]);
 $site = $stmt->fetch();
 
-$expired = false;
+$expired  = false;
 $notFound = !$site;
 
 if ($site) {
     $isPastExpiry = $site['link_expires_at'] && strtotime($site['link_expires_at']) < time();
-    $isInactive = !$site['link_active'];
-    $expired = $isPastExpiry || $isInactive;
+    $isInactive   = !$site['link_active'];
+    $expired      = $isPastExpiry || $isInactive;
 }
 
 if ($notFound || $expired) {
@@ -52,8 +50,10 @@ if ($notFound || $expired) {
     exit;
 }
 
-// Serve the actual generated static page.
-$slugDir = slugify($site['business_name']) . '-' . $site['id'];
+// Use the stored public_slug as the folder name — it IS the slug we used
+// when generating the site (name-id-uniqid), so it's always correct.
+$slugDir = $site['public_slug'];
+
 $page = $_GET['page'] ?? 'index';
 $page = preg_replace('/[^a-zA-Z0-9\-]/', '', $page);
 $filePath = __DIR__ . '/assets/uploads/generated_sites/' . $slugDir . '/' . $page . '.html';
@@ -70,10 +70,6 @@ if (!file_exists($filePath)) {
 
 header('Content-Type: text/html; charset=UTF-8');
 
-// Rewrite internal links (about.html, services.html, etc.) to go through
-// this same public route with ?page=, and images through the uploads path
-// already baked into the HTML — no rewrite needed there since generate-site
-// writes absolute-friendly relative paths within the site's own folder.
 $html = file_get_contents($filePath);
 $html = preg_replace_callback('/href="([a-z\-]+)\.html"/', function ($m) use ($slug) {
     $target = $m[1] === 'index' ? '' : ('?page=' . $m[1]);
