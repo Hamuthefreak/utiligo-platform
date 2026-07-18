@@ -30,7 +30,6 @@ if (!rate_limit_check('generate_site', RATE_LIMIT_GENERATE_SITE)) {
 
 $pdo = get_platform_db();
 
-// Free user daily quota check
 if (!$is_pro) {
     $cutoff = date('Y-m-d H:i:s', strtotime('-24 hours'));
     $qstmt  = $pdo->prepare('SELECT COUNT(*) FROM utiligo_generated_sites WHERE user_id = ? AND created_at > ?');
@@ -79,11 +78,7 @@ if (!$businessName || !$category || !$city) {
     json_response(['success' => false, 'error' => 'Business name, category, and city are required.'], 400);
 }
 
-// ---------------------------------------------------------------
-// Build INSERT dynamically — only include columns that exist.
-// This means the API works even on a bare-minimum table, and will
-// automatically use new columns once migration 004 has been run.
-// ---------------------------------------------------------------
+// Dynamic INSERT — only include columns that exist in the live table
 $candidateCols = [
     'lead_id'           => $leadId,
     'business_name'     => $businessName,
@@ -111,7 +106,12 @@ $pdo->prepare("INSERT INTO utiligo_generated_sites ($colList) VALUES ($placehold
     ->execute($insertVals);
 $siteId = (int)$pdo->lastInsertId();
 
-$slug    = slugify($businessName) . '-' . $siteId;
+// Build a guaranteed-unique slug: prefer slugified name, fall back to site ID
+$nameSlug = function_exists('slugify') ? slugify($businessName) : '';
+$nameSlug = preg_replace('/[^a-z0-9]+/', '-', strtolower($nameSlug ?? ''));
+$nameSlug = trim($nameSlug, '-');
+$slug     = ($nameSlug !== '') ? $nameSlug . '-' . $siteId : 'site-' . $siteId;
+
 $siteDir = __DIR__ . '/../assets/uploads/generated_sites/' . $slug;
 @mkdir($siteDir, 0755, true);
 
@@ -139,10 +139,20 @@ if ($hasShareCols) {
     $publicSlug    = $slug;
     $linkExpiresAt = date('Y-m-d H:i:s', strtotime('+7 days'));
     $publicUrl     = '/s/' . $publicSlug;
-    $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed",zip_file_path=?,public_slug=?,link_expires_at=?,link_active=1 WHERE id=?')
-        ->execute([$relativeZipPath, $publicSlug, $linkExpiresAt, $siteId]);
+    try {
+        $pdo->prepare(
+            'UPDATE utiligo_generated_sites
+             SET status="completed", zip_file_path=?, public_slug=?, link_expires_at=?, link_active=1
+             WHERE id=?'
+        )->execute([$relativeZipPath, $publicSlug, $linkExpiresAt, $siteId]);
+    } catch (\PDOException $e) {
+        // Slug collision edge-case: update without the slug so the ZIP is still saved
+        $publicSlug = $publicUrl = $linkExpiresAt = null;
+        $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed", zip_file_path=? WHERE id=?')
+            ->execute([$relativeZipPath, $siteId]);
+    }
 } else {
-    $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed",zip_file_path=? WHERE id=?')
+    $pdo->prepare('UPDATE utiligo_generated_sites SET status="completed", zip_file_path=? WHERE id=?')
         ->execute([$relativeZipPath, $siteId]);
 }
 
@@ -150,4 +160,13 @@ if ($leadId) {
     $pdo->prepare('UPDATE utiligo_leads SET status="contacted" WHERE id=?')->execute([$leadId]);
 }
 
-json_response(['success'=>true,'zip_url'=>$relativeZipPath,'preview_url'=>$previewUrl,'public_url'=>$publicUrl,'link_expires_at'=>$linkExpiresAt,'site_id'=>$siteId,'page_count'=>count($pages),'share_links_enabled'=>$hasShareCols]);
+json_response([
+    'success'            => true,
+    'zip_url'            => $relativeZipPath,
+    'preview_url'        => $previewUrl,
+    'public_url'         => $publicUrl,
+    'link_expires_at'    => $linkExpiresAt,
+    'site_id'            => $siteId,
+    'page_count'         => count($pages),
+    'share_links_enabled'=> $hasShareCols,
+]);
