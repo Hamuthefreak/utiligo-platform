@@ -11,6 +11,10 @@ $user   = current_user();
 $is_pro = ($user['plan'] ?? 'free') === 'pro';
 $pdo    = get_platform_db();
 
+// Safe constant fallbacks — in case config.php on the live server hasn't updated yet
+if (!defined('FREE_GENERATE_DAILY_LIMIT')) define('FREE_GENERATE_DAILY_LIMIT', 1);
+if (!defined('FREE_TEMPLATE_LIMIT'))       define('FREE_TEMPLATE_LIMIT', 2);
+
 // ---- Daily generation quota (free users only) ----
 $gen_limit     = (int)FREE_GENERATE_DAILY_LIMIT;
 $gen_used      = 0;
@@ -34,7 +38,7 @@ $gen_pct       = ($gen_limit > 0 && !$is_pro) ? min(100, round(($gen_used / $gen
 $gen_locked    = !$is_pro && $gen_remaining === 0;
 
 // ---- Template access ----
-$free_template_limit = (int)FREE_TEMPLATE_LIMIT; // first N templates are free
+$free_template_limit = (int)FREE_TEMPLATE_LIMIT;
 $all_templates       = get_all_site_templates();
 $template_keys       = array_keys($all_templates);
 $free_keys           = array_slice($template_keys, 0, $free_template_limit);
@@ -67,7 +71,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php if (!$is_pro): ?>
-<!-- Generation quota bar -->
 <div class="glass rounded-2xl p-5 mb-8 border border-white/5">
   <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <div class="flex items-center gap-2">
@@ -113,7 +116,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php if($gen_locked): ?>
-<!-- Locked state -->
 <div class="glass rounded-2xl p-12 text-center border border-red-500/20 mb-8">
   <div class="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
     <i class="fa-solid fa-lock text-red-400 text-2xl"></i>
@@ -134,7 +136,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <input type="hidden" name="lead_id" value="<?= htmlspecialchars($_GET['lead_id'] ?? '') ?>">
   <input type="hidden" name="template_name" id="selectedTemplateInput" value="modern">
 
-  <!-- Business details -->
   <div class="glass rounded-2xl p-6 border border-white/5">
     <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-5">Business Details</p>
     <div class="grid md:grid-cols-2 gap-4">
@@ -166,7 +167,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
 
-  <!-- Templates -->
   <div class="glass rounded-2xl p-6 border border-white/5">
     <div class="flex items-center justify-between mb-5 flex-wrap gap-3">
       <div>
@@ -187,16 +187,15 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <p class="text-xs uppercase tracking-wider text-slate-600 mt-5 mb-3"><?= htmlspecialchars($categoryName) ?></p>
     <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
       <?php foreach ($keys as $key):
-        $tpl    = $all_templates[$key];
+        $tpl         = $all_templates[$key];
         $is_free_tpl = in_array($key, $free_keys, true);
-        $locked = !$is_pro && !$is_free_tpl;
+        $locked      = !$is_pro && !$is_free_tpl;
       ?>
       <button type="button"
-              class="template-card relative text-left rounded-xl overflow-hidden border-2 <?= $locked ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-transparent hover:border-emerald-400/60' ?> transition glass <?= $locked ? 'locked-template' : '' ?>"
+              class="template-card relative text-left rounded-xl overflow-hidden border-2 <?= $locked ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-transparent hover:border-emerald-400/60' ?> transition glass"
               data-template="<?= $key ?>"
               data-label="<?= htmlspecialchars($tpl['label']) ?>"
               <?= $locked ? 'data-locked="1"' : '' ?>>
-
         <?php if($locked): ?>
         <div class="absolute inset-0 z-10 flex flex-col items-center justify-center bg-slate-900/70 backdrop-blur-sm">
           <div class="w-8 h-8 rounded-full bg-amber-500/20 flex items-center justify-center mb-1.5">
@@ -205,7 +204,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <span class="text-xs font-bold text-amber-300">Pro Only</span>
         </div>
         <?php endif; ?>
-
         <div class="h-20 flex flex-col justify-center px-4"
              style="background:<?= $tpl['dark'] ?? false ? $tpl['secondary'] : $tpl['accent'] ?>;">
           <div class="w-10 h-2 rounded-full mb-2" style="background:<?= $tpl['primary'] ?>;"></div>
@@ -238,7 +236,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <?php endif; ?>
   </div>
 
-  <!-- Custom images -->
   <div class="glass rounded-2xl p-6 border border-white/5">
     <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-1">Custom Images <span class="text-slate-600 normal-case font-normal">(optional)</span></p>
     <p class="text-slate-400 text-xs mb-5">Drag &amp; drop your own photos, or leave blank to use stock images.</p>
@@ -281,7 +278,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <?php endif; // !gen_locked ?>
 
-<!-- Progress + download (shown by JS) -->
 <div id="genProgressWrap" class="hidden glass rounded-2xl p-10 text-center border border-white/5">
   <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-blue-500/10 mb-4">
     <i class="fa-solid fa-spinner fa-spin text-blue-400 text-2xl"></i>
@@ -320,14 +316,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <script>
-// Block locked template selection
 document.addEventListener('click', function(e) {
   const card = e.target.closest('.template-card');
   if (!card) return;
-  if (card.dataset.locked === '1') {
-    window.location.href = '/portal/billing.php?upgrade=1';
-    return;
-  }
+  if (card.dataset.locked === '1') { window.location.href = '/portal/billing.php?upgrade=1'; return; }
   document.querySelectorAll('.template-card').forEach(c => c.classList.remove('border-emerald-400'));
   card.classList.add('border-emerald-400');
   document.getElementById('selectedTemplateInput').value = card.dataset.template;
@@ -335,7 +327,6 @@ document.addEventListener('click', function(e) {
   lbl.textContent = card.dataset.label;
   lbl.classList.remove('hidden');
 });
-// Select first free template by default
 window.addEventListener('DOMContentLoaded', function() {
   const first = document.querySelector('.template-card:not([data-locked])');
   if (first) first.click();
@@ -343,5 +334,5 @@ window.addEventListener('DOMContentLoaded', function() {
 </script>
 
 <?php require_once __DIR__ . '/../includes/footer.php'; ?>
-<script src="/assets/js/image_uploader.js?v=v165"></script>
-<script src="/assets/js/generator.js?v=v165"></script>
+<script src="/assets/js/image_uploader.js?v=v166"></script>
+<script src="/assets/js/generator.js?v=v166"></script>
