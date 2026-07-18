@@ -7,6 +7,8 @@ $loggedIn  = function_exists('is_logged_in') && is_logged_in();
 $_user     = function_exists('current_user')  ? current_user()  : [];
 $_plan     = $_user['plan'] ?? 'free';
 $_is_pro   = $_plan === 'pro';
+$_is_ent   = $_plan === 'entrepreneur';
+$_is_paid  = $_is_pro || $_is_ent;
 $_name     = htmlspecialchars(trim($_user['full_name'] ?? 'User'));
 $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
@@ -14,6 +16,8 @@ $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 $_logo_path = __DIR__ . '/../assets/images/logo.png';
 $_logo_url  = '/assets/images/logo.png';
 $_has_logo  = file_exists($_logo_path);
+
+$_plan_label = $_is_ent ? 'Entrepreneur' : ($_is_pro ? 'Pro' : 'Free');
 
 function _nav_active(string $href, string $current): string {
     return (rtrim($current, '/') === rtrim($href, '/')) ? 'active' : '';
@@ -50,9 +54,9 @@ function _nav_active(string $href, string $current): string {
 
 <aside id="sidebar" class="w-64 h-screen bg-slate-900/95 border-r border-white/5 flex flex-col lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl">
 
-  <!-- Logo + wordmark -->
+  <!-- Logo — clicking goes to public home page -->
   <div class="px-5 py-5 border-b border-white/5">
-    <a href="/portal/index.php" class="flex items-center gap-2.5">
+    <a href="/" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
         <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
       <?php else: ?>
@@ -60,7 +64,7 @@ function _nav_active(string $href, string $current): string {
           <i class="fa-solid fa-bolt text-black text-sm"></i>
         </div>
       <?php endif; ?>
-      <span class="text-lg font-black tracking-tight">Utiligo</span>
+      <span class="text-lg font-black tracking-tight group-hover:text-slate-300 transition">Utiligo</span>
     </a>
   </div>
 
@@ -76,16 +80,33 @@ function _nav_active(string $href, string $current): string {
     <?php if (($_user['admin_flag'] ?? 0) && (defined('DEBUG_MODE') && DEBUG_MODE)): ?>
     <a href="/portal/debug.php" class="nav-link <?= _nav_active('/portal/debug.php', $_path) ?>"><i class="fa-solid fa-bug"></i> Debug Panel</a>
     <?php endif; ?>
+
+    <!-- Back to Site -->
+    <div class="pt-3 mt-3 border-t border-white/5">
+      <a href="/" class="nav-link text-slate-500 hover:text-white">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        Back to Site
+      </a>
+    </div>
   </nav>
 
   <!-- Plan badge -->
-  <?php if (!$_is_pro): ?>
+  <?php if (!$_is_paid): ?>
   <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
     <p class="text-xs font-bold text-white mb-0.5">Free Plan</p>
-    <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; sites</p>
+    <p class="text-xs text-slate-400 mb-3">Unlock more leads &amp; sites</p>
     <a href="/portal/billing.php?upgrade=1"
        class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
-      <i class="fa-solid fa-crown mr-1"></i> Upgrade to Pro
+      <i class="fa-solid fa-crown mr-1"></i> Upgrade Plan
+    </a>
+  </div>
+  <?php elseif ($_is_pro): ?>
+  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
+    <p class="text-xs font-bold text-white mb-0.5">Pro Plan</p>
+    <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; 500 sites</p>
+    <a href="/portal/billing.php?upgrade=1&plan=entrepreneur"
+       class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
+      <i class="fa-solid fa-rocket mr-1"></i> Go Entrepreneur
     </a>
   </div>
   <?php endif; ?>
@@ -97,7 +118,7 @@ function _nav_active(string $href, string $current): string {
     </div>
     <div class="flex-1 min-w-0">
       <p class="text-xs font-semibold text-white truncate"><?= $_name ?></p>
-      <p class="text-xs text-slate-500"><?= $_is_pro ? 'Pro' : 'Free' ?> Plan</p>
+      <p class="text-xs text-slate-500"><?= $_plan_label ?> Plan</p>
     </div>
     <a href="/includes/auth.php?action=logout" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
@@ -111,7 +132,8 @@ function _nav_active(string $href, string $current): string {
   <button onclick="openSidebar()" class="text-slate-400 hover:text-white">
     <i class="fa-solid fa-bars text-lg"></i>
   </button>
-  <a href="/portal/index.php" class="flex items-center gap-2">
+  <!-- Mobile logo — also goes to home -->
+  <a href="/" class="flex items-center gap-2">
     <?php if ($_has_logo): ?>
       <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-7 w-auto">
     <?php else: ?>
