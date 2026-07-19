@@ -34,36 +34,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'An account with that email already exists. <a href="/login.php" class="underline">Sign in instead?</a>';
             } else {
                 $hash = password_hash($password, PASSWORD_BCRYPT);
-                // Insert with email_verified = 0
                 try {
                     $userdb->prepare('INSERT INTO utiligo_users (full_name, email, password_hash, plan, subscription_status, email_verified, created_at) VALUES (?,?,?,?,?,0,NOW())')
                         ->execute([$full_name, $email, $hash, 'free', 'none']);
                 } catch (\PDOException $e) {
-                    // Fallback for older schema without subscription_status column
                     $userdb->prepare('INSERT INTO utiligo_users (full_name, email, password_hash, plan, email_verified, created_at) VALUES (?,?,?,?,0,NOW())')
                         ->execute([$full_name, $email, $hash, 'free']);
                 }
 
-                // Get the new user's ID
                 $stmt2   = $userdb->prepare('SELECT id FROM utiligo_users WHERE email = ? LIMIT 1');
                 $stmt2->execute([$email]);
                 $newUser = $stmt2->fetch(PDO::FETCH_ASSOC);
 
                 if ($newUser) {
-                    // Generate and send verification email
-                    $token       = create_email_verification_token($newUser['id']);
-                    $verifyLink  = rtrim(APP_BASE_URL, '/') . '/verify.php?token=' . $token;
+                    $token      = create_email_verification_token($newUser['id']);
+                    $verifyLink = rtrim(APP_BASE_URL, '/') . '/verify.php?token=' . $token;
                     try { send_verification_email($email, $full_name, $verifyLink); } catch (\Throwable $e) {}
-
-                    // Add to Brevo contacts list (fire-and-forget)
                     try { brevo_upsert_contact($email, ['FIRSTNAME' => $full_name], [BREVO_LIST_ALL_USERS]); } catch (\Throwable $e) {}
                 }
 
-                // Store chosen plan in session so billing redirect works after verify
                 $_SESSION['pending_plan']  = $plan;
                 $_SESSION['pending_email'] = $email;
-
-                // Show "check your inbox" screen — do NOT log in yet
                 $success = true;
             }
         }
@@ -77,82 +68,127 @@ require_once __DIR__ . '/includes/header.php';
 <section class="min-h-screen flex items-center justify-center px-4 py-16">
   <div class="w-full max-w-md">
 
-    <?php if ($success): ?>
-    <!-- ====== Check your inbox screen ====== -->
-    <div class="text-center">
-      <div class="w-20 h-20 rounded-full bg-white/8 border border-white/15 flex items-center justify-center mx-auto mb-6">
-        <i class="fa-solid fa-envelope-circle-check text-white text-3xl"></i>
+  <?php if ($success): ?>
+  <!-- ====== CHECK YOUR INBOX ====== -->
+  <div class="text-center mb-8">
+    <a href="/" class="inline-flex items-center gap-2">
+      <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
+        <i class="fa-solid fa-bolt text-black text-base"></i>
       </div>
-      <h1 class="text-2xl font-bold mb-2">Check your inbox!</h1>
-      <p class="text-slate-400 text-sm mb-6 max-w-xs mx-auto">
-        We sent a verification link to <strong class="text-white"><?= htmlspecialchars($email) ?></strong>.
-        Click it to activate your account.
+      <span class="text-2xl font-black">Utiligo</span>
+    </a>
+  </div>
+
+  <div class="glass rounded-2xl border border-white/10 overflow-hidden">
+    <!-- Gradient banner -->
+    <div class="relative h-36 flex items-center justify-center" style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);">
+      <!-- subtle glow -->
+      <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+        <div class="w-40 h-40 rounded-full bg-white/5 blur-2xl"></div>
+      </div>
+      <div class="relative z-10 w-20 h-20 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center shadow-xl">
+        <i class="fa-solid fa-envelope-open-text text-white text-3xl"></i>
+      </div>
+    </div>
+
+    <div class="p-8">
+      <h1 class="text-2xl font-bold text-center mb-1">Check your inbox</h1>
+      <p class="text-slate-400 text-sm text-center mb-6">
+        We emailed a verification link to<br>
+        <span class="text-white font-semibold"><?= htmlspecialchars($email) ?></span>
       </p>
-      <p class="text-xs text-slate-500">Didn’t get it? Check spam, or
-        <form method="POST" action="/resend-verification.php" class="inline">
+
+      <!-- Steps -->
+      <ol class="space-y-3 mb-8">
+        <li class="flex items-start gap-3">
+          <span class="w-6 h-6 rounded-full bg-white text-black text-xs font-black flex items-center justify-center shrink-0 mt-0.5">1</span>
+          <span class="text-sm text-slate-300">Open the email from <strong class="text-white">noreply@utiligo.ca</strong></span>
+        </li>
+        <li class="flex items-start gap-3">
+          <span class="w-6 h-6 rounded-full bg-white/10 border border-white/20 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">2</span>
+          <span class="text-sm text-slate-300">Click <strong class="text-white">Verify Email</strong> inside the email</span>
+        </li>
+        <li class="flex items-start gap-3">
+          <span class="w-6 h-6 rounded-full bg-white/10 border border-white/20 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">3</span>
+          <span class="text-sm text-slate-300">You’ll be taken straight to your dashboard — ready to go!</span>
+        </li>
+      </ol>
+
+      <!-- Divider -->
+      <div class="border-t border-white/8 pt-5">
+        <p class="text-xs text-slate-500 text-center mb-3">Didn’t get it? Check your spam folder, or</p>
+        <form method="POST" action="/resend-verification.php">
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
           <input type="hidden" name="email" value="<?= htmlspecialchars($email) ?>">
-          <button type="submit" class="text-white underline text-xs">resend it</button>
-        </form>.
-      </p>
-    </div>
-
-    <?php else: ?>
-    <!-- ====== Registration form ====== -->
-    <div class="text-center mb-8">
-      <a href="/" class="inline-flex items-center gap-2 mb-6">
-        <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
-          <i class="fa-solid fa-bolt text-black text-base"></i>
-        </div>
-        <span class="text-2xl font-black">Utiligo</span>
-      </a>
-      <h1 class="text-2xl font-bold">Create your account</h1>
-      <p class="text-slate-400 text-sm mt-1">No credit card required to start.</p>
-    </div>
-
-    <?php if ($_plan_param !== 'free'): ?>
-    <div class="flex items-center gap-2 bg-white/8 border border-white/15 rounded-xl px-4 py-3 mb-5 text-sm">
-      <i class="fa-solid fa-<?= $_plan_param === 'entrepreneur' ? 'rocket' : 'crown' ?> text-white"></i>
-      <span class="text-white font-semibold">Starting on <strong><?= $_plan_labels[$_plan_param] ?></strong> &mdash; you’ll complete payment after signup.</span>
-    </div>
-    <?php endif; ?>
-
-    <?php if ($error): ?>
-    <div class="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-3 mb-5 text-sm"><?= $error ?></div>
-    <?php endif; ?>
-
-    <form method="POST" class="glass rounded-2xl p-8 border border-white/10 space-y-4">
-      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-      <input type="hidden" name="plan" value="<?= htmlspecialchars($_plan_param) ?>">
-
-      <div>
-        <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Full Name</label>
-        <input type="text" name="full_name" required autofocus
-               value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>"
-               class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+          <button type="submit"
+                  class="w-full bg-white/8 hover:bg-white/12 border border-white/10 text-white text-sm font-semibold py-2.5 rounded-xl transition-all">
+            <i class="fa-solid fa-rotate-right mr-2 text-xs"></i>Resend verification email
+          </button>
+        </form>
       </div>
-      <div>
-        <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Email</label>
-        <input type="email" name="email" required
-               value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
-               class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
-      </div>
-      <div>
-        <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Password</label>
-        <input type="password" name="password" required minlength="8"
-               class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
-        <p class="text-xs text-slate-500 mt-1">Minimum 8 characters</p>
-      </div>
-      <button type="submit"
-              class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all">
-        <?= $_plan_param !== 'free' ? 'Create Account &amp; Continue to Billing' : 'Create Free Account' ?>
-      </button>
-    </form>
+    </div>
+  </div>
 
-    <p class="text-center text-sm text-slate-500 mt-6">
-      Already have an account? <a href="/login.php" class="text-white hover:underline">Sign in</a>
-    </p>
-    <?php endif; ?>
+  <p class="text-center text-xs text-slate-600 mt-5">
+    Wrong email? <a href="/register.php" class="text-slate-400 hover:text-white transition">Start over</a>
+  </p>
+
+  <?php else: ?>
+  <!-- ====== REGISTRATION FORM ====== -->
+  <div class="text-center mb-8">
+    <a href="/" class="inline-flex items-center gap-2 mb-6">
+      <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
+        <i class="fa-solid fa-bolt text-black text-base"></i>
+      </div>
+      <span class="text-2xl font-black">Utiligo</span>
+    </a>
+    <h1 class="text-2xl font-bold">Create your account</h1>
+    <p class="text-slate-400 text-sm mt-1">No credit card required to start.</p>
+  </div>
+
+  <?php if ($_plan_param !== 'free'): ?>
+  <div class="flex items-center gap-2 bg-white/8 border border-white/15 rounded-xl px-4 py-3 mb-5 text-sm">
+    <i class="fa-solid fa-<?= $_plan_param === 'entrepreneur' ? 'rocket' : 'crown' ?> text-white"></i>
+    <span class="text-white font-semibold">Starting on <strong><?= $_plan_labels[$_plan_param] ?></strong> &mdash; you’ll complete payment after signup.</span>
+  </div>
+  <?php endif; ?>
+
+  <?php if ($error): ?>
+  <div class="bg-red-500/10 border border-red-500/20 text-red-400 rounded-xl px-4 py-3 mb-5 text-sm"><?= $error ?></div>
+  <?php endif; ?>
+
+  <form method="POST" class="glass rounded-2xl p-8 border border-white/10 space-y-4">
+    <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+    <input type="hidden" name="plan" value="<?= htmlspecialchars($_plan_param) ?>">
+
+    <div>
+      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Full Name</label>
+      <input type="text" name="full_name" required autofocus
+             value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>"
+             class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+    </div>
+    <div>
+      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Email</label>
+      <input type="email" name="email" required
+             value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+             class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+    </div>
+    <div>
+      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Password</label>
+      <input type="password" name="password" required minlength="8"
+             class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+      <p class="text-xs text-slate-500 mt-1">Minimum 8 characters</p>
+    </div>
+    <button type="submit"
+            class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all">
+      <?= $_plan_param !== 'free' ? 'Create Account &amp; Continue to Billing' : 'Create Free Account' ?>
+    </button>
+  </form>
+
+  <p class="text-center text-sm text-slate-500 mt-6">
+    Already have an account? <a href="/login.php" class="text-white hover:underline">Sign in</a>
+  </p>
+  <?php endif; ?>
 
   </div>
 </section>
