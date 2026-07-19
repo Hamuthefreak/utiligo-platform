@@ -18,7 +18,8 @@ if (!defined('FREE_GENERATE_DAILY_LIMIT')) define('FREE_GENERATE_DAILY_LIMIT', 1
 if (!defined('FREE_TEMPLATE_LIMIT'))       define('FREE_TEMPLATE_LIMIT', 2);
 
 $user   = current_user();
-$is_pro = ($user['plan'] ?? 'free') === 'pro';
+$plan   = $user['plan'] ?? 'free';
+$is_pro = in_array($plan, ['pro','entrepreneur'], true);
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];
 if (!csrf_verify($input['csrf_token'] ?? null)) {
@@ -52,7 +53,14 @@ if (!$is_pro) {
     if (!in_array($requestedTemplate, $freeKeys, true)) $requestedTemplate = $freeKeys[0];
 }
 $template = array_key_exists($requestedTemplate, $allTemplates) ? $requestedTemplate : 'modern';
-$leadId   = !empty($input['lead_id']) ? (int)$input['lead_id'] : null;
+
+// Only set lead_id when a real, positive integer was passed.
+// Passing NULL into a FK-constrained column causes an integrity violation
+// on some MySQL configurations even though the FK is ON DELETE SET NULL.
+$rawLeadId = $input['lead_id'] ?? null;
+$leadId    = ($rawLeadId !== null && $rawLeadId !== '' && (int)$rawLeadId > 0)
+             ? (int)$rawLeadId
+             : null;
 
 function validate_upload_path(?string $path): ?string {
     if (!$path) return null;
@@ -62,7 +70,6 @@ function validate_upload_path(?string $path): ?string {
 /**
  * Build a dynamic UPDATE query from a col=>value map,
  * skipping any column that doesn't exist in the table.
- * Always appends WHERE id=? at the end.
  */
 function dynamic_update(PDO $pdo, string $table, array $colVals, int $id): void
 {
@@ -99,11 +106,11 @@ if (!$businessName || !$category || !$city) {
     json_response(['success' => false, 'error' => 'Business name, category, and city are required.'], 400);
 }
 
-// Columns set later in UPDATE — never touch in INSERT
+// Columns set later via UPDATE — exclude from INSERT
 $DEFERRED_COLS = ['public_slug','link_expires_at','link_active','zip_file_path','share_token'];
 
+// Base columns that are always inserted
 $INSERT_ONLY_COLS = [
-    'lead_id'           => $leadId,
     'business_name'     => $businessName,
     'business_category' => $category,
     'business_city'     => $city,
@@ -111,6 +118,12 @@ $INSERT_ONLY_COLS = [
     'business_email'    => $email,
     'template_name'     => $template,
 ];
+
+// Only include lead_id when it is a valid positive integer
+// — avoids FK constraint violation when generating without a lead
+if ($leadId !== null) {
+    $INSERT_ONLY_COLS['lead_id'] = $leadId;
+}
 
 $insertCols = ['user_id'];
 $insertVals = [$user['id']];
@@ -160,7 +173,6 @@ $publicSlug    = $slug;
 $linkExpiresAt = date('Y-m-d H:i:s', strtotime('+7 days'));
 $publicUrl     = '/s/' . $publicSlug;
 
-// One dynamic UPDATE covers all optional columns gracefully
 dynamic_update($pdo, 'utiligo_generated_sites', [
     'status'          => 'completed',
     'zip_file_path'   => $relativeZipPath,
@@ -169,7 +181,6 @@ dynamic_update($pdo, 'utiligo_generated_sites', [
     'link_active'     => 1,
 ], $siteId);
 
-// If public_slug column doesn't exist, we can't build a share URL
 $hasShareCols = db_table_has_column($pdo, 'utiligo_generated_sites', 'public_slug');
 if (!$hasShareCols) {
     $publicSlug = $publicUrl = $linkExpiresAt = null;
