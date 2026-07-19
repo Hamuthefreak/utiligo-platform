@@ -11,7 +11,7 @@ if (is_logged_in()) { header('Location: /portal/index.php'); exit; }
 $_plan_param  = isset($_GET['plan']) && in_array($_GET['plan'], ['pro','entrepreneur']) ? $_GET['plan'] : 'free';
 $_plan_labels = ['free' => 'Free', 'pro' => 'Pro — $21.99/mo', 'entrepreneur' => 'Entrepreneur — $49.99/mo'];
 
-$error = '';
+$error   = '';
 $success = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -23,9 +23,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password  = $_POST['password'] ?? '';
         $plan      = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
 
-        if (!$full_name)                        { $error = 'Please enter your full name.'; }
-        elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) { $error = 'Please enter a valid email.'; }
-        elseif (strlen($password) < 8)          { $error = 'Password must be at least 8 characters.'; }
+        if (!$full_name)                                      { $error = 'Please enter your full name.'; }
+        elseif (!filter_var($email, FILTER_VALIDATE_EMAIL))   { $error = 'Please enter a valid email.'; }
+        elseif (strlen($password) < 8)                        { $error = 'Password must be at least 8 characters.'; }
         else {
             $userdb = get_user_db();
             $stmt   = $userdb->prepare('SELECT id FROM utiligo_users WHERE email = ?');
@@ -44,15 +44,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 try { brevo_upsert_contact($email, ['FIRSTNAME' => $full_name], [BREVO_LIST_ALL_USERS]); } catch (\Throwable $e) {}
                 try { send_welcome_email($email, $full_name); } catch (\Throwable $e) {}
 
-                // Log user in and redirect appropriately
-                $userdb2 = get_user_db();
-                $stmt2   = $userdb2->prepare('SELECT * FROM utiligo_users WHERE email = ? LIMIT 1');
+                // Log the new user in
+                $stmt2   = $userdb->prepare('SELECT * FROM utiligo_users WHERE email = ? LIMIT 1');
                 $stmt2->execute([$email]);
                 $newUser = $stmt2->fetch(PDO::FETCH_ASSOC);
                 if ($newUser) {
-                    session_start_safe();
+                    // session is already started by config.php; regenerate ID to prevent fixation
+                    session_regenerate_id(true);
                     $_SESSION['user_id'] = $newUser['id'];
                 }
+
                 // Redirect to billing if they chose a paid plan
                 if ($plan === 'pro') {
                     header('Location: /portal/billing.php?upgrade=1&plan=pro'); exit;
