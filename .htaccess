@@ -1,14 +1,64 @@
 RewriteEngine On
 
-# Public shareable site links: /s/{slug} route through s.php, which looks
-# up the slug and serves the matching generated static page. Without this
-# rule, /s/{slug} 404s because there is no physical file at that path.
+# ---------------------------------------------------------------
+# ROUTING
+# ---------------------------------------------------------------
+
+# Public shareable site links: /s/{slug}
 RewriteRule ^s/([a-zA-Z0-9\-]+)/?$ s.php?slug=$1 [L,QSA]
 
-# Never allow direct access to the raw error dump or other storage files.
-RewriteRule ^storage/ - [F,L]
+# ---------------------------------------------------------------
+# BLOCK SENSITIVE PATHS
+# ---------------------------------------------------------------
 
+# Block direct access to storage, db schemas, migrations
+RewriteRule ^storage/         - [F,L]
+RewriteRule ^db/              - [F,L]
+RewriteRule ^sql/             - [F,L]
+RewriteRule ^migrations/      - [F,L]
+
+# Block direct access to config and PHP includes
+<FilesMatch "^(config|db|userdb)\.php$">
+    Require all denied
+</FilesMatch>
+<FilesMatch "\.(sql|sh|env|log|bak|zip)$">
+    Require all denied
+</FilesMatch>
+
+# Block access to the includes/ directory entirely
+RewriteRule ^includes/        - [F,L]
+
+# ---------------------------------------------------------------
+# SECURITY HEADERS
+# ---------------------------------------------------------------
 <IfModule mod_headers.c>
-    Header set X-Content-Type-Options "nosniff"
-    Header set X-Frame-Options "SAMEORIGIN"
+    # Prevent MIME sniffing
+    Header always set X-Content-Type-Options "nosniff"
+
+    # Prevent clickjacking
+    Header always set X-Frame-Options "SAMEORIGIN"
+
+    # Stop referrer leakage
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+
+    # Prevent browsers caching sensitive pages
+    Header always set Cache-Control "no-store, no-cache, must-revalidate" env=IS_PORTAL
+
+    # Basic XSS protection (legacy browsers)
+    Header always set X-XSS-Protection "1; mode=block"
+
+    # Content Security Policy
+    # - default: same origin only
+    # - scripts: self + cdn.tailwindcss.com + cdnjs (Font Awesome)
+    # - styles:  self + cdnjs + fonts.googleapis.com + unsafe-inline (Tailwind requires it)
+    # - fonts:   self + fonts.gstatic.com + cdnjs
+    # - frames:  self (editor iframe)
+    # - connect: self + api.brevo.com + api.stripe.com
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: https:; frame-src 'self'; connect-src 'self' https://api.brevo.com https://api.stripe.com; object-src 'none'; base-uri 'self';"
+
+    # Remove PHP version disclosure
+    Header always unset X-Powered-By
 </IfModule>
+
+# Hide server signature
+ServerSignature Off

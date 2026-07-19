@@ -8,9 +8,15 @@
  */
 
 error_reporting(E_ALL);
-define('APP_ENV', 'development');
+
+// ⚠️  Change to 'production' on your live server.
+// In production: errors are logged to file, never shown to users.
+define('APP_ENV', 'production');
+
 if (APP_ENV === 'production') {
     ini_set('display_errors', '0');
+    ini_set('log_errors', '1');
+    ini_set('error_log', __DIR__ . '/storage/php_errors.log');
 } else {
     ini_set('display_errors', '1');
 }
@@ -84,11 +90,29 @@ define('EMAIL_VERIFICATION_REQUIRED', true);
 define('TWO_FA_CODE_EXPIRY_MINUTES', 10);
 define('PASSWORD_RESET_EXPIRY_MINUTES', 60);
 define('APP_BASE_URL', 'https://utiligo.ca');
-define('CRON_SECRET', 'CHANGE_ME_TO_RANDOM_STRING');
+
+// ⚠️  CHANGE THESE to long random strings before going live!
+define('CRON_SECRET',        bin2hex(random_bytes(16)));  // override in local config
+define('SITE_EDITOR_SECRET', bin2hex(random_bytes(16)));  // override in local config
+
+// ---- Login brute-force lockout ----
+define('LOGIN_MAX_ATTEMPTS',    5);   // failed attempts before lockout
+define('LOGIN_LOCKOUT_MINUTES', 15);  // how long the lockout lasts
+
+// ---- Resend verification rate limit ----
+define('RESEND_VERIFY_MAX',     3);   // max resend requests per window
+define('RESEND_VERIFY_WINDOW',  60);  // window in minutes
 
 // ---- File uploads ----
 define('MAX_LOGO_UPLOAD_BYTES', 2 * 1024 * 1024);
 define('ALLOWED_LOGO_TYPES', ['image/png', 'image/jpeg', 'image/svg+xml']);
+// Magic bytes for upload validation (first bytes of file => mime type)
+define('ALLOWED_IMAGE_MAGIC', [
+    "\xFF\xD8\xFF" => 'image/jpeg',
+    "\x89PNG"      => 'image/png',
+    'GIF8'         => 'image/gif',
+    'RIFF'         => 'image/webp',  // webp starts with RIFF????WEBP
+]);
 
 // ---- Rate limiting ----
 define('RATE_LIMIT_FIND_LEADS',     10);
@@ -96,7 +120,7 @@ define('RATE_LIMIT_GENERATE_SITE',   5);
 define('RATE_LIMIT_UPLOAD_IMAGE',   30);
 define('RATE_LIMIT_SAVE_SITE_PAGE', 60);
 define('RATE_LIMIT_MANAGE_SITE',    30);
-define('SITE_EDITOR_SECRET', 'change-me-to-a-random-string-in-production');
+define('SITE_EDITOR_SECRET',        'ALREADY_DEFINED_ABOVE'); // handled above
 
 // ---- Feature flags ----
 define('ENABLE_BOOKING',        false);
@@ -104,7 +128,7 @@ define('ENABLE_ECOMMERCE',      false);
 define('ENABLE_BLOG',           false);
 define('ENABLE_CUSTOM_DOMAINS', false);
 
-// ---- Defensive fallbacks (keep last — only fire if a constant was missed above) ----
+// ---- Defensive fallbacks ----
 $_cfg_defaults = [
     'MAX_PLACES_DETAILS_LOOKUPS'  => 20,
     'LEAD_SEARCH_CACHE_HOURS'     => 24,
@@ -124,12 +148,25 @@ $_cfg_defaults = [
     'RATE_LIMIT_UPLOAD_IMAGE'     => 30,
     'RATE_LIMIT_SAVE_SITE_PAGE'   => 60,
     'RATE_LIMIT_MANAGE_SITE'      => 30,
-    'SITE_EDITOR_SECRET'          => 'change-me-to-a-random-string-in-production',
     'ENTREPRENEUR_PLAN_PRICE'     => 49.99,
+    'LOGIN_MAX_ATTEMPTS'          => 5,
+    'LOGIN_LOCKOUT_MINUTES'       => 15,
+    'RESEND_VERIFY_MAX'           => 3,
+    'RESEND_VERIFY_WINDOW'        => 60,
 ];
 foreach ($_cfg_defaults as $_name => $_value) {
     if (!defined($_name)) define($_name, $_value);
 }
 unset($_cfg_defaults, $_name, $_value);
 
-if (session_status() === PHP_SESSION_NONE) session_start();
+if (session_status() === PHP_SESSION_NONE) {
+    session_set_cookie_params([
+        'lifetime' => 0,
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => true,   // HTTPS only
+        'httponly' => true,   // no JS access to session cookie
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}

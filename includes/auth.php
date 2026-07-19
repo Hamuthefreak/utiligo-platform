@@ -17,7 +17,6 @@ function require_login(): void
         exit;
     }
     if (current_user() === null) {
-        // Session points to a user that no longer exists (e.g. DB was reset).
         logout_user();
         header('Location: /login.php?expired=1');
         exit;
@@ -41,11 +40,18 @@ function login_user(int $userId): void
 {
     session_regenerate_id(true);
     $_SESSION['user_id'] = $userId;
+    // Clear any lockout state on successful login
+    unset($_SESSION['login_attempts'], $_SESSION['login_locked_until']);
 }
 
 function logout_user(): void
 {
     $_SESSION = [];
+    if (ini_get('session.use_cookies')) {
+        $p = session_get_cookie_params();
+        setcookie(session_name(), '', time() - 42000,
+            $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+    }
     session_destroy();
 }
 
@@ -74,22 +80,45 @@ function register_user(string $email, string $password, string $fullName): array
     return ['success' => true, 'user_id' => $userId];
 }
 
+// ============================================================
+// LOGIN WITH BRUTE-FORCE LOCKOUT
+// ============================================================
+
 function attempt_login(string $email, string $password): array
 {
-    $pdo = get_user_db();
+    $pdo   = get_user_db();
     $email = strtolower(trim($email));
+
+    // --- Check session-based lockout ---
+    $lockKey = 'login_locked_until_' . md5($email);
+    $attKey  = 'login_attempts_' . md5($email);
+    if (!empty($_SESSION[$lockKey]) && time() < $_SESSION[$lockKey]) {
+        $wait = ceil(($_SESSION[$lockKey] - time()) / 60);
+        return ['success' => false, 'error' => "Too many failed attempts. Try again in {$wait} minute(s).", 'locked' => true];
+    }
 
     $stmt = $pdo->prepare('SELECT * FROM utiligo_users WHERE email = ? LIMIT 1');
     $stmt->execute([$email]);
     $user = $stmt->fetch();
 
     if (!$user || !password_verify($password, $user['password_hash'])) {
-        return ['success' => false, 'error' => 'Invalid email or password.'];
+        // Increment attempt counter
+        $_SESSION[$attKey] = ($_SESSION[$attKey] ?? 0) + 1;
+        if ($_SESSION[$attKey] >= LOGIN_MAX_ATTEMPTS) {
+            $_SESSION[$lockKey] = time() + (LOGIN_LOCKOUT_MINUTES * 60);
+            unset($_SESSION[$attKey]);
+            return ['success' => false, 'error' => 'Too many failed attempts. Account locked for ' . LOGIN_LOCKOUT_MINUTES . ' minutes.', 'locked' => true];
+        }
+        $remaining = LOGIN_MAX_ATTEMPTS - $_SESSION[$attKey];
+        return ['success' => false, 'error' => "Invalid email or password. {$remaining} attempt(s) remaining."];
     }
+
     if ($user['subscription_status'] === 'banned') {
         return ['success' => false, 'error' => 'This account has been suspended.'];
     }
 
+    // Success — clear counters
+    unset($_SESSION[$attKey], $_SESSION[$lockKey]);
     return ['success' => true, 'user_id' => $user['id']];
 }
 
