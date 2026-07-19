@@ -18,7 +18,7 @@ if (!$slug) {
     exit;
 }
 
-$pdo = get_platform_db();
+$pdo  = get_platform_db();
 $stmt = $pdo->prepare('SELECT * FROM utiligo_generated_sites WHERE public_slug = ? LIMIT 1');
 $stmt->execute([$slug]);
 $site = $stmt->fetch();
@@ -50,8 +50,8 @@ if ($notFound || $expired) {
     exit;
 }
 
-// Use the stored public_slug as the folder name — it IS the slug we used
-// when generating the site (name-id-uniqid), so it's always correct.
+// Track the view (fire-and-forget via JS beacon below)
+$siteId  = (int)$site['id'];
 $slugDir = $site['public_slug'];
 
 $page = $_GET['page'] ?? 'index';
@@ -75,5 +75,9 @@ $html = preg_replace_callback('/href="([a-z\-]+)\.html"/', function ($m) use ($s
     $target = $m[1] === 'index' ? '' : ('?page=' . $m[1]);
     return 'href="/s/' . $slug . $target . '"';
 }, $html);
+
+// Inject view-tracking beacon just before </body>
+$beacon = '<script>navigator.sendBeacon && navigator.sendBeacon("/api/track_view.php",new URLSearchParams({site_id:' . $siteId . '}));</script>';
+$html   = str_replace('</body>', $beacon . '</body>', $html);
 
 echo $html;

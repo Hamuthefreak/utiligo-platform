@@ -20,8 +20,9 @@ $allTpls     = get_all_site_templates();
 $totalSites  = count($sites);
 $activeSites = count(array_filter($sites, fn($s) => !empty($s['link_active'])));
 $thisMonth   = count(array_filter($sites, fn($s) => date('Y-m', strtotime($s['created_at'])) === date('Y-m')));
+$totalViews  = array_sum(array_column($sites, 'view_count'));
 
-$site_limit = plan_site_limit($plan); // 1 free, 200 pro, 500 ent, -1 unlimited
+$site_limit = plan_site_limit($plan);
 $sl_pct     = ($site_limit > 0) ? min(100, round(($activeSites / $site_limit) * 100)) : 0;
 $sl_colour  = $sl_pct >= 90 ? 'bg-red-500' : ($sl_pct >= 70 ? 'bg-amber-500' : 'bg-white/60');
 $sl_hit     = $site_limit > 0 && $activeSites >= $site_limit;
@@ -29,6 +30,20 @@ $sl_hit     = $site_limit > 0 && $activeSites >= $site_limit;
 $pageTitle = 'My Sites — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
+
+<style>
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton {
+  border-radius: 12px;
+  background: linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+</style>
 
 <!-- Page header -->
 <div class="flex items-center justify-between mb-8 flex-wrap gap-4">
@@ -42,8 +57,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </a>
 </div>
 
-<!-- Stats strip -->
-<div class="grid grid-cols-3 gap-3 mb-5">
+<!-- Stats strip — 4 cards now including total views -->
+<div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
   <div class="glass rounded-2xl p-5 border border-white/5">
     <p class="text-xs text-slate-500 uppercase tracking-widest mb-1">Total</p>
     <p class="text-3xl font-black"><?= $totalSites ?></p>
@@ -55,6 +70,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <div class="glass rounded-2xl p-5 border border-white/5">
     <p class="text-xs text-slate-500 uppercase tracking-widest mb-1">This Month</p>
     <p class="text-3xl font-black"><?= $thisMonth ?></p>
+  </div>
+  <div class="glass rounded-2xl p-5 border border-white/5">
+    <p class="text-xs text-slate-500 uppercase tracking-widest mb-1">Total Views</p>
+    <p class="text-3xl font-black text-white"><?= number_format($totalViews) ?></p>
   </div>
 </div>
 
@@ -121,6 +140,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   $expiresIso = $expiresTs ? date('c', $expiresTs) : null;
   $tplKey     = $site['template_name'] ?? 'modern';
   $tpl        = $allTpls[$tplKey] ?? $allTpls['modern'];
+  $views      = (int)($site['view_count'] ?? 0);
 
   $diff = $expiresTs ? ($expiresTs - time()) : null;
   if ($diff === null)         $exLabel = null;
@@ -145,7 +165,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <div class="flex items-center gap-2 flex-wrap">
           <h3 class="font-bold text-base truncate"><?= htmlspecialchars($site['business_name']) ?></h3>
 
-          <!-- Status pill -->
           <?php if ($isLive): ?>
             <span class="status-badge text-[10px] font-bold px-2 py-0.5 rounded-full bg-white/10 text-white ring-1 ring-white/20">● Live</span>
           <?php elseif ($isExpired): ?>
@@ -155,6 +174,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <?php endif; ?>
 
           <span class="text-[10px] text-slate-600 px-2 py-0.5 rounded-full bg-white/5"><?= htmlspecialchars($tpl['label']) ?></span>
+
+          <?php if ($views > 0): ?>
+            <span class="text-[10px] text-slate-400 px-2 py-0.5 rounded-full bg-white/5 inline-flex items-center gap-1">
+              <i class="fa-solid fa-eye text-[9px]"></i><?= number_format($views) ?> view<?= $views !== 1 ? 's' : '' ?>
+            </span>
+          <?php endif; ?>
         </div>
 
         <div class="flex items-center gap-3 mt-1 flex-wrap">
@@ -189,7 +214,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </a>
         <?php endif; ?>
 
-        <!-- Deactivate toggle (frees up a slot) -->
         <?php if ($isLive): ?>
         <button class="deactivate-btn inline-flex items-center gap-1.5 text-xs bg-white/5 hover:bg-amber-500/10 text-slate-400 hover:text-amber-400 px-3 py-1.5 rounded-lg font-semibold transition"
                 data-id="<?= (int)$site['id'] ?>" title="Deactivate (frees up a slot)">
@@ -228,4 +252,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endforeach; endif; ?>
 </div>
 
-<script src="/assets/js/my_sites.js?v=v500"></script>
+<script src="/assets/js/my_sites.js?v=v501"></script>

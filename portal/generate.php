@@ -71,13 +71,26 @@ $pageTitle = 'Generate Website — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
+<style>
+/* Skeleton shimmer */
+@keyframes shimmer {
+  0%   { background-position: -600px 0; }
+  100% { background-position:  600px 0; }
+}
+.skeleton {
+  border-radius: 12px;
+  background: linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 75%);
+  background-size: 600px 100%;
+  animation: shimmer 1.4s infinite linear;
+}
+</style>
+
 <div class="mb-8">
   <h1 class="text-3xl font-bold tracking-tight">Generate a Website</h1>
   <p class="text-slate-400 text-sm mt-1">Fill in the business details, pick a template, and get a full 5-page site in ~60 seconds.</p>
 </div>
 
 <?php if (!$is_paid): ?>
-<!-- Free daily quota banner -->
 <div class="glass rounded-2xl p-5 mb-8 border border-white/5">
   <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
     <div class="flex items-center gap-2">
@@ -122,7 +135,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php elseif ($site_limit_hit): ?>
-<!-- Paid plan — site limit reached -->
 <div class="glass rounded-2xl p-5 mb-8 border border-red-500/20">
   <div class="flex items-center gap-3">
     <div class="w-8 h-8 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
@@ -150,7 +162,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php else: ?>
-<!-- Paid plan — normal usage bar -->
 <?php
   $sl_pct    = ($site_limit > 0) ? min(100, round(($active_site_count/$site_limit)*100)) : 0;
   $sl_colour = $sl_pct >= 90 ? 'bg-red-500' : ($sl_pct >= 70 ? 'bg-amber-500' : 'bg-white/60');
@@ -179,7 +190,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php if ($gen_locked): ?>
-<!-- Locked state -->
 <div class="glass rounded-2xl p-12 text-center border border-red-500/20 mb-8">
   <div class="w-16 h-16 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
     <i class="fa-solid fa-lock text-red-400 text-2xl"></i>
@@ -202,7 +212,30 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <?php else: ?>
 <!-- ==================== MAIN FORM ==================== -->
-<form id="generateForm" class="space-y-6">
+<!-- Skeleton shown while JS resources are loading, replaced by the real form -->
+<div id="generateSkeleton" aria-hidden="true" class="space-y-4 mb-6">
+  <div class="glass rounded-2xl p-6 border border-white/5">
+    <div class="skeleton h-3 w-32 mb-5"></div>
+    <div class="grid md:grid-cols-2 gap-4">
+      <div class="skeleton h-10 rounded-xl"></div>
+      <div class="skeleton h-10 rounded-xl"></div>
+      <div class="skeleton h-10 rounded-xl"></div>
+      <div class="skeleton h-10 rounded-xl"></div>
+      <div class="md:col-span-2 skeleton h-10 rounded-xl"></div>
+    </div>
+  </div>
+  <div class="glass rounded-2xl p-6 border border-white/5">
+    <div class="skeleton h-3 w-40 mb-5"></div>
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <?php for($i=0;$i<8;$i++): ?>
+        <div class="skeleton h-28 rounded-xl"></div>
+      <?php endfor; ?>
+    </div>
+  </div>
+  <div class="skeleton h-14 rounded-xl w-full"></div>
+</div>
+
+<form id="generateForm" class="space-y-6 hidden">
   <input type="hidden" name="lead_id"       value="<?= htmlspecialchars($_GET['lead_id'] ?? '') ?>">
   <input type="hidden" name="template_name" id="selectedTemplateInput" value="modern">
 
@@ -263,7 +296,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         $is_free_tpl = in_array($key, $free_keys, true);
         $locked      = !$is_paid && !$is_free_tpl;
       ?>
-      <!-- NOTE: using <div role="button"> instead of <button> so we can safely nest the preview <button> inside -->
       <div role="button" tabindex="0"
            class="template-card relative text-left rounded-xl overflow-hidden border-2 <?= $locked ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-transparent hover:border-white/40 cursor-pointer' ?> transition glass group"
            data-template="<?= $key ?>"
@@ -285,7 +317,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <span class="text-[10px] font-bold text-white">Pro Only</span>
         </div>
         <?php else: ?>
-        <!-- Eye preview button — safe inside a div, would break inside a <button> -->
         <button type="button"
                 class="preview-tpl-btn absolute top-2 right-2 z-20 w-6 h-6 rounded-full bg-black/40 hover:bg-black/70 text-white/80 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 data-tpl-key="<?= $key ?>"
@@ -294,7 +325,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </button>
         <?php endif; ?>
 
-        <!-- Colour swatch preview -->
         <div class="h-20 flex flex-col justify-center px-4 pointer-events-none"
              style="background:linear-gradient(135deg,<?= $tpl['secondary'] ?> 0%,<?= $tpl['primary'] ?> 100%);">
           <div class="w-10 h-2 rounded-full mb-2" style="background:<?= $tpl['primary'] ?>;opacity:0.6;"></div>
@@ -310,7 +340,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </p>
           <p class="text-[10px] text-slate-400 mt-0.5 leading-snug"><?= htmlspecialchars($tpl['description']) ?></p>
         </div>
-      </div><!-- end .template-card -->
+      </div>
       <?php endforeach; ?>
     </div>
     <?php endforeach; ?>
@@ -369,7 +399,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </form>
 <?php endif; /* gen_locked */ ?>
 
-<!-- ==================== TEMPLATE PREVIEW MODAL ==================== -->
+<!-- Template Preview Modal -->
 <div id="tplPreviewModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(0,0,0,.75);backdrop-filter:blur(6px);">
   <div class="glass rounded-2xl border border-white/10 shadow-2xl w-full max-w-sm overflow-hidden">
     <div id="tplPreviewBanner" class="h-28 flex flex-col justify-end px-5 pb-4 relative">
@@ -405,7 +435,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<!-- ==================== PROGRESS / DOWNLOAD ==================== -->
+<!-- Progress / Download panels -->
 <div id="genProgressWrap" class="hidden glass rounded-2xl p-10 text-center border border-white/5 mt-6">
   <div class="inline-flex items-center justify-center w-14 h-14 rounded-full bg-white/10 mb-4">
     <i class="fa-solid fa-spinner fa-spin text-white text-2xl"></i>
@@ -448,12 +478,70 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
+<!-- Error boundary: shown if generator.js throws or the API returns a fatal error -->
+<div id="genErrorBoundary" class="hidden glass rounded-2xl p-10 text-center border border-red-500/20 mt-6">
+  <div class="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
+    <i class="fa-solid fa-triangle-exclamation text-red-400 text-2xl"></i>
+  </div>
+  <h3 class="text-lg font-bold mb-2 text-white">Generation failed</h3>
+  <p id="genErrorMsg" class="text-slate-400 text-sm mb-6 max-w-sm mx-auto">Something went wrong while building your site.</p>
+  <div class="flex gap-3 justify-center flex-wrap">
+    <button type="button" id="genRetryBtn"
+            class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 text-black px-6 py-2.5 rounded-xl font-bold">
+      <i class="fa-solid fa-rotate-right"></i> Try Again
+    </button>
+    <a href="/portal/generate.php"
+       class="inline-flex items-center gap-2 bg-white/10 hover:bg-white/15 text-white px-6 py-2.5 rounded-xl font-semibold">
+      <i class="fa-solid fa-refresh"></i> Reset Form
+    </a>
+  </div>
+</div>
+
 <script>
-// ---- Template card selection (div[role=button] version) ----
 document.addEventListener('DOMContentLoaded', function () {
-  const cards         = document.querySelectorAll('.template-card');
-  const tplInput      = document.getElementById('selectedTemplateInput');
-  const tplLabel      = document.getElementById('selectedTemplateLabel');
+  // Reveal the real form and hide skeleton once DOM + scripts are ready
+  const skeleton = document.getElementById('generateSkeleton');
+  const form     = document.getElementById('generateForm');
+  if (skeleton) skeleton.remove();
+  if (form)     form.classList.remove('hidden');
+
+  // ---- Error boundary: hook into window.onerror and custom genError event ----
+  const errBoundary = document.getElementById('genErrorBoundary');
+  const errMsg      = document.getElementById('genErrorMsg');
+  const retryBtn    = document.getElementById('genRetryBtn');
+  const progressWrap  = document.getElementById('genProgressWrap');
+  const downloadWrap  = document.getElementById('genDownloadWrap');
+
+  function showError(msg) {
+    if (progressWrap) progressWrap.classList.add('hidden');
+    if (downloadWrap) downloadWrap.classList.add('hidden');
+    if (errMsg)       errMsg.textContent = msg || 'Something went wrong. Please try again.';
+    if (errBoundary)  errBoundary.classList.remove('hidden');
+  }
+
+  // Listen for custom error event dispatched by generator.js
+  window.addEventListener('genError', function (e) {
+    showError(e.detail?.message);
+  });
+
+  // Catch any uncaught JS error while generation is in progress
+  window.addEventListener('error', function (e) {
+    if (!progressWrap || progressWrap.classList.contains('hidden')) return;
+    showError('A script error interrupted the generation. Please try again.');
+  });
+
+  // Retry: hide boundary, re-show and re-submit form
+  if (retryBtn) {
+    retryBtn.addEventListener('click', function () {
+      if (errBoundary) errBoundary.classList.add('hidden');
+      if (form)        form.classList.remove('hidden');
+    });
+  }
+
+  // ---- Template card selection ----
+  const cards    = document.querySelectorAll('.template-card');
+  const tplInput = document.getElementById('selectedTemplateInput');
+  const tplLabel = document.getElementById('selectedTemplateLabel');
 
   function selectCard(card) {
     if (card.dataset.locked === '1') { window.location.href = '/portal/billing.php?upgrade=1'; return; }
@@ -465,7 +553,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   cards.forEach(card => {
     card.addEventListener('click', function (e) {
-      if (e.target.closest('.preview-tpl-btn')) return; // eye btn handled separately
+      if (e.target.closest('.preview-tpl-btn')) return;
       selectCard(card);
     });
     card.addEventListener('keydown', function (e) {
@@ -473,7 +561,6 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
-  // Auto-select first unlocked card
   const first = document.querySelector('.template-card:not([data-locked])');
   if (first) selectCard(first);
 
@@ -515,8 +602,7 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 
   document.getElementById('tplPreviewClose').addEventListener('click', function () {
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
+    modal.classList.add('hidden'); modal.classList.remove('flex');
   });
   modal.addEventListener('click', function (e) {
     if (e.target === modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
@@ -525,11 +611,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!previewKey) return;
     const card = document.querySelector(`.template-card[data-template="${previewKey}"]`);
     if (card) selectCard(card);
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
+    modal.classList.add('hidden'); modal.classList.remove('flex');
   });
 });
 </script>
 
 <script src="/assets/js/image_uploader.js?v=v210"></script>
-<script src="/assets/js/generator.js?v=v300"></script>
+<script src="/assets/js/generator.js?v=v301"></script>
