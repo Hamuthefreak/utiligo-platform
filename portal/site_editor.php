@@ -30,22 +30,41 @@ $_has_logo  = file_exists($_logo_path);
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>Site Editor — <?= htmlspecialchars($site['business_name']) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="/assets/css/style.css">
 <style>
 * { box-sizing: border-box; }
-html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; color: #fff; font-family: 'Inter', system-ui, sans-serif; }
-#editorShell { display: flex; height: 100vh; width: 100vw; overflow: hidden; }
+html, body {
+  height: 100%; margin: 0;
+  background: #080c14; color: #fff;
+  font-family: 'Inter', system-ui, sans-serif;
+  /* allow body scroll on mobile so the iframe fills properly */
+  overflow: hidden;
+}
 
-/* Left sidebar */
+/* ===================== SHELL ===================== */
+#editorShell {
+  display: flex;
+  height: 100dvh; /* dynamic viewport height — avoids mobile browser chrome issues */
+  width: 100vw;
+  overflow: hidden;
+  position: relative;
+}
+
+/* ===================== LEFT SIDEBAR (desktop) ===================== */
 #editorSidebar {
-  width: 220px; flex-shrink: 0;
+  width: 220px;
+  flex-shrink: 0;
   background: #0d1117;
   border-right: 1px solid rgba(255,255,255,.06);
-  display: flex; flex-direction: column; overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: transform .25s ease;
+  z-index: 40;
 }
 #sbTop { padding: 14px 16px 12px; border-bottom: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 8px; }
 #sbBrand { display: flex; align-items: center; gap: 8px; }
@@ -56,7 +75,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
 /* Pages */
 #sbPages { padding: 12px 10px 6px; }
 .section-label { font-size: 9px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: #334155; padding: 0 6px; margin-bottom: 6px; }
-.page-item { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 9px; font-size: 12px; font-weight: 500; color: #64748b; cursor: pointer; transition: background .13s, color .13s; text-decoration: none; margin-bottom: 1px; }
+.page-item { display: flex; align-items: center; gap: 8px; padding: 9px 10px; border-radius: 9px; font-size: 12px; font-weight: 500; color: #64748b; cursor: pointer; transition: background .13s, color .13s; text-decoration: none; margin-bottom: 1px; }
 .page-item:hover  { background: rgba(255,255,255,.05); color: #e2e8f0; }
 .page-item.active { background: rgba(255,255,255,.1); color: #ffffff; font-weight: 700; }
 .page-item i { width: 14px; text-align: center; font-size: 11px; }
@@ -65,7 +84,7 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
 
 /* Tools */
 #sbTools { padding: 6px 10px; border-top: 1px solid rgba(255,255,255,.05); }
-.tool-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 7px 10px; border-radius: 9px; border: none; background: transparent; font-size: 12px; font-weight: 500; color: #64748b; cursor: pointer; transition: background .13s, color .13s; text-align: left; margin-bottom: 1px; }
+.tool-btn { display: flex; align-items: center; gap: 8px; width: 100%; padding: 9px 10px; border-radius: 9px; border: none; background: transparent; font-size: 12px; font-weight: 500; color: #64748b; cursor: pointer; transition: background .13s, color .13s; text-align: left; margin-bottom: 1px; }
 .tool-btn:hover { background: rgba(255,255,255,.05); color: #e2e8f0; }
 .tool-btn i { width: 14px; text-align: center; font-size: 11px; }
 .tool-btn .tool-hint { font-size: 10px; color: #334155; margin-left: auto; }
@@ -77,41 +96,148 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
 
 /* Bottom actions */
 #sbBottom { padding: 10px; border-top: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 6px; }
-.sb-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 8px 12px; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .13s; text-decoration: none; border: none; }
+.sb-action { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 12px; border-radius: 10px; font-size: 12px; font-weight: 700; cursor: pointer; transition: all .13s; text-decoration: none; border: none; }
 .sb-action.primary   { background: #fff; color: #000; }
 .sb-action.primary:hover { background: #e2e8f0; }
 .sb-action.secondary { background: rgba(255,255,255,.07); color: #94a3b8; }
 .sb-action.secondary:hover { background: rgba(255,255,255,.12); color: #fff; }
 
-/* Main panel */
-#editorMain { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #111827; }
-#editorTopBar { height: 40px; flex-shrink: 0; background: rgba(8,12,20,.98); border-bottom: 1px solid rgba(255,255,255,.05); display: flex; align-items: center; padding: 0 12px; gap: 8px; }
-#editorTopBar .site-label { font-size: 11px; font-weight: 700; color: #fff; }
-#editorTopBar .page-label { font-size: 11px; color: #334155; }
-.top-icon-btn { width: 26px; height: 26px; border-radius: 7px; background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.07); color: #64748b; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background .12s, color .12s; font-size: 10px; }
+/* ===================== MAIN PANEL ===================== */
+#editorMain { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #111827; min-width: 0; }
+
+/* Top bar */
+#editorTopBar {
+  height: 48px;
+  flex-shrink: 0;
+  background: rgba(8,12,20,.98);
+  border-bottom: 1px solid rgba(255,255,255,.05);
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  gap: 6px;
+}
+#menuToggleBtn {
+  display: none; /* shown on mobile */
+  width: 36px; height: 36px;
+  border-radius: 9px;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.08);
+  color: #94a3b8;
+  align-items: center; justify-content: center;
+  cursor: pointer; font-size: 14px;
+  flex-shrink: 0;
+}
+#editorTopBar .site-label { font-size: 12px; font-weight: 700; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 120px; }
+#editorTopBar .page-label { font-size: 11px; color: #334155; white-space: nowrap; }
+.top-icon-btn {
+  width: 32px; height: 32px;
+  border-radius: 8px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.07);
+  color: #64748b;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+  transition: background .12s, color .12s;
+  font-size: 11px;
+  flex-shrink: 0;
+}
 .top-icon-btn:hover:not(:disabled) { background: rgba(255,255,255,.12); color: #e2e8f0; }
 .top-icon-btn:disabled { opacity: .3; cursor: not-allowed; }
+#saveStatusTop { font-size: 10px; color: #334155; white-space: nowrap; }
 
-/* Viewport */
+/* Done button in top bar (mobile only) */
+#topDoneBtn {
+  display: none;
+  padding: 7px 14px;
+  border-radius: 8px;
+  background: #fff;
+  color: #000;
+  font-size: 12px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  text-decoration: none;
+  flex-shrink: 0;
+}
+
+/* ===================== VIEWPORT ===================== */
 #editorViewport { flex: 1; overflow: hidden; position: relative; display: flex; align-items: stretch; }
-#iframeWrap { flex: 1; display: flex; justify-content: center; align-items: flex-start; overflow: auto; padding: 16px; background: #111827; }
-#iframeInner { width: 100%; max-width: 100%; height: calc(100vh - 40px - 32px); border-radius: 10px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 24px 64px rgba(0,0,0,.6); background: #fff; transition: max-width .25s ease; }
+#iframeWrap { flex: 1; display: flex; justify-content: center; align-items: flex-start; overflow: auto; padding: 12px; background: #111827; -webkit-overflow-scrolling: touch; }
+#iframeInner {
+  width: 100%; max-width: 100%;
+  height: calc(100dvh - 48px - 24px);
+  border-radius: 10px; overflow: hidden;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 24px 64px rgba(0,0,0,.6);
+  background: #fff;
+  transition: max-width .25s ease;
+}
 #siteFrame { width: 100%; height: 100%; border: 0; }
 #iframeInner.vp-desktop { max-width: 100%; }
 #iframeInner.vp-tablet  { max-width: 768px; margin: 0 auto; }
 #iframeInner.vp-mobile  { max-width: 390px; margin: 0 auto; }
 
-/* Preview bar */
-#previewBar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 4px; background: rgba(8,12,20,.9); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,.08); border-radius: 999px; padding: 4px 8px; }
-.preview-btn { width: 28px; height: 28px; border-radius: 50%; border: none; background: transparent; color: #475569; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 12px; transition: background .12s, color .12s; }
+/* ===================== PREVIEW BAR ===================== */
+#previewBar {
+  position: absolute;
+  bottom: 12px; left: 50%; transform: translateX(-50%);
+  z-index: 10;
+  display: flex; align-items: center; gap: 4px;
+  background: rgba(8,12,20,.9);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 999px;
+  padding: 4px 8px;
+}
+.preview-btn { width: 32px; height: 32px; border-radius: 50%; border: none; background: transparent; color: #475569; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 13px; transition: background .12s, color .12s; }
 .preview-btn.active { background: rgba(255,255,255,.12); color: #fff; }
 .preview-btn:hover   { color: #e2e8f0; }
 
-/* Floating toolbars */
+/* ===================== MOBILE BOTTOM NAV ===================== */
+#mobileBottomNav {
+  display: none; /* shown on mobile */
+  height: 56px;
+  flex-shrink: 0;
+  background: rgba(8,12,20,.98);
+  border-top: 1px solid rgba(255,255,255,.07);
+  align-items: stretch;
+  padding-bottom: env(safe-area-inset-bottom);
+  z-index: 30;
+}
+.mob-nav-btn {
+  flex: 1;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px;
+  background: transparent;
+  border: none;
+  color: #475569;
+  font-size: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color .15s;
+  text-decoration: none;
+  -webkit-tap-highlight-color: transparent;
+}
+.mob-nav-btn i { font-size: 16px; }
+.mob-nav-btn:active, .mob-nav-btn.active { color: #fff; }
+.mob-nav-btn.save-btn { color: #10b981; }
+.mob-nav-btn.done-btn { color: #fff; background: rgba(255,255,255,.07); border-radius: 0; }
+
+/* ===================== MOBILE DRAWER ===================== */
+#drawerOverlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(2px);
+  z-index: 39;
+}
+#drawerOverlay.open { display: block; }
+
+/* ===================== FLOATING TOOLBARS ===================== */
 .editor-popup { position:fixed; z-index:9999; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.08); backdrop-filter:blur(18px); padding:5px 7px; display:flex; align-items:center; gap:3px; }
 .editor-popup.hidden { display:none; }
 .editor-popup { background:rgba(13,17,23,.95); color:#f1f5f9; border:1px solid rgba(255,255,255,.1); }
-.tb-btn { width:28px; height:28px; border-radius:7px; border:none; background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:12px; transition:background .12s,color .12s; color:#f1f5f9; }
+.tb-btn { width:32px; height:32px; border-radius:7px; border:none; background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; transition:background .12s,color .12s; color:#f1f5f9; }
 .tb-btn:hover  { background:rgba(255,255,255,.15); color:#fff; }
 .tb-btn.active { background:rgba(255,255,255,.2);  color:#fff; }
 .tb-sep { width:1px; height:18px; background:rgba(255,255,255,.1); margin:0 2px; flex-shrink:0; }
@@ -119,15 +245,69 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
 #imageToolbar { flex-direction:column; align-items:stretch; gap:8px; padding:10px; width:210px; }
 #bgToolbar    { flex-direction:column; align-items:stretch; gap:8px; padding:10px; min-width:165px; }
 .pop-label { font-size:10px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; opacity:.5; }
-.dropzone  { border:2px dashed rgba(255,255,255,.3); border-radius:9px; padding:10px; text-align:center; cursor:pointer; font-size:11px; color:inherit; opacity:.7; transition:border-color .15s,background .15s; }
+.dropzone  { border:2px dashed rgba(255,255,255,.3); border-radius:9px; padding:12px; text-align:center; cursor:pointer; font-size:11px; color:inherit; opacity:.7; transition:border-color .15s,background .15s; }
 .dropzone:hover, .dropzone.dragover { border-color:#fff; background:rgba(255,255,255,.05); opacity:1; }
+
+/* ===================== RESPONSIVE BREAKPOINTS ===================== */
+@media (max-width: 768px) {
+  /* Hide desktop sidebar, show as drawer */
+  #editorSidebar {
+    position: fixed;
+    top: 0; left: 0; bottom: 0;
+    width: 260px;
+    transform: translateX(-100%);
+    z-index: 40;
+    box-shadow: 4px 0 32px rgba(0,0,0,.6);
+  }
+  #editorSidebar.drawer-open {
+    transform: translateX(0);
+  }
+
+  /* Show hamburger & Done in top bar */
+  #menuToggleBtn { display: flex; }
+  #topDoneBtn    { display: flex; align-items: center; }
+
+  /* Shrink top bar text */
+  #editorTopBar .site-label { max-width: 90px; font-size: 11px; }
+  #editorTopBar .page-label { display: none; }
+
+  /* Show mobile bottom nav */
+  #mobileBottomNav { display: flex; }
+
+  /* Shrink iframe padding */
+  #iframeWrap { padding: 6px; }
+  #iframeInner {
+    border-radius: 6px;
+    /* account for top bar (48px) + bottom nav (56px) + padding (12px) */
+    height: calc(100dvh - 48px - 56px - 12px);
+  }
+
+  /* Move preview bar up above bottom nav */
+  #previewBar { bottom: 66px; }
+
+  /* Make floating toolbars full-width on very small screens */
+  #imageToolbar { width: min(210px, calc(100vw - 32px)); }
+  #bgToolbar    { min-width: min(165px, calc(100vw - 32px)); }
+
+  /* Larger touch targets for toolbar buttons */
+  .tb-btn { width: 36px; height: 36px; font-size: 14px; }
+}
+
+@media (max-width: 480px) {
+  #editorTopBar .site-label { max-width: 60px; }
+  /* On very small phones hide undo/redo from top bar (available in drawer) */
+  #undoBtnTop, #redoBtnTop, #saveStatusTop { display: none; }
+}
 </style>
 </head>
 <body>
 <div id="editorRoot" data-site-id="<?= (int)$site['id'] ?>">
 <div id="editorShell">
 
-  <!-- LEFT SIDEBAR -->
+  <!-- DRAWER OVERLAY (mobile) -->
+  <div id="drawerOverlay"></div>
+
+  <!-- LEFT SIDEBAR / DRAWER -->
   <div id="editorSidebar">
     <div id="sbTop">
       <div id="sbBrand">
@@ -150,7 +330,8 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
         foreach ($pages as $key => $label):
       ?>
         <a href="/portal/site_editor.php?site_id=<?= (int)$site['id'] ?>&page=<?= $key ?>"
-           class="page-item <?= $key === $currentPage ? 'active' : '' ?>">
+           class="page-item <?= $key === $currentPage ? 'active' : '' ?>"
+           onclick="closeDrawer()">
           <span class="page-dot"></span>
           <i class="fa-solid <?= $pageIcons[$key] ?>"></i>
           <?= $label ?>
@@ -175,10 +356,9 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
     </div>
 
     <div id="sbHint">
-      <strong>💡 Click any text</strong> in the preview to edit it inline.<br>
-      <strong>🖼️ Click an image</strong> to open the replace panel.<br>
-      <strong>🎨 Click a section background</strong> to change its colour.<br>
-      <strong>☰ Drag the handle</strong> on any section to reorder.<br>
+      <strong>💡 Tap any text</strong> in the preview to edit it inline.<br>
+      <strong>🖼️ Tap an image</strong> to open the replace panel.<br>
+      <strong>🎨 Tap a section background</strong> to change its colour.<br>
       Changes save automatically.
     </div>
 
@@ -196,15 +376,28 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
 
   <!-- MAIN PANEL -->
   <div id="editorMain">
+    <!-- Top bar -->
     <div id="editorTopBar">
+      <!-- Hamburger: mobile only -->
+      <button id="menuToggleBtn" type="button" aria-label="Menu" onclick="openDrawer()">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+
       <span class="site-label"><?= htmlspecialchars($site['business_name']) ?></span>
       <span class="page-label">&mdash; <?= htmlspecialchars($pages[$currentPage]) ?></span>
       <div style="flex:1;"></div>
+
       <button id="undoBtnTop" type="button" title="Undo" disabled class="top-icon-btn"><i class="fa-solid fa-rotate-left"></i></button>
       <button id="redoBtnTop" type="button" title="Redo" disabled class="top-icon-btn"><i class="fa-solid fa-rotate-right"></i></button>
       <span id="saveStatusTop" style="font-size:10px;color:#334155;"></span>
+
+      <!-- Done button: mobile only -->
+      <a href="/portal/my_sites.php" id="topDoneBtn">
+        <i class="fa-solid fa-check" style="margin-right:5px;font-size:11px;"></i>Done
+      </a>
     </div>
 
+    <!-- Iframe viewport -->
     <div id="editorViewport">
       <div id="iframeWrap">
         <div id="iframeInner" class="vp-desktop">
@@ -219,7 +412,33 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
         <button class="preview-btn" data-vp="mobile"  title="Mobile"><i class="fa-solid fa-mobile-screen"></i></button>
       </div>
     </div>
+
+    <!-- Mobile bottom nav -->
+    <div id="mobileBottomNav">
+      <button type="button" class="mob-nav-btn" onclick="openDrawer()">
+        <i class="fa-solid fa-bars"></i>
+        <span>Menu</span>
+      </button>
+      <button type="button" class="mob-nav-btn" id="mobUndoBtn" disabled>
+        <i class="fa-solid fa-rotate-left"></i>
+        <span>Undo</span>
+      </button>
+      <button type="button" class="mob-nav-btn" id="mobRedoBtn" disabled>
+        <i class="fa-solid fa-rotate-right"></i>
+        <span>Redo</span>
+      </button>
+      <button type="button" class="mob-nav-btn save-btn" id="mobSaveBtn">
+        <i class="fa-solid fa-floppy-disk"></i>
+        <span>Save</span>
+      </button>
+      <a href="/portal/my_sites.php" class="mob-nav-btn done-btn">
+        <i class="fa-solid fa-check"></i>
+        <span>Done</span>
+      </a>
+    </div>
+
   </div>
+  <!-- end main -->
 
 </div>
 </div>
@@ -241,31 +460,43 @@ html, body { height: 100%; margin: 0; overflow: hidden; background: #080c14; col
 <!-- Image toolbar -->
 <div id="imageToolbar" class="editor-popup hidden">
   <p class="pop-label"><i class="fa-regular fa-image mr-1"></i> Replace image</p>
-  <div id="imageDropzone" class="dropzone"><i class="fa-solid fa-cloud-arrow-up block mb-1"></i>Drop or click to upload</div>
+  <div id="imageDropzone" class="dropzone"><i class="fa-solid fa-cloud-arrow-up block mb-1"></i>Drop or tap to upload</div>
   <input type="file" id="imageFileInput" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden">
 </div>
 
 <!-- BG toolbar -->
 <div id="bgToolbar" class="editor-popup hidden">
   <p class="pop-label"><i class="fa-solid fa-fill-drip mr-1"></i> Section background</p>
-  <input type="color" id="bgColorPicker" class="w-full rounded-lg cursor-pointer" style="height:34px;border:none;padding:2px;background:transparent;">
+  <input type="color" id="bgColorPicker" class="w-full rounded-lg cursor-pointer" style="height:36px;border:none;padding:2px;background:transparent;">
 </div>
 
 <script>
-// Viewport switcher
+// ---- Drawer (mobile sidebar) ----
+function openDrawer() {
+  document.getElementById('editorSidebar').classList.add('drawer-open');
+  document.getElementById('drawerOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeDrawer() {
+  document.getElementById('editorSidebar').classList.remove('drawer-open');
+  document.getElementById('drawerOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+document.getElementById('drawerOverlay').addEventListener('click', closeDrawer);
+
+// ---- Viewport switcher ----
 document.querySelectorAll('.preview-btn').forEach(btn => {
   btn.addEventListener('click', function() {
     document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
     this.classList.add('active');
-    const inner = document.getElementById('iframeInner');
-    inner.className = 'vp-' + this.dataset.vp;
+    document.getElementById('iframeInner').className = 'vp-' + this.dataset.vp;
   });
 });
 
-// How-to-edit hint toggle
-const hintBox    = document.getElementById('sbHint');
-const hintBtn    = document.getElementById('hintToggleBtn');
-const hintArrow  = document.getElementById('hintToggleArrow');
+// ---- How-to-edit hint toggle ----
+const hintBox   = document.getElementById('sbHint');
+const hintBtn   = document.getElementById('hintToggleBtn');
+const hintArrow = document.getElementById('hintToggleArrow');
 if (hintBtn && hintBox) {
   hintBtn.addEventListener('click', () => {
     const hidden = hintBox.classList.toggle('collapsed');
@@ -273,25 +504,44 @@ if (hintBtn && hintBox) {
   });
 }
 
-// Mirror undo/redo/saveStatus to top bar
-const undoSb  = document.getElementById('undoBtn');
-const redoSb  = document.getElementById('redoBtn');
-const undoTop = document.getElementById('undoBtnTop');
-const redoTop = document.getElementById('redoBtnTop');
-const ssSb    = document.getElementById('saveStatus');
-const ssTop   = document.getElementById('saveStatusTop');
+// ---- Mirror undo/redo/saveStatus across all instances ----
+const undoSb   = document.getElementById('undoBtn');
+const redoSb   = document.getElementById('redoBtn');
+const undoTop  = document.getElementById('undoBtnTop');
+const redoTop  = document.getElementById('redoBtnTop');
+const mobUndo  = document.getElementById('mobUndoBtn');
+const mobRedo  = document.getElementById('mobRedoBtn');
+const mobSave  = document.getElementById('mobSaveBtn');
+const ssSb     = document.getElementById('saveStatus');
+const ssTop    = document.getElementById('saveStatusTop');
+
 function mirrorAttr(source, target, attr) {
+  if (!source || !target) return;
   new MutationObserver(() => { target[attr] = source[attr]; }).observe(source, { attributes: true });
 }
-if (undoSb && undoTop) mirrorAttr(undoSb, undoTop, 'disabled');
-if (redoSb && redoTop) mirrorAttr(redoSb, redoTop, 'disabled');
-if (undoTop) undoTop.addEventListener('click', () => undoSb && undoSb.click());
-if (redoTop) redoTop.addEventListener('click', () => redoSb && redoSb.click());
+mirrorAttr(undoSb, undoTop,  'disabled');
+mirrorAttr(undoSb, mobUndo,  'disabled');
+mirrorAttr(redoSb, redoTop,  'disabled');
+mirrorAttr(redoSb, mobRedo,  'disabled');
+
+if (undoTop)  undoTop.addEventListener('click',  () => undoSb?.click());
+if (mobUndo)  mobUndo.addEventListener('click',  () => undoSb?.click());
+if (redoTop)  redoTop.addEventListener('click',  () => redoSb?.click());
+if (mobRedo)  mobRedo.addEventListener('click',  () => redoSb?.click());
+
+// Mobile save button triggers the sidebar save (site_editor.js exposes window.editorSave)
+if (mobSave) {
+  mobSave.addEventListener('click', () => {
+    if (typeof window.editorSave === 'function') window.editorSave();
+  });
+}
+
 if (ssSb && ssTop) {
-  new MutationObserver(() => { ssTop.textContent = ssSb.textContent; }).observe(ssSb, { childList:true, characterData:true, subtree:true });
+  new MutationObserver(() => { ssTop.textContent = ssSb.textContent; })
+    .observe(ssSb, { childList:true, characterData:true, subtree:true });
 }
 </script>
 
-<script src="/assets/js/site_editor.js?v=v203"></script>
+<script src="/assets/js/site_editor.js?v=v204"></script>
 </body>
 </html>
