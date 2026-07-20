@@ -4,6 +4,7 @@
  * Lead search — fixed:
  *   - Upserts each lead into utiligo_leads so generate.php can find them by integer id
  *   - Returns pro_lead_count on EVERY response (not just pro branch)
+ *   - Returns searches_used on EVERY response (not just free branch) so both bars always update
  *   - History dedup: ON DUPLICATE KEY UPDATE so same city+industry+keywords just bumps date
  */
 require_once __DIR__ . '/../config.php';
@@ -323,17 +324,21 @@ try {
         }
     }
 
+    // FIX: both payloads now always include searches_used AND pro_lead_count
+    // so the JS quota bar and lead-limit bar both update live regardless of plan.
     if ($is_pro) {
         $leads_to_show = array_slice($all_leads, 0, $lead_count_requested);
         $payload = [
-            'success'        => true,
-            'leads'          => $leads_to_show,
-            'locked_leads'   => [],
-            'is_free_tier'   => false,
-            'from_cache'     => $from_cache,
-            'cached_at'      => $cached_at,
-            'pro_lead_count' => $pro_lead_count,
-            'lead_limit'     => $pro_lead_limit,
+            'success'            => true,
+            'leads'              => $leads_to_show,
+            'locked_leads'       => [],
+            'is_free_tier'       => false,
+            'from_cache'         => $from_cache,
+            'cached_at'          => $cached_at,
+            'pro_lead_count'     => $pro_lead_count,
+            'lead_limit'         => $pro_lead_limit,
+            'searches_used'      => 0,         // pro has no quota; 0 keeps JS logic safe
+            'searches_remaining' => null,
         ];
     } else {
         $visible  = array_slice($all_leads, 0, $free_limit);
