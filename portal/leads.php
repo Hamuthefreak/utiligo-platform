@@ -10,7 +10,6 @@ $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 
-// ---- Resolved limits (all guarded for older config deploys) ----
 $FREE_LEAD_LIMIT    = defined('FREE_LEAD_LIMIT')          ? (int)FREE_LEAD_LIMIT          : 3;
 $FREE_SEARCH_LIMIT  = defined('FREE_SEARCH_DAILY_LIMIT')  ? (int)FREE_SEARCH_DAILY_LIMIT  : 2;
 $FREE_SITE_LIMIT    = defined('FREE_SITE_LIMIT')          ? (int)FREE_SITE_LIMIT          : 1;
@@ -20,7 +19,6 @@ $PRO_LEAD_LIMIT     = defined('PRO_LEAD_LIMIT')           ? (int)PRO_LEAD_LIMIT 
 $PRO_SITE_LIMIT     = defined('PRO_SITE_LIMIT')           ? (int)PRO_SITE_LIMIT           : 200;
 $ENT_SITE_LIMIT     = defined('ENT_SITE_LIMIT')           ? (int)ENT_SITE_LIMIT           : 500;
 
-// ---- Quota data ----
 $quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
@@ -37,7 +35,6 @@ if (!$is_paid) {
 $quota_remaining = max(0, $FREE_SEARCH_LIMIT - $quota_used);
 $quota_pct       = $FREE_SEARCH_LIMIT > 0 ? min(100, round(($quota_used/$FREE_SEARCH_LIMIT)*100)) : 0;
 
-// ---- Pro lead unlock count ----
 $pro_lead_count = 0;
 if ($plan === 'pro') {
     try {
@@ -48,7 +45,6 @@ if ($plan === 'pro') {
     } catch (\Throwable $e) {}
 }
 
-// ---- Active site count (paid) ----
 $active_site_count = 0;
 if ($is_paid) {
     try {
@@ -59,7 +55,6 @@ if ($is_paid) {
     } catch (\Throwable $e) {}
 }
 
-// ---- Slider config ----
 $slider_max     = match($plan) { 'entrepreneur' => 40, 'pro' => 30, default => 10 };
 $slider_default = match($plan) { 'entrepreneur' => 20, 'pro' => 10, default => 5 };
 
@@ -72,12 +67,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <p class="text-slate-400 text-sm mt-1">Discover local businesses with no website &mdash; your next paying clients.</p>
 </div>
 
-<!-- ====== LIMITS PANEL (shows ALL relevant limits for the user's plan) ====== -->
 <?php if (!$is_paid): ?>
-<!-- FREE: search quota + all plan caps in a mini grid -->
 <div class="space-y-3 mb-8">
-
-  <!-- Search quota bar -->
   <div class="glass rounded-2xl p-5 border border-white/5">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <div class="flex items-center gap-2">
@@ -105,7 +96,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
 
-  <!-- Plan cap mini-cards -->
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
     <div class="glass rounded-xl p-3 border border-white/5 text-center">
       <p class="text-[10px] text-slate-500 uppercase tracking-wider mb-1">Leads / search</p>
@@ -136,7 +126,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php elseif ($plan === 'pro'): ?>
-<!-- PRO: lead unlock bar + active sites bar -->
 <?php
   $ll_pct  = $PRO_LEAD_LIMIT > 0 ? min(100, round(($pro_lead_count/$PRO_LEAD_LIMIT)*100)) : 0;
   $ll_col  = $ll_pct>=100?'bg-red-500':($ll_pct>=80?'bg-amber-500':'bg-white/60');
@@ -145,7 +134,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 <div class="grid sm:grid-cols-2 gap-3 mb-8">
 
-  <!-- Lead unlocks -->
   <div class="glass rounded-2xl p-5 border border-white/5">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <div class="flex items-center gap-2">
@@ -156,19 +144,23 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </div>
       </div>
       <?php if($ll_pct>=80): ?>
-      <a href="/portal/billing.php?upgrade=1&plan=entrepreneur" class="text-xs bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full font-bold">
+      <a href="/portal/billing.php?upgrade=1&plan=entrepreneur" id="leadUpgradeBtn" class="text-xs bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full font-bold">
         <i class="fa-solid fa-rocket mr-1"></i>Upgrade
       </a>
+      <?php else: ?>
+      <span id="leadUpgradeBtn" class="hidden"></span>
       <?php endif; ?>
     </div>
     <div class="w-full bg-white/5 rounded-full h-2 overflow-hidden">
       <div id="leadLimitBar" class="h-2 rounded-full transition-all <?= $ll_col ?>" style="width:<?= $ll_pct ?>%"
            data-used="<?= $pro_lead_count ?>" data-limit="<?= $PRO_LEAD_LIMIT ?>"></div>
     </div>
-    <p class="text-xs text-slate-500 mt-1.5"><?= max(0,$PRO_LEAD_LIMIT-$pro_lead_count) ?> remaining</p>
+    <div class="flex items-center justify-between mt-1.5">
+      <p class="text-xs text-slate-500" id="leadLimitNote"><?= max(0,$PRO_LEAD_LIMIT-$pro_lead_count) ?> remaining</p>
+      <p class="text-xs text-slate-600" id="leadLimitCount"><?= $pro_lead_count ?> / <?= $PRO_LEAD_LIMIT ?></p>
+    </div>
   </div>
 
-  <!-- Active sites -->
   <div class="glass rounded-2xl p-5 border border-white/5">
     <div class="flex items-center gap-2 mb-3">
       <div class="w-8 h-8 rounded-xl bg-white/8 flex items-center justify-center"><i class="fa-solid fa-globe text-slate-300 text-xs"></i></div>
@@ -185,8 +177,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 </div>
 
-<?php else: /* entrepreneur */ ?>
-<!-- ENTREPRENEUR: unlimited leads + active sites bar -->
+<?php else: ?>
 <?php
   $sl_pct = $ENT_SITE_LIMIT > 0 ? min(100, round(($active_site_count/$ENT_SITE_LIMIT)*100)) : 0;
   $sl_col = $sl_pct>=90?'bg-red-500':($sl_pct>=70?'bg-amber-500':'bg-white/60');
@@ -249,7 +240,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
 
     <div class="flex flex-col sm:flex-row sm:items-end gap-4">
-      <!-- Lead count slider -->
       <div class="flex-1">
         <label class="flex justify-between text-xs text-slate-500 font-semibold uppercase tracking-wider mb-2">
           <span>How many leads?</span>
@@ -262,7 +252,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <input type="hidden" id="leadCountHidden" name="lead_count" value="<?= $slider_default ?>">
 
-      <!-- Seen leads checkbox -->
       <div class="flex flex-col gap-1 pb-0.5">
         <label class="flex items-center gap-2.5 cursor-pointer group">
           <input type="checkbox" id="includeSeenLeads" name="include_seen"
@@ -282,7 +271,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </form>
 </div>
 
-<!-- Loading -->
 <div id="leadsLoading" class="hidden">
   <div class="glass rounded-2xl p-10 text-center border border-white/5">
     <i class="fa-solid fa-spinner fa-spin text-white text-2xl mb-4 block"></i>
@@ -291,24 +279,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<!-- Results -->
 <div id="leadsResultsWrap" class="hidden">
-  <!-- Dot map -->
-  <div id="leadMapWrap" class="hidden glass rounded-2xl border border-white/5 mb-5 overflow-hidden">
-    <div class="flex items-center justify-between px-5 py-3 border-b border-white/5">
-      <div class="flex items-center gap-2">
-        <i class="fa-solid fa-map-location-dot text-slate-400 text-sm"></i>
-        <span class="text-sm font-semibold">Lead Locations</span>
-        <span class="text-xs text-slate-500" id="mapSubtitle"></span>
-      </div>
-      <div class="flex items-center gap-3 text-[10px] text-slate-500">
-        <span><span class="inline-block w-2 h-2 rounded-full bg-white mr-1"></span>No website</span>
-        <span><span class="inline-block w-2 h-2 rounded-full bg-amber-400 mr-1"></span>Has website</span>
-      </div>
-    </div>
-    <div id="leadMap" class="relative bg-slate-900 w-full" style="height:220px;"></div>
-  </div>
-
   <div id="leadsList" class="space-y-3"></div>
   <div id="lockedWrap" class="hidden mt-4">
     <div id="lockedList" class="space-y-3"></div>
@@ -341,4 +312,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-limit="<?= $FREE_SEARCH_LIMIT ?>"
   data-slider-max="<?= $slider_max ?>"
 ></script>
-<script src="/assets/js/leads.js?v=v700"></script>
+<script src="/assets/js/leads.js?v=v800"></script>
