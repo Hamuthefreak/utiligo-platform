@@ -32,7 +32,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
-/* Skeleton shimmer */
 @keyframes shimmer {
   0%   { background-position: -600px 0; }
   100% { background-position:  600px 0; }
@@ -57,7 +56,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </a>
 </div>
 
-<!-- Stats strip — 4 cards now including total views -->
+<!-- Stats strip -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
   <div class="glass rounded-2xl p-5 border border-white/5">
     <p class="text-xs text-slate-500 uppercase tracking-widest mb-1">Total</p>
@@ -86,7 +85,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <span class="text-xs font-semibold text-slate-300">Active Site Slots</span>
     </div>
     <div class="flex items-center gap-3">
-      <span class="text-xs font-bold <?= $sl_hit ? 'text-red-400' : 'text-white' ?>">
+      <span class="text-xs font-bold <?= $sl_hit ? 'text-red-400' : 'text-white' ?>"
+            data-active-slots="<?= $activeSites ?>"
+            data-slot-limit="<?= $site_limit ?>">
         <?= $activeSites ?> / <?= $site_limit ?> used
       </span>
       <?php if ($sl_hit && $plan === 'pro'): ?>
@@ -148,6 +149,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   elseif ($diff < 3600)      $exLabel = 'Expires in ' . floor($diff/60) . 'm';
   elseif ($diff < 86400)     $exLabel = 'Expires in ' . floor($diff/3600) . 'h ' . floor(($diff%3600)/60) . 'm';
   else                       $exLabel = 'Expires ' . date('M j', $expiresTs);
+
+  $fullPublicUrl = $isLive && $publicUrl ? 'https://utiligo.ca' . $publicUrl : null;
 ?>
 
   <div class="group glass rounded-2xl border <?= $isLive ? 'border-white/15' : 'border-white/5' ?> hover:border-white/20 transition-all"
@@ -212,6 +215,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
              class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-white px-3 py-1.5 rounded-lg font-semibold transition">
             <i class="fa-solid fa-eye text-[10px]"></i> Preview
           </a>
+
+          <button class="qr-btn inline-flex items-center gap-1.5 text-xs bg-white/6 hover:bg-white/12 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition"
+                  data-url="<?= htmlspecialchars($fullPublicUrl) ?>"
+                  data-name="<?= htmlspecialchars($site['business_name']) ?>"
+                  title="Show QR code">
+            <i class="fa-solid fa-qrcode text-[10px]"></i> QR
+          </button>
         <?php endif; ?>
 
         <?php if ($isLive): ?>
@@ -252,4 +262,30 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endforeach; endif; ?>
 </div>
 
-<script src="/assets/js/my_sites.js?v=v501"></script>
+<!-- QR Modal -->
+<div id="qrModal"
+     class="hidden fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+     aria-modal="true" aria-hidden="true" role="dialog" aria-label="QR Code">
+  <div class="glass rounded-2xl border border-white/10 p-6 w-full max-w-xs text-center relative">
+    <button id="qrModalClose"
+            class="absolute top-3 right-3 w-7 h-7 rounded-full bg-white/8 hover:bg-white/15 flex items-center justify-center text-slate-400 hover:text-white transition"
+            aria-label="Close">
+      <i class="fa-solid fa-xmark text-xs"></i>
+    </button>
+    <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">QR Code</p>
+    <div class="flex items-center justify-center mb-4">
+      <div class="bg-white rounded-xl p-2 inline-flex">
+        <img id="qrModalImg" src="" alt="" width="220" height="220" class="block rounded">
+      </div>
+    </div>
+    <p id="qrModalUrl" class="text-[10px] text-slate-500 break-all mb-4"></p>
+    <a id="qrModalDownload"
+       href="#"
+       download="qrcode.png"
+       class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 text-black text-xs font-bold px-5 py-2.5 rounded-xl transition">
+      <i class="fa-solid fa-download text-[10px]"></i> Download PNG
+    </a>
+  </div>
+</div>
+
+<script src="/assets/js/my_sites.js?v=v600"></script>

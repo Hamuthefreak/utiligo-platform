@@ -67,25 +67,47 @@ document.addEventListener('DOMContentLoaded', function () {
           setTimeout(() => {
             progressWrap.classList.add('hidden');
             downloadWrap.classList.remove('hidden');
-            downloadLink.href = data.zip_url;
+
+            if (downloadLink) downloadLink.href = data.zip_url;
             if (previewLink && data.preview_url) previewLink.href = data.preview_url;
+
+            // Edit link
             const editLink = document.getElementById('genEditLink');
             if (editLink && data.site_id) editLink.href = '/portal/site_editor.php?site_id=' + data.site_id;
 
-            const shareWrap = document.getElementById('genShareLinkWrap');
-            const shareInput = document.getElementById('genShareLinkInput');
+            // My Sites CTA button
+            const mySitesBtn = document.getElementById('genMySitesBtn');
+            if (mySitesBtn) mySitesBtn.href = '/portal/my_sites.php';
+
+            // Share link
+            const shareWrap    = document.getElementById('genShareLinkWrap');
+            const shareInput   = document.getElementById('genShareLinkInput');
             const shareCopyBtn = document.getElementById('genShareLinkCopy');
             if (shareWrap && shareInput && data.public_url && data.share_links_enabled) {
               const fullUrl = window.location.origin + data.public_url;
               shareInput.value = fullUrl;
               shareWrap.classList.remove('hidden');
-              shareCopyBtn.addEventListener('click', function () {
-                navigator.clipboard.writeText(fullUrl).then(() => {
-                  const original = shareCopyBtn.textContent;
-                  shareCopyBtn.textContent = 'Copied!';
-                  setTimeout(() => { shareCopyBtn.textContent = original; }, 1500);
+
+              // QR code (api.qrserver.com — free, no API key needed)
+              const qrWrap = document.getElementById('genQrWrap');
+              const qrImg  = document.getElementById('genQrImg');
+              if (qrWrap && qrImg) {
+                const qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&format=png&ecc=M&data='
+                  + encodeURIComponent(fullUrl);
+                qrImg.src = qrSrc;
+                qrImg.alt = 'QR code for ' + fullUrl;
+                qrWrap.classList.remove('hidden');
+              }
+
+              if (shareCopyBtn) {
+                shareCopyBtn.addEventListener('click', function () {
+                  navigator.clipboard.writeText(fullUrl).then(() => {
+                    const original = shareCopyBtn.textContent;
+                    shareCopyBtn.textContent = 'Copied!';
+                    setTimeout(() => { shareCopyBtn.textContent = original; }, 1500);
+                  });
                 });
-              });
+              }
             }
           }, 400);
         } else {

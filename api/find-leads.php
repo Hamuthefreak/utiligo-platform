@@ -296,13 +296,27 @@ try {
     $free_limit = defined('FREE_LEAD_LIMIT') ? (int)FREE_LEAD_LIMIT : 3;
 
     if ($is_pro) {
+        // Fetch current pro lead count so the JS counter stays in sync
+        $pro_lead_count = 0;
+        $pro_lead_limit = 0;
+        if ($plan === 'pro') {
+            try {
+                $stmt = $pdo->prepare('SELECT COUNT(*) FROM unlocked_leads WHERE user_id = ?');
+                $stmt->execute([$user['id']]);
+                $pro_lead_count = (int)$stmt->fetchColumn();
+                $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
+            } catch (\Throwable $e) {}
+        }
+
         $payload = [
-            'success'      => true,
-            'leads'        => $all_leads,
-            'locked_leads' => [],
-            'is_free_tier' => false,
-            'from_cache'   => $from_cache,
-            'cached_at'    => $cached_at,
+            'success'         => true,
+            'leads'           => $all_leads,
+            'locked_leads'    => [],
+            'is_free_tier'    => false,
+            'from_cache'      => $from_cache,
+            'cached_at'       => $cached_at,
+            'pro_lead_count'  => $pro_lead_count,
+            'lead_limit'      => $pro_lead_limit,
         ];
     } else {
         $visible  = array_slice($all_leads, 0, $free_limit);

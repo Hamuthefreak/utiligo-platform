@@ -49,8 +49,11 @@ document.addEventListener('DOMContentLoaded', function () {
   const seenCb = document.getElementById('includeSeenLeads');
 
   // ── Live Lead Unlocks counter (Pro only) ─────────────────────────────────────
-  function updateLiveLeadCounter(newUnlocked) {
-    leadUsed += newUnlocked;
+  // Called after each search response to keep the bar in sync with the server.
+  function syncLeadCounter(serverCount, serverLimit) {
+    if (typeof serverCount === 'number' && serverCount >= 0) leadUsed = serverCount;
+    if (typeof serverLimit === 'number' && serverLimit > 0)  leadLimit = serverLimit;
+
     const bar        = document.getElementById('leadLimitBar');
     const subtitle   = document.getElementById('leadLimitSubtitle');
     const countEl    = document.getElementById('leadLimitCount');
@@ -60,8 +63,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
     const pct = Math.min(100, Math.round((leadUsed / leadLimit) * 100));
     bar.style.width = pct + '%';
-
-    // className assignment avoids classList slash-class mismatch with Tailwind
     bar.className = 'h-2 rounded-full transition-all ' +
       (pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-white/60');
 
@@ -70,6 +71,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (noteEl)   noteEl.textContent   = Math.max(0, leadLimit - leadUsed) + ' remaining';
 
     if (pct >= 80 && upgradeBtn) upgradeBtn.classList.remove('hidden');
+  }
+
+  // Keep backward-compat alias used by delta-style callers
+  function updateLiveLeadCounter(newUnlocked) {
+    syncLeadCounter(leadUsed + newUnlocked, leadLimit);
   }
 
   // ── Live Quota counter (Free only) ──────────────────────────────────────────
@@ -204,7 +210,12 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      if (typeof data.newly_unlocked === 'number' && data.newly_unlocked > 0) updateLiveLeadCounter(data.newly_unlocked);
+      // Sync live counters from server response
+      if (!data.is_free_tier && typeof data.pro_lead_count === 'number') {
+        syncLeadCounter(data.pro_lead_count, data.lead_limit || leadLimit);
+      } else if (typeof data.newly_unlocked === 'number' && data.newly_unlocked > 0) {
+        updateLiveLeadCounter(data.newly_unlocked);
+      }
       if (typeof data.searches_used === 'number') updateLiveQuotaCounter(data.searches_used);
 
       const seenIds = getSeenIds();
