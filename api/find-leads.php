@@ -4,6 +4,7 @@
  * Lead search endpoint — bullet-proof version.
  * Free plan: max FREE_SEARCH_DAILY_LIMIT searches per 24 h, tied to user_id + IP hash.
  * Pro plan: no search count limit (still rate-limited per-minute via existing check).
+ * Also saves search history to utiligo_lead_search_history for the sidebar (Feature C).
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -43,6 +44,7 @@ if (!is_array($body)) {
 
 $city     = trim($body['city']     ?? '');
 $industry = trim($body['industry'] ?? '');
+$keywords = trim($body['keywords'] ?? '');
 $force    = !empty($body['force_refresh']);
 
 // ── 4. CSRF ───────────────────────────────────────────────────────────────────
@@ -72,6 +74,25 @@ $debug_log = [];
 
 try {
     $pdo = get_platform_db();
+
+    // ── Feature C: Ensure history table exists ────────────────────────────────
+    try {
+        $pdo->exec(
+            'CREATE TABLE IF NOT EXISTS `utiligo_lead_search_history` (
+               `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+               `user_id`      INT UNSIGNED NOT NULL,
+               `city`         VARCHAR(100) NOT NULL,
+               `industry`     VARCHAR(100) NOT NULL,
+               `keywords`     VARCHAR(255) NOT NULL DEFAULT \'\',
+               `result_count` INT UNSIGNED NOT NULL DEFAULT 0,
+               `created_at`   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+               PRIMARY KEY (`id`),
+               KEY `idx_user_id` (`user_id`)
+             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+        );
+    } catch (\Throwable $e) {
+        // non-fatal — table may already exist
+    }
 
     // ── 6. Free-plan daily search limit (DB-backed, user_id + IP hash) ────────
     $searches_remaining = null;
@@ -230,7 +251,6 @@ try {
         foreach ($results as $place) {
             $has_website = !empty($place['website']);
 
-            // Skip businesses that DO have a website (only want no-website leads)
             if ($has_website) continue;
 
             $place_id = $place['place_id']              ?? '';
@@ -241,12 +261,10 @@ try {
                 ? str_replace('_', ' ', ucwords($types[0], '_'))
                 : $industry;
 
-            // Maps URL
             $maps_url = $place_id !== ''
                 ? 'https://www.google.com/maps/place/?q=place_id:' . urlencode($place_id)
                 : '';
 
-            // Phone via Details API (capped to save quota)
             $phone = '';
             if ($place_id !== '' && $lookup_count < $maxDetails) {
                 $det_url  = 'https://maps.googleapis.com/maps/api/place/details/json?place_id='
@@ -269,7 +287,7 @@ try {
                 'rating'            => $rating,
                 'total_ratings'     => $reviews,
                 'maps_url'          => $maps_url,
-                'no_website'        => true,   // always true — we filtered out businesses with websites above
+                'no_website'        => true,
                 'opportunity_score' => opportunity_score($rating, $reviews, $category),
             ];
         }
@@ -296,7 +314,6 @@ try {
     $free_limit = defined('FREE_LEAD_LIMIT') ? (int)FREE_LEAD_LIMIT : 3;
 
     if ($is_pro) {
-        // Fetch current pro lead count so the JS counter stays in sync
         $pro_lead_count = 0;
         $pro_lead_limit = 0;
         if ($plan === 'pro') {
@@ -322,7 +339,6 @@ try {
         $visible  = array_slice($all_leads, 0, $free_limit);
         $locked   = array_slice($all_leads, $free_limit);
 
-        // Server-side redaction — real data never leaves for locked leads
         $redacted = array_map(function ($lead, $i) {
             return [
                 'id'                => $lead['id'],
@@ -345,6 +361,17 @@ try {
             'from_cache'          => $from_cache,
             'cached_at'           => $cached_at,
         ];
+    }
+
+    // ── 12. Feature C: Save search to history ─────────────────────────────────
+    try {
+        $result_count = count($all_leads);
+        $pdo->prepare(
+            'INSERT INTO utiligo_lead_search_history (user_id, city, industry, keywords, result_count, created_at)
+             VALUES (?, ?, ?, ?, ?, NOW())'
+        )->execute([$user['id'], $city, $industry, $keywords, $result_count]);
+    } catch (\Throwable $e) {
+        // non-fatal
     }
 
     if ($debug) $payload['_debug'] = $debug_log;

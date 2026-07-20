@@ -24,6 +24,7 @@ document.addEventListener('DOMContentLoaded', function () {
     try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
     catch { return new Set(); }
   }
+  // BUG A FIX: markSeen is now called AFTER rendering, not before the seen-filter pass.
   function markSeen(ids) {
     try {
       const existing = getSeenIds();
@@ -33,7 +34,6 @@ document.addEventListener('DOMContentLoaded', function () {
       localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
     } catch {}
   }
-  function isSeenLead(id) { return getSeenIds().has(String(id)); }
 
   // ── Slider ───────────────────────────────────────────────────────────────────
   const slider      = document.getElementById('leadCountSlider');
@@ -49,7 +49,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const seenCb = document.getElementById('includeSeenLeads');
 
   // ── Live Lead Unlocks counter (Pro only) ─────────────────────────────────────
-  // Called after each search response to keep the bar in sync with the server.
   function syncLeadCounter(serverCount, serverLimit) {
     if (typeof serverCount === 'number' && serverCount >= 0) leadUsed = serverCount;
     if (typeof serverLimit === 'number' && serverLimit > 0)  leadLimit = serverLimit;
@@ -73,7 +72,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (pct >= 80 && upgradeBtn) upgradeBtn.classList.remove('hidden');
   }
 
-  // Keep backward-compat alias used by delta-style callers
   function updateLiveLeadCounter(newUnlocked) {
     syncLeadCounter(leadUsed + newUnlocked, leadLimit);
   }
@@ -114,10 +112,11 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   function scorLabel(s) { return s >= 80 ? 'High' : s >= 60 ? 'Med' : 'Low'; }
 
+  // ── Feature D: renderLeadRow with full contact info visible ─────────────────
   function renderLeadRow(lead, seenIds) {
     const row = document.createElement('div');
     const wasSeen = seenIds.has(String(lead.id));
-    row.className = 'glass rounded-2xl border transition-all p-4 flex flex-col sm:flex-row sm:items-center gap-4'
+    row.className = 'glass rounded-2xl border transition-all p-4 flex flex-col gap-3'
       + (wasSeen ? ' border-white/8 opacity-75' : ' border-white/5 hover:border-white/15');
     row.dataset.leadId = lead.id;
     const sc = scoreColor(lead.opportunity_score);
@@ -125,28 +124,46 @@ document.addEventListener('DOMContentLoaded', function () {
     const stars = hasRating
       ? '\u2605'.repeat(Math.round(parseFloat(lead.rating))) + '\u2606'.repeat(5 - Math.round(parseFloat(lead.rating)))
       : '';
+
+    // Contact fields — always visible (Feature D)
+    const phoneLine = lead.business_phone
+      ? `<a href="tel:${escHtml(lead.business_phone)}" class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-slate-200 px-3 py-1.5 rounded-lg font-medium transition-all">
+           <i class="fa-solid fa-phone text-[10px]"></i>${escHtml(lead.business_phone)}
+         </a>`
+      : `<span class="inline-flex items-center gap-1.5 text-xs bg-white/4 text-slate-600 px-3 py-1.5 rounded-lg"><i class="fa-solid fa-phone text-[10px]"></i>No phone listed</span>`;
+
+    const mapsLine = lead.maps_url
+      ? `<a href="${escHtml(lead.maps_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-slate-200 px-3 py-1.5 rounded-lg font-medium transition-all">
+           <i class="fa-brands fa-google text-[10px]"></i>Google Maps
+         </a>`
+      : '';
+
     row.innerHTML = `
-      <div class="flex-1 min-w-0">
-        <div class="flex items-center gap-2 flex-wrap mb-1">
-          <h3 class="font-bold text-white text-base">${escHtml(lead.business_name)}</h3>
-          <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${sc}">${scorLabel(lead.opportunity_score)} &middot; ${lead.opportunity_score}</span>
-          ${lead.no_website ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-white/8 text-slate-400 font-semibold">No Website</span>' : ''}
-          ${wasSeen ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-400 font-semibold">Seen</span>' : ''}
+      <div class="flex flex-col sm:flex-row sm:items-start gap-3">
+        <div class="flex-1 min-w-0">
+          <div class="flex items-center gap-2 flex-wrap mb-1">
+            <h3 class="font-bold text-white text-base">${escHtml(lead.business_name)}</h3>
+            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${sc}">${scorLabel(lead.opportunity_score)} &middot; ${lead.opportunity_score}</span>
+            ${lead.no_website ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-white/8 text-slate-400 font-semibold">No Website</span>' : ''}
+            ${wasSeen ? '<span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-400 font-semibold">Seen</span>' : ''}
+          </div>
+          <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mt-1">
+            <span><i class="fa-solid fa-location-dot mr-1"></i>${escHtml(lead.business_address || 'Address unavailable')}</span>
+            ${hasRating ? `<span class="text-amber-400" title="${lead.rating} stars">${stars} <span class="text-slate-400">${lead.rating}</span></span>` : ''}
+            ${lead.total_ratings ? `<span class="text-slate-500">${lead.total_ratings} reviews</span>` : ''}
+            ${lead.business_category ? `<span class="text-slate-500"><i class="fa-solid fa-tag mr-1"></i>${escHtml(lead.business_category)}</span>` : ''}
+          </div>
         </div>
-        <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mt-1">
-          <span><i class="fa-solid fa-location-dot mr-1"></i>${escHtml(lead.business_address || 'Address unavailable')}</span>
-          ${lead.business_phone
-            ? `<span class="text-slate-300"><i class="fa-solid fa-phone mr-1"></i>${escHtml(lead.business_phone)}</span>`
-            : `<span class="text-slate-600"><i class="fa-solid fa-phone mr-1"></i>No phone</span>`}
-          ${hasRating ? `<span class="text-amber-400" title="${lead.rating} stars">${stars} <span class="text-slate-400">${lead.rating}</span></span>` : ''}
-          ${lead.total_ratings ? `<span class="text-slate-500">${lead.total_ratings} reviews</span>` : ''}
+        <div class="flex items-center gap-2 shrink-0">
+          <a href="/portal/generate.php?lead_id=${encodeURIComponent(lead.id)}"
+             class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all">
+            <i class="fa-solid fa-bolt text-[10px]"></i> Build Site
+          </a>
         </div>
       </div>
-      <div class="flex items-center gap-2 shrink-0">
-        <a href="/portal/generate.php?lead_id=${encodeURIComponent(lead.id)}"
-           class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all">
-          <i class="fa-solid fa-bolt text-[10px]"></i> Build Site
-        </a>
+      <div class="flex flex-wrap gap-2 border-t border-white/5 pt-3">
+        ${phoneLine}
+        ${mapsLine}
       </div>
     `;
     return row;
@@ -175,6 +192,53 @@ document.addEventListener('DOMContentLoaded', function () {
     `;
     return row;
   }
+
+  // ── Feature C: Search History Sidebar ────────────────────────────────────────
+  function renderHistoryItem(entry) {
+    const li = document.createElement('button');
+    li.type = 'button';
+    li.className = 'w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/8 transition-all group';
+    const date = new Date(entry.created_at.replace(' ', 'T'));
+    const timeStr = date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }) + ' ' +
+                    date.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true });
+    li.innerHTML = `
+      <div class="flex items-start justify-between gap-2">
+        <div class="min-w-0">
+          <p class="text-xs font-semibold text-white truncate">${escHtml(entry.city)} &bull; ${escHtml(entry.industry)}</p>
+          ${entry.keywords ? `<p class="text-[10px] text-slate-500 truncate">${escHtml(entry.keywords)}</p>` : ''}
+        </div>
+        <span class="text-[10px] text-slate-600 shrink-0 font-medium mt-0.5">${entry.result_count > 0 ? entry.result_count + ' leads' : ''}</span>
+      </div>
+      <p class="text-[10px] text-slate-600 mt-0.5">${timeStr}</p>
+    `;
+    li.addEventListener('click', () => {
+      form.querySelector('[name="city"]').value = entry.city;
+      form.querySelector('[name="industry"]').value = entry.industry;
+      if (form.querySelector('[name="keywords"]')) form.querySelector('[name="keywords"]').value = entry.keywords || '';
+      runSearch(entry.city, entry.industry, entry.keywords || '', 10, seenCb?.checked ?? false, false);
+    });
+    return li;
+  }
+
+  function loadSearchHistory() {
+    const historyList = document.getElementById('searchHistoryList');
+    const historyEmpty = document.getElementById('searchHistoryEmpty');
+    if (!historyList) return;
+    fetch('/api/lead-search-history.php')
+      .then(r => r.json())
+      .then(data => {
+        historyList.innerHTML = '';
+        if (!data.history || !data.history.length) {
+          if (historyEmpty) historyEmpty.classList.remove('hidden');
+          return;
+        }
+        if (historyEmpty) historyEmpty.classList.add('hidden');
+        data.history.forEach(entry => historyList.appendChild(renderHistoryItem(entry)));
+      })
+      .catch(() => {});
+  }
+
+  loadSearchHistory();
 
   // ── Main search ───────────────────────────────────────────────────────────────
   function runSearch(city, industry, keywords, leadCount, includeSeen, forceRefresh) {
@@ -218,7 +282,10 @@ document.addEventListener('DOMContentLoaded', function () {
       }
       if (typeof data.searches_used === 'number') updateLiveQuotaCounter(data.searches_used);
 
-      const seenIds = getSeenIds();
+      // BUG A FIX: Snapshot seen IDs BEFORE marking the new results as seen.
+      // This way the filter pass below correctly identifies which were already seen
+      // from a PREVIOUS search, not from this one.
+      const seenIdsBefore = getSeenIds();
       if (data.leads && data.leads.length) markSeen(data.leads.map(l => l.id));
 
       if (data.from_cache) {
@@ -236,8 +303,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       if (data.leads && data.leads.length > 0) {
-        const currentSeenIds = getSeenIds();
-        const seenCount = data.leads.filter(l => currentSeenIds.has(String(l.id))).length;
+        // BUG B FIX: Count "seen before" using the pre-markSeen snapshot
+        const seenCount = data.leads.filter(l => seenIdsBefore.has(String(l.id))).length;
         const summary = document.createElement('div');
         summary.className = 'flex items-center justify-between text-xs text-slate-500 mb-2 px-1';
         summary.innerHTML = `
@@ -247,7 +314,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <strong class="text-white">${escHtml(industry)}</strong>
             ${keywords ? `&bull; <em class="text-slate-400">${escHtml(keywords)}</em>` : ''}
           </span>
-          ${seenCount > 0 ? `<span class="text-slate-600">${seenCount} seen before</span>` : ''}
+          ${seenCount > 0 ? `<span class="text-slate-600" id="seenCountBadge">${seenCount} seen before</span>` : '<span id="seenCountBadge"></span>'}
         `;
         leadsList.appendChild(summary);
       }
@@ -258,10 +325,10 @@ document.addEventListener('DOMContentLoaded', function () {
         empty.textContent = 'No leads found. Try a different city or industry.';
         leadsList.appendChild(empty);
       } else {
-        const currentSeenIds = getSeenIds();
         let toShow = data.leads;
         if (!includeSeen) {
-          toShow = data.leads.filter(l => !currentSeenIds.has(String(l.id)));
+          // BUG A FIX: filter using seenIdsBefore (before this search's results were marked)
+          toShow = data.leads.filter(l => !seenIdsBefore.has(String(l.id)));
           if (toShow.length === 0) {
             const allSeen = document.createElement('p');
             allSeen.className = 'text-slate-400 text-center py-6 text-sm';
@@ -269,7 +336,7 @@ document.addEventListener('DOMContentLoaded', function () {
             leadsList.appendChild(allSeen);
           }
         }
-        toShow.forEach(lead => leadsList.appendChild(renderLeadRow(lead, currentSeenIds)));
+        toShow.forEach(lead => leadsList.appendChild(renderLeadRow(lead, seenIdsBefore)));
       }
 
       if (data.is_free_tier && data.locked_leads && data.locked_leads.length) {
@@ -278,6 +345,9 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         lockedWrap.classList.add('hidden');
       }
+
+      // Feature C: reload history sidebar after a successful search
+      loadSearchHistory();
     })
     .catch(() => {
       loadingEl.classList.add('hidden');

@@ -62,6 +62,12 @@ $pageTitle = 'Find Leads — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
+<!-- Feature C: Two-column layout with history sidebar -->
+<div class="flex gap-6 items-start">
+
+<!-- ====== MAIN COLUMN ====== -->
+<div class="flex-1 min-w-0">
+
 <div class="mb-6">
   <h1 class="text-3xl font-bold tracking-tight">Find Leads</h1>
   <p class="text-slate-400 text-sm mt-1">Discover local businesses with no website &mdash; your next paying clients.</p>
@@ -303,6 +309,24 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
+</div><!-- end main column -->
+
+<!-- ====== Feature C: HISTORY SIDEBAR ====== -->
+<aside class="w-64 shrink-0 hidden lg:block">
+  <div class="glass rounded-2xl border border-white/5 overflow-hidden sticky top-6">
+    <div class="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div class="flex items-center gap-2">
+        <i class="fa-solid fa-clock-rotate-left text-slate-400 text-xs"></i>
+        <p class="text-xs font-semibold text-white uppercase tracking-wider">Recent Searches</p>
+      </div>
+    </div>
+    <div id="searchHistoryList" class="p-2 space-y-0.5 max-h-[70vh] overflow-y-auto"></div>
+    <p id="searchHistoryEmpty" class="text-xs text-slate-600 text-center py-6 px-4">No searches yet. Run a search to see your history here.</p>
+  </div>
+</aside>
+
+</div><!-- end two-column flex -->
+
 <script
   id="leadsPageConfig"
   data-plan="<?= htmlspecialchars($plan) ?>"
@@ -312,4 +336,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-limit="<?= $FREE_SEARCH_LIMIT ?>"
   data-slider-max="<?= $slider_max ?>"
 ></script>
-<script src="/assets/js/leads.js?v=v800"></script>
+<script src="/assets/js/leads.js?v=v900"></script>
