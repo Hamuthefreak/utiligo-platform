@@ -62,7 +62,7 @@ $pageTitle = 'Find Leads — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
-<!-- Feature C: Two-column layout with history sidebar -->
+<?php /* ====== PAGE LAYOUT: main content + history sidebar ====== */ ?>
 <div class="flex gap-6 items-start">
 
 <!-- ====== MAIN COLUMN ====== -->
@@ -221,7 +221,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <label class="block text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5">City <span class="text-red-400">*</span></label>
         <div class="relative">
           <i class="fa-solid fa-city absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
-          <input type="text" name="city" placeholder="e.g. Calgary" required
+          <input type="text" name="city" id="fieldCity" placeholder="e.g. Calgary" required
                  class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:outline-none focus:border-white/40 transition-colors">
         </div>
       </div>
@@ -229,7 +229,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <label class="block text-xs text-slate-500 font-semibold uppercase tracking-wider mb-1.5">Industry <span class="text-red-400">*</span></label>
         <div class="relative">
           <i class="fa-solid fa-briefcase absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
-          <input type="text" name="industry" placeholder="e.g. Plumber, Dentist" required
+          <input type="text" name="industry" id="fieldIndustry" placeholder="e.g. Plumber, Dentist" required
                  class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:outline-none focus:border-white/40 transition-colors">
         </div>
       </div>
@@ -239,7 +239,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </label>
         <div class="relative">
           <i class="fa-solid fa-tags absolute left-3 top-1/2 -translate-y-1/2 text-slate-500 text-xs"></i>
-          <input type="text" name="keywords" placeholder="e.g. no website, family-owned"
+          <input type="text" name="keywords" id="fieldKeywords" placeholder="e.g. no website, family-owned"
                  class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:outline-none focus:border-white/40 transition-colors">
         </div>
       </div>
@@ -309,23 +309,37 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-</div><!-- end main column -->
+</div><!-- /main column -->
 
-<!-- ====== Feature C: HISTORY SIDEBAR ====== -->
-<aside class="w-64 shrink-0 hidden lg:block">
-  <div class="glass rounded-2xl border border-white/5 overflow-hidden sticky top-6">
-    <div class="flex items-center justify-between px-4 py-3 border-b border-white/5">
-      <div class="flex items-center gap-2">
-        <i class="fa-solid fa-clock-rotate-left text-slate-400 text-xs"></i>
-        <p class="text-xs font-semibold text-white uppercase tracking-wider">Recent Searches</p>
+<!-- ====== HISTORY SIDEBAR ====== -->
+<aside class="w-64 shrink-0 hidden lg:flex flex-col gap-3">
+
+  <div class="bg-slate-900/95 border border-white/5 rounded-2xl overflow-hidden backdrop-blur-xl sticky top-6">
+
+    <!-- Header -->
+    <div class="px-4 py-3.5 border-b border-white/5 flex items-center gap-2.5">
+      <div class="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center shrink-0">
+        <i class="fa-solid fa-clock-rotate-left text-slate-300 text-xs"></i>
       </div>
+      <p class="text-sm font-semibold text-white">Recent Searches</p>
     </div>
-    <div id="searchHistoryList" class="p-2 space-y-0.5 max-h-[70vh] overflow-y-auto"></div>
-    <p id="searchHistoryEmpty" class="text-xs text-slate-600 text-center py-6 px-4">No searches yet. Run a search to see your history here.</p>
+
+    <!-- List -->
+    <div id="searchHistoryList" class="py-1.5 max-h-[65vh] overflow-y-auto"></div>
+
+    <!-- Empty state -->
+    <div id="searchHistoryEmpty" class="px-5 py-8 text-center">
+      <div class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mx-auto mb-3">
+        <i class="fa-solid fa-magnifying-glass text-slate-600 text-sm"></i>
+      </div>
+      <p class="text-xs text-slate-500 leading-relaxed">No searches yet.<br>Run one to see history here.</p>
+    </div>
+
   </div>
+
 </aside>
 
-</div><!-- end two-column flex -->
+</div><!-- /page flex -->
 
 <script
   id="leadsPageConfig"
@@ -336,4 +350,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-limit="<?= $FREE_SEARCH_LIMIT ?>"
   data-slider-max="<?= $slider_max ?>"
 ></script>
-<script src="/assets/js/leads.js?v=v900"></script>
+<script src="/assets/js/leads.js?v=v1000"></script>

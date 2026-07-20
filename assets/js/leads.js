@@ -11,6 +11,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const PLAN     = cfg?.dataset.plan      ?? 'free';
   const IS_PAID  = PLAN === 'pro' || PLAN === 'entrepreneur';
 
+  // These track current counts in memory, synced from server responses
   let leadUsed   = parseInt(cfg?.dataset.leadUsed  ?? 0);
   let leadLimit  = parseInt(cfg?.dataset.leadLimit ?? 0);
   let quotaUsed  = parseInt(cfg?.dataset.quotaUsed ?? 0);
@@ -24,7 +25,6 @@ document.addEventListener('DOMContentLoaded', function () {
     try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
     catch { return new Set(); }
   }
-  // BUG A FIX: markSeen is now called AFTER rendering, not before the seen-filter pass.
   function markSeen(ids) {
     try {
       const existing = getSeenIds();
@@ -49,6 +49,7 @@ document.addEventListener('DOMContentLoaded', function () {
   const seenCb = document.getElementById('includeSeenLeads');
 
   // ── Live Lead Unlocks counter (Pro only) ─────────────────────────────────────
+  // Called with the server-authoritative count after each search response.
   function syncLeadCounter(serverCount, serverLimit) {
     if (typeof serverCount === 'number' && serverCount >= 0) leadUsed = serverCount;
     if (typeof serverLimit === 'number' && serverLimit > 0)  leadLimit = serverLimit;
@@ -69,11 +70,10 @@ document.addEventListener('DOMContentLoaded', function () {
     if (countEl)  countEl.textContent  = leadUsed + ' / ' + leadLimit;
     if (noteEl)   noteEl.textContent   = Math.max(0, leadLimit - leadUsed) + ' remaining';
 
-    if (pct >= 80 && upgradeBtn) upgradeBtn.classList.remove('hidden');
-  }
-
-  function updateLiveLeadCounter(newUnlocked) {
-    syncLeadCounter(leadUsed + newUnlocked, leadLimit);
+    if (upgradeBtn) {
+      if (pct >= 80) upgradeBtn.classList.remove('hidden');
+      else           upgradeBtn.classList.add('hidden');
+    }
   }
 
   // ── Live Quota counter (Free only) ──────────────────────────────────────────
@@ -112,10 +112,10 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   function scorLabel(s) { return s >= 80 ? 'High' : s >= 60 ? 'Med' : 'Low'; }
 
-  // ── Feature D: renderLeadRow with full contact info visible ─────────────────
-  function renderLeadRow(lead, seenIds) {
+  // ── Lead card (Feature D: contact info always visible) ─────────────────────────
+  function renderLeadRow(lead, seenIdsBefore) {
     const row = document.createElement('div');
-    const wasSeen = seenIds.has(String(lead.id));
+    const wasSeen = seenIdsBefore.has(String(lead.id));
     row.className = 'glass rounded-2xl border transition-all p-4 flex flex-col gap-3'
       + (wasSeen ? ' border-white/8 opacity-75' : ' border-white/5 hover:border-white/15');
     row.dataset.leadId = lead.id;
@@ -125,7 +125,6 @@ document.addEventListener('DOMContentLoaded', function () {
       ? '\u2605'.repeat(Math.round(parseFloat(lead.rating))) + '\u2606'.repeat(5 - Math.round(parseFloat(lead.rating)))
       : '';
 
-    // Contact fields — always visible (Feature D)
     const phoneLine = lead.business_phone
       ? `<a href="tel:${escHtml(lead.business_phone)}" class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-slate-200 px-3 py-1.5 rounded-lg font-medium transition-all">
            <i class="fa-solid fa-phone text-[10px]"></i>${escHtml(lead.business_phone)}
@@ -193,46 +192,61 @@ document.addEventListener('DOMContentLoaded', function () {
     return row;
   }
 
-  // ── Feature C: Search History Sidebar ────────────────────────────────────────
+  // ── Feature C: History sidebar ──────────────────────────────────────────────────
+  function fillAndFocusSearch(city, industry, keywords) {
+    document.getElementById('fieldCity').value     = city;
+    document.getElementById('fieldIndustry').value = industry;
+    document.getElementById('fieldKeywords').value = keywords || '';
+    document.getElementById('fieldCity').focus();
+    document.getElementById('leadSearchForm').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function renderHistoryItem(entry) {
-    const li = document.createElement('button');
-    li.type = 'button';
-    li.className = 'w-full text-left px-3 py-2.5 rounded-xl hover:bg-white/8 transition-all group';
-    const date = new Date(entry.created_at.replace(' ', 'T'));
-    const timeStr = date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }) + ' ' +
-                    date.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true });
-    li.innerHTML = `
-      <div class="flex items-start justify-between gap-2">
-        <div class="min-w-0">
-          <p class="text-xs font-semibold text-white truncate">${escHtml(entry.city)} &bull; ${escHtml(entry.industry)}</p>
-          ${entry.keywords ? `<p class="text-[10px] text-slate-500 truncate">${escHtml(entry.keywords)}</p>` : ''}
-        </div>
-        <span class="text-[10px] text-slate-600 shrink-0 font-medium mt-0.5">${entry.result_count > 0 ? entry.result_count + ' leads' : ''}</span>
+    const item = document.createElement('div');
+    item.className = 'group px-3 py-2.5 mx-1.5 my-0.5 rounded-xl hover:bg-white/6 transition-all cursor-default';
+
+    const date   = new Date(entry.created_at.replace(' ', 'T'));
+    const mo     = date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    const time   = date.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true });
+
+    item.innerHTML = `
+      <div class="flex items-start justify-between gap-1.5 mb-1">
+        <p class="text-xs font-semibold text-white leading-snug truncate flex-1">${escHtml(entry.city)}</p>
+        ${entry.result_count > 0
+          ? `<span class="text-[10px] font-bold text-slate-400 shrink-0 mt-0.5">${entry.result_count}</span>`
+          : ''}
       </div>
-      <p class="text-[10px] text-slate-600 mt-0.5">${timeStr}</p>
+      <p class="text-[11px] text-slate-400 truncate leading-snug">${escHtml(entry.industry)}${entry.keywords ? ' &bull; ' + escHtml(entry.keywords) : ''}</p>
+      <div class="flex items-center justify-between mt-2 gap-2">
+        <p class="text-[10px] text-slate-600">${mo} &middot; ${time}</p>
+        <button type="button" data-city="${escHtml(entry.city)}" data-industry="${escHtml(entry.industry)}" data-keywords="${escHtml(entry.keywords || '')}"
+          class="view-search-btn opacity-0 group-hover:opacity-100 inline-flex items-center gap-1 text-[10px] font-semibold text-slate-300 hover:text-white bg-white/8 hover:bg-white/15 px-2 py-1 rounded-lg transition-all">
+          <i class="fa-solid fa-arrow-up-right text-[8px]"></i> View
+        </button>
+      </div>
     `;
-    li.addEventListener('click', () => {
-      form.querySelector('[name="city"]').value = entry.city;
-      form.querySelector('[name="industry"]').value = entry.industry;
-      if (form.querySelector('[name="keywords"]')) form.querySelector('[name="keywords"]').value = entry.keywords || '';
-      runSearch(entry.city, entry.industry, entry.keywords || '', 10, seenCb?.checked ?? false, false);
+
+    item.querySelector('.view-search-btn').addEventListener('click', function () {
+      fillAndFocusSearch(this.dataset.city, this.dataset.industry, this.dataset.keywords);
     });
-    return li;
+
+    return item;
   }
 
   function loadSearchHistory() {
-    const historyList = document.getElementById('searchHistoryList');
+    const historyList  = document.getElementById('searchHistoryList');
     const historyEmpty = document.getElementById('searchHistoryEmpty');
     if (!historyList) return;
+
     fetch('/api/lead-search-history.php')
       .then(r => r.json())
       .then(data => {
         historyList.innerHTML = '';
         if (!data.history || !data.history.length) {
-          if (historyEmpty) historyEmpty.classList.remove('hidden');
+          if (historyEmpty) historyEmpty.style.display = '';
           return;
         }
-        if (historyEmpty) historyEmpty.classList.add('hidden');
+        if (historyEmpty) historyEmpty.style.display = 'none';
         data.history.forEach(entry => historyList.appendChild(renderHistoryItem(entry)));
       })
       .catch(() => {});
@@ -274,17 +288,20 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // Sync live counters from server response
-      if (!data.is_free_tier && typeof data.pro_lead_count === 'number') {
+      // ── Sync counters ───────────────────────────────────────────────────────
+      // Pro bar: server returns authoritative pro_lead_count after every search.
+      // We always call syncLeadCounter when the fields are present so the bar
+      // stays live even if no new unlocks happened (it simply re-renders the same
+      // value, which is correct and ensures stale numbers never persist).
+      if (typeof data.pro_lead_count === 'number') {
         syncLeadCounter(data.pro_lead_count, data.lead_limit || leadLimit);
-      } else if (typeof data.newly_unlocked === 'number' && data.newly_unlocked > 0) {
-        updateLiveLeadCounter(data.newly_unlocked);
       }
-      if (typeof data.searches_used === 'number') updateLiveQuotaCounter(data.searches_used);
+      // Free quota bar
+      if (typeof data.searches_used === 'number') {
+        updateLiveQuotaCounter(data.searches_used);
+      }
 
-      // BUG A FIX: Snapshot seen IDs BEFORE marking the new results as seen.
-      // This way the filter pass below correctly identifies which were already seen
-      // from a PREVIOUS search, not from this one.
+      // BUG A FIX: snapshot seen IDs BEFORE marking new results seen.
       const seenIdsBefore = getSeenIds();
       if (data.leads && data.leads.length) markSeen(data.leads.map(l => l.id));
 
@@ -303,7 +320,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       if (data.leads && data.leads.length > 0) {
-        // BUG B FIX: Count "seen before" using the pre-markSeen snapshot
+        // BUG B FIX: use pre-markSeen snapshot for the "X seen before" count
         const seenCount = data.leads.filter(l => seenIdsBefore.has(String(l.id))).length;
         const summary = document.createElement('div');
         summary.className = 'flex items-center justify-between text-xs text-slate-500 mb-2 px-1';
@@ -314,7 +331,7 @@ document.addEventListener('DOMContentLoaded', function () {
             <strong class="text-white">${escHtml(industry)}</strong>
             ${keywords ? `&bull; <em class="text-slate-400">${escHtml(keywords)}</em>` : ''}
           </span>
-          ${seenCount > 0 ? `<span class="text-slate-600" id="seenCountBadge">${seenCount} seen before</span>` : '<span id="seenCountBadge"></span>'}
+          ${seenCount > 0 ? `<span class="text-slate-600">${seenCount} seen before</span>` : ''}
         `;
         leadsList.appendChild(summary);
       }
@@ -327,7 +344,7 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         let toShow = data.leads;
         if (!includeSeen) {
-          // BUG A FIX: filter using seenIdsBefore (before this search's results were marked)
+          // BUG A FIX: filter using pre-markSeen snapshot
           toShow = data.leads.filter(l => !seenIdsBefore.has(String(l.id)));
           if (toShow.length === 0) {
             const allSeen = document.createElement('p');
@@ -346,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function () {
         lockedWrap.classList.add('hidden');
       }
 
-      // Feature C: reload history sidebar after a successful search
+      // Refresh history sidebar after each successful search
       loadSearchHistory();
     })
     .catch(() => {
@@ -359,10 +376,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   form.addEventListener('submit', function (e) {
     e.preventDefault();
-    const city       = form.querySelector('[name="city"]').value.trim();
-    const industry   = form.querySelector('[name="industry"]').value.trim();
-    const keywords   = form.querySelector('[name="keywords"]')?.value.trim() || '';
-    const leadCount  = parseInt(sliderHid?.value) || 10;
+    const city        = form.querySelector('[name="city"]').value.trim();
+    const industry    = form.querySelector('[name="industry"]').value.trim();
+    const keywords    = form.querySelector('[name="keywords"]')?.value.trim() || '';
+    const leadCount   = parseInt(sliderHid?.value) || 10;
     const includeSeen = seenCb?.checked ?? false;
     if (!city || !industry) return;
     runSearch(city, industry, keywords, leadCount, includeSeen, false);
@@ -376,9 +393,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const keywords  = params.get('keywords') || '';
     const leadCount = parseInt(params.get('count')) || 10;
     if (city && industry) {
-      form.querySelector('[name="city"]').value = city;
-      form.querySelector('[name="industry"]').value = industry;
-      if (form.querySelector('[name="keywords"]')) form.querySelector('[name="keywords"]').value = keywords;
+      document.getElementById('fieldCity').value     = city;
+      document.getElementById('fieldIndustry').value = industry;
+      document.getElementById('fieldKeywords').value = keywords;
       runSearch(city, industry, keywords, leadCount, false, false);
     }
   }
