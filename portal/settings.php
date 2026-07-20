@@ -158,8 +158,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             // Write the enabled flag
             $userdb->prepare('UPDATE utiligo_users SET two_factor_enabled = 1 WHERE id = ?')->execute([$user['id']]);
-            // Hmm – need a separate column to distinguish TOTP vs email when both share two_factor_enabled.
-            // We store the presence of two_factor_secret as the TOTP marker.
             unset($_SESSION['totp_pending_secret']);
             $totp_enabled    = true;
             $email2fa_enabled = false;
@@ -517,8 +515,9 @@ function togglePw(id,btn){const i=document.getElementById(id);if(!i)return;const
         </p>
         <div class="flex items-start gap-4">
           <div class="w-32 h-32 bg-white rounded-xl flex items-center justify-center shrink-0 overflow-hidden p-1">
-            <img src="https://chart.googleapis.com/chart?chs=120x120&cht=qr&chl=<?= urlencode($totp_setup_uri) ?>&choe=UTF-8"
-                 alt="QR Code" class="w-full h-full" loading="lazy">
+            <!-- api.qrserver.com — free, reliable, no API key needed (replaces deprecated Google Charts) -->
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&format=png&ecc=M&data=<?= urlencode($totp_setup_uri) ?>"
+                 alt="Authenticator QR Code" width="120" height="120" class="w-full h-full" loading="eager">
           </div>
           <div class="flex-1">
             <p class="text-xs text-slate-400 mb-2">Can&rsquo;t scan? Enter this key manually:</p>
@@ -720,12 +719,10 @@ function copySecret(){const el=document.getElementById('tfaSecretDisplay');if(!e
     </p>
   </div>
 </div>
-<!-- Toggle switch CSS fix: Tailwind peer requires the label trick so we JS-proxy instead -->
 <style>
 label:has(input[type=checkbox]:checked) .peer-indicator { transform: translateX(1rem); background:#0f172a; }
 </style>
 <script>
-// Make the visual toggle track work (peer utilities need sibling, use JS proxy)
 document.querySelectorAll('.sr-only').forEach(cb=>{
   const track=cb.nextElementSibling;
   const dot=track?.nextElementSibling;

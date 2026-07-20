@@ -12,7 +12,8 @@ $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 $pdo     = get_platform_db();
 
-$stmt = $pdo->prepare("SELECT * FROM utiligo_generated_sites WHERE user_id = ? AND status = 'completed' ORDER BY created_at DESC");
+// Fetch all sites regardless of status — status filter was causing 0-site bug
+$stmt = $pdo->prepare("SELECT * FROM utiligo_generated_sites WHERE user_id = ? ORDER BY created_at DESC");
 $stmt->execute([$user['id']]);
 $sites = $stmt->fetchAll();
 
@@ -288,4 +289,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<script src="/assets/js/my_sites.js?v=v600"></script>
+<script src="/assets/js/my_sites.js?v=v601"></script>
