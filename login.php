@@ -26,26 +26,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result['success']) {
             $userdb = get_user_db();
 
-            // Detect whether two_factor_enabled column exists yet.
-            // If the migration hasn't run, fall back to a query without it.
+            // Fetch user with 2FA columns — gracefully handle missing columns
             try {
-                $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified, two_factor_enabled FROM utiligo_users WHERE email = ? LIMIT 1');
+                $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified, two_factor_enabled, two_factor_secret FROM utiligo_users WHERE email = ? LIMIT 1');
                 $stmt->execute([strtolower(trim($email))]);
             } catch (\PDOException $e) {
-                // Column missing — run without it (2FA treated as disabled)
-                $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified FROM utiligo_users WHERE email = ? LIMIT 1');
-                $stmt->execute([strtolower(trim($email))]);
+                try {
+                    $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified, two_factor_enabled FROM utiligo_users WHERE email = ? LIMIT 1');
+                    $stmt->execute([strtolower(trim($email))]);
+                } catch (\PDOException $e2) {
+                    $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified FROM utiligo_users WHERE email = ? LIMIT 1');
+                    $stmt->execute([strtolower(trim($email))]);
+                }
             }
             $u = $stmt->fetch();
             $u['two_factor_enabled'] = $u['two_factor_enabled'] ?? 0;
+            $u['two_factor_secret']  = $u['two_factor_secret']  ?? null;
 
             if (EMAIL_VERIFICATION_REQUIRED && !$u['email_verified']) {
                 $unverifiedEmail = $u['email'];
                 $error = 'Please verify your email before logging in.';
             } elseif ($u['two_factor_enabled']) {
-                $code = create_2fa_code($u['id']);
-                send_2fa_code_email($u['email'], $u['full_name'], $code);
                 $_SESSION['pending_2fa_user_id'] = $u['id'];
+
+                // If a TOTP secret exists the user set up an authenticator app — use TOTP.
+                // Otherwise fall back to emailing a code.
+                if (!empty($u['two_factor_secret'])) {
+                    $_SESSION['pending_2fa_method'] = 'totp';
+                    // Don't send an email — app generates the code
+                } else {
+                    $_SESSION['pending_2fa_method'] = 'email';
+                    $code = create_2fa_code($u['id']);
+                    send_2fa_code_email($u['email'], $u['full_name'], $code);
+                }
+
                 header('Location: /verify-2fa.php');
                 exit;
             } else {
