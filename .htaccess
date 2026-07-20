@@ -1,6 +1,11 @@
 RewriteEngine On
 
 # ---------------------------------------------------------------
+# 404 HANDLER
+# ---------------------------------------------------------------
+ErrorDocument 404 /404.php
+
+# ---------------------------------------------------------------
 # ROUTING
 # ---------------------------------------------------------------
 
@@ -32,33 +37,13 @@ RewriteRule ^includes/        - [F,L]
 # SECURITY HEADERS
 # ---------------------------------------------------------------
 <IfModule mod_headers.c>
-    # Prevent MIME sniffing
     Header always set X-Content-Type-Options "nosniff"
-
-    # Prevent clickjacking
     Header always set X-Frame-Options "SAMEORIGIN"
-
-    # Stop referrer leakage
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
-
-    # Prevent browsers caching sensitive pages
     Header always set Cache-Control "no-store, no-cache, must-revalidate" env=IS_PORTAL
-
-    # Basic XSS protection (legacy browsers)
     Header always set X-XSS-Protection "1; mode=block"
-
-    # Content Security Policy
-    # - default: same origin only
-    # - scripts: self + cdn.tailwindcss.com + cdnjs (Font Awesome)
-    # - styles:  self + cdnjs + fonts.googleapis.com + unsafe-inline (Tailwind requires it)
-    # - fonts:   self + fonts.gstatic.com + cdnjs
-    # - frames:  self (editor iframe)
-    # - connect: self + api.brevo.com + api.stripe.com
     Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: https:; frame-src 'self'; connect-src 'self' https://api.brevo.com https://api.stripe.com; object-src 'none'; base-uri 'self';"
-
-    # Remove PHP version disclosure
     Header always unset X-Powered-By
 </IfModule>
 
-# Hide server signature
 ServerSignature Off

@@ -7,23 +7,31 @@ $pageTitle = '404 — Page Not Found — Utiligo';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
-<section class="min-h-[70vh] flex items-center justify-center px-6 py-20">
+<section class="min-h-[80vh] flex items-center justify-center px-6 py-20">
   <div class="text-center max-w-lg mx-auto">
 
     <!-- Glowing 404 -->
-    <div class="relative inline-block mb-8">
-      <div class="absolute inset-0 blur-3xl opacity-30 bg-emerald-500 rounded-full scale-150"></div>
+    <div class="relative inline-block mb-8 select-none">
+      <div class="absolute inset-0 blur-3xl opacity-25 bg-emerald-500 rounded-full scale-150 pointer-events-none"></div>
       <p class="relative text-[9rem] font-black leading-none tracking-tighter text-transparent bg-clip-text"
-         style="background-image: linear-gradient(135deg, #10b981 0%, #34d399 50%, #6ee7b7 100%);">
+         style="background-image:linear-gradient(135deg,#10b981 0%,#34d399 50%,#6ee7b7 100%);">
         404
       </p>
     </div>
 
     <h1 class="text-2xl font-bold mb-3">This page doesn&rsquo;t exist</h1>
-    <p class="text-slate-400 mb-8 leading-relaxed">
+    <p class="text-slate-400 mb-2 leading-relaxed">
       The page you&rsquo;re looking for may have been moved, deleted,
       or you might have typed the URL wrong.
     </p>
+    <?php
+      $bad = htmlspecialchars(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '');
+      if ($bad && $bad !== '/404.php'):
+    ?>
+    <p class="text-xs text-slate-600 font-mono mb-8 break-all"><?= $bad ?></p>
+    <?php else: ?>
+    <p class="mb-8"></p>
+    <?php endif; ?>
 
     <div class="flex flex-col sm:flex-row gap-3 justify-center">
       <?php if (function_exists('is_logged_in') && is_logged_in()): ?>
@@ -43,7 +51,7 @@ require_once __DIR__ . '/includes/header.php';
       </button>
     </div>
 
-    <!-- Subtle suggestion links -->
+    <!-- Suggestion links -->
     <div class="mt-10 pt-8 border-t border-white/5">
       <p class="text-xs text-slate-500 uppercase tracking-widest mb-4">Maybe you were looking for</p>
       <div class="flex flex-wrap gap-2 justify-center">
@@ -54,7 +62,9 @@ require_once __DIR__ . '/includes/header.php';
         <a href="/portal/leads.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Find Leads</a>
         <a href="/portal/generate.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Generate Site</a>
         <a href="/portal/my_sites.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">My Sites</a>
+        <a href="/portal/settings.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Settings</a>
         <?php endif; ?>
+        <a href="/contact.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Contact</a>
       </div>
     </div>
 
