@@ -61,11 +61,9 @@ document.addEventListener('DOMContentLoaded', function () {
     const pct = Math.min(100, Math.round((leadUsed / leadLimit) * 100));
     bar.style.width = pct + '%';
 
-    // Safe class swap — avoids regex issues with Tailwind slash-classes
-    bar.classList.remove('bg-red-500', 'bg-amber-500', 'bg-white\/60');
-    if (pct >= 100)     bar.classList.add('bg-red-500');
-    else if (pct >= 80) bar.classList.add('bg-amber-500');
-    else                bar.classList.add('bg-white\/60');
+    // className assignment avoids classList slash-class mismatch with Tailwind
+    bar.className = 'h-2 rounded-full transition-all ' +
+      (pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-white/60');
 
     if (subtitle) subtitle.textContent = leadUsed + ' of ' + leadLimit + ' used';
     if (countEl)  countEl.textContent  = leadUsed + ' / ' + leadLimit;
