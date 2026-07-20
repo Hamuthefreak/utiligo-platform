@@ -54,7 +54,7 @@ function _nav_active(string $href, string $current): string {
 
 <aside id="sidebar" class="w-64 h-screen bg-slate-900/95 border-r border-white/5 flex flex-col lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl">
 
-  <!-- Logo — clicking goes to public home page -->
+  <!-- Logo -->
   <div class="px-5 py-5 border-b border-white/5">
     <a href="/" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
@@ -81,7 +81,6 @@ function _nav_active(string $href, string $current): string {
     <a href="/portal/debug.php" class="nav-link <?= _nav_active('/portal/debug.php', $_path) ?>"><i class="fa-solid fa-bug"></i> Debug Panel</a>
     <?php endif; ?>
 
-    <!-- Back to Site -->
     <div class="pt-3 mt-3 border-t border-white/5">
       <a href="/" class="nav-link text-slate-500 hover:text-white">
         <i class="fa-solid fa-arrow-up-right-from-square"></i>
@@ -120,7 +119,7 @@ function _nav_active(string $href, string $current): string {
       <p class="text-xs font-semibold text-white truncate"><?= $_name ?></p>
       <p class="text-xs text-slate-500"><?= $_plan_label ?> Plan</p>
     </div>
-    <a href="/includes/auth.php?action=logout" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
+    <a href="/logout.php" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
     </a>
   </div>
@@ -132,7 +131,6 @@ function _nav_active(string $href, string $current): string {
   <button onclick="openSidebar()" class="text-slate-400 hover:text-white">
     <i class="fa-solid fa-bars text-lg"></i>
   </button>
-  <!-- Mobile logo — also goes to home -->
   <a href="/" class="flex items-center gap-2">
     <?php if ($_has_logo): ?>
       <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-7 w-auto">
@@ -143,7 +141,7 @@ function _nav_active(string $href, string $current): string {
     <?php endif; ?>
     <span class="font-black text-base">Utiligo</span>
   </a>
-  <a href="/includes/auth.php?action=logout" class="text-slate-400 hover:text-white text-sm">
+  <a href="/logout.php" class="text-slate-400 hover:text-white text-sm">
     <i class="fa-solid fa-arrow-right-from-bracket"></i>
   </a>
 </header>
