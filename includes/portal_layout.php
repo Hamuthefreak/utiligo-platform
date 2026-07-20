@@ -77,6 +77,7 @@ function _nav_active(string $href, string $current): string {
     <a href="/portal/my_sites.php" class="nav-link <?= _nav_active('/portal/my_sites.php', $_path) ?>"><i class="fa-solid fa-folder-open"></i> My Sites</a>
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mt-5 mb-2">Account</p>
     <a href="/portal/billing.php"  class="nav-link <?= _nav_active('/portal/billing.php',  $_path) ?>"><i class="fa-solid fa-credit-card"></i> Billing</a>
+    <a href="/portal/settings.php" class="nav-link <?= _nav_active('/portal/settings.php', $_path) ?>"><i class="fa-solid fa-gear"></i> Settings</a>
     <?php if (($_user['admin_flag'] ?? 0) && (defined('DEBUG_MODE') && DEBUG_MODE)): ?>
     <a href="/portal/debug.php" class="nav-link <?= _nav_active('/portal/debug.php', $_path) ?>"><i class="fa-solid fa-bug"></i> Debug Panel</a>
     <?php endif; ?>
