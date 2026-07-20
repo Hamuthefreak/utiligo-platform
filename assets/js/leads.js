@@ -28,7 +28,6 @@ document.addEventListener('DOMContentLoaded', function () {
     try {
       const existing = getSeenIds();
       ids.forEach(id => existing.add(String(id)));
-      // Cap at 2000 entries to avoid bloat
       const arr = [...existing];
       if (arr.length > 2000) arr.splice(0, arr.length - 2000);
       localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
@@ -49,7 +48,6 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // Seen-leads checkbox
   const seenCb = document.getElementById('includeSeenLeads');
-  // Sync visible checkbox icon
   if (seenCb) {
     seenCb.addEventListener('change', () => {
       const icon = seenCb.closest('label').querySelector('.peer-checked-show');
@@ -100,38 +98,53 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ── Dot map ────────────────────────────────────────────────────────────────────────
+  // Store last render args so resize can redraw
+  let lastMapLeads = [];
+  let lastMapCity  = '';
+
   function renderDotMap(leads, city) {
     const wrap = document.getElementById('leadMapWrap');
     const map  = document.getElementById('leadMap');
     const sub  = document.getElementById('mapSubtitle');
     if (!wrap || !map || !leads.length) { wrap && wrap.classList.add('hidden'); return; }
+
+    // Show container first, then force reflow before reading width
+    // so offsetWidth reflects the real rendered size (fixes mobile zero-width bug)
     wrap.classList.remove('hidden');
+    void wrap.offsetHeight; // trigger layout
+
     if (sub) sub.textContent = '\u2014 ' + city;
     map.innerHTML = '';
 
-    // Draw a subtle grid background
+    // Prevent dots from overflowing the container on narrow screens
+    map.style.overflow = 'hidden';
+    map.style.position = 'relative';
+
+    // Draw subtle grid background
     map.style.backgroundImage = [
       'linear-gradient(rgba(255,255,255,.03) 1px, transparent 1px)',
       'linear-gradient(90deg, rgba(255,255,255,.03) 1px, transparent 1px)'
     ].join(',');
     map.style.backgroundSize = '32px 32px';
 
-    // Cluster dots pseudo-randomly but seeded by lead index so they're stable
-    const W = map.offsetWidth || 700;
+    // Read width AFTER reflow — falls back to 700 only if genuinely unavailable
+    const W = map.getBoundingClientRect().width || map.offsetWidth || 700;
     const H = 220;
     const used = [];
+
+    // Store for resize redraws
+    lastMapLeads = leads;
+    lastMapCity  = city;
 
     function noOverlap(x, y) {
       return used.every(p => Math.hypot(p.x-x, p.y-y) > 22);
     }
 
     leads.forEach((lead, i) => {
-      // Seeded random using lead index
       const seed = i * 137.508;
       let x = 40 + ((seed * 9301 + 49297) % 233280) / 233280 * (W - 80);
       let y = 25 + ((seed * 1234 + 5678) % 97531) / 97531 * (H - 50);
 
-      // Nudge if overlapping
       let attempts = 0;
       while (!noOverlap(x, y) && attempts < 12) {
         x = 40 + Math.random() * (W - 80);
@@ -158,7 +171,6 @@ document.addEventListener('DOMContentLoaded', function () {
         'transition:transform .15s'
       ].join(';');
 
-      // Tooltip on hover
       const tip = document.createElement('div');
       tip.style.cssText = 'position:absolute;bottom:calc(100% + 6px);left:50%;transform:translateX(-50%);background:#1e293b;border:1px solid rgba(255,255,255,.1);color:#fff;font-size:11px;white-space:nowrap;padding:4px 8px;border-radius:8px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:10';
       tip.textContent = lead.business_name + (hasWebsite ? ' (has website)' : ' (no website)');
@@ -167,16 +179,30 @@ document.addEventListener('DOMContentLoaded', function () {
       dot.addEventListener('mouseenter', () => { dot.style.transform='translate(-50%,-50%) scale(1.6)'; tip.style.opacity='1'; });
       dot.addEventListener('mouseleave', () => { dot.style.transform='translate(-50%,-50%)';             tip.style.opacity='0'; });
       dot.addEventListener('click', () => {
-        // Scroll to matching card
-        const cards = document.querySelectorAll('#leadsList [data-lead-id]');
+        // Search both #leadsList and #lockedList for matching card
+        const cards = document.querySelectorAll('#leadsList [data-lead-id], #lockedList [data-lead-id]');
         for (const c of cards) {
-          if (c.dataset.leadId == lead.id) { c.scrollIntoView({behavior:'smooth',block:'center'}); c.classList.add('ring-1','ring-white/40'); setTimeout(()=>c.classList.remove('ring-1','ring-white/40'),1500); break; }
+          if (c.dataset.leadId == lead.id) {
+            c.scrollIntoView({behavior:'smooth', block:'center'});
+            c.classList.add('ring-1','ring-white/40');
+            setTimeout(() => c.classList.remove('ring-1','ring-white/40'), 1500);
+            break;
+          }
         }
       });
 
       map.appendChild(dot);
     });
   }
+
+  // Redraw map on window resize (fixes stale dot positions after orientation change)
+  let resizeTimer;
+  window.addEventListener('resize', () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => {
+      if (lastMapLeads.length) renderDotMap(lastMapLeads, lastMapCity);
+    }, 150);
+  });
 
   // ── Helpers ───────────────────────────────────────────────────────────────────────
   function escHtml(s) {
@@ -236,6 +262,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function renderLockedRow(lead, index) {
     const row = document.createElement('div');
     row.className = 'glass rounded-2xl border border-white/5 p-4 flex items-center gap-4 overflow-hidden';
+    row.dataset.leadId = lead.id || ('locked-' + index);
     const score = FAKE_SCORES[index%FAKE_SCORES.length];
     row.innerHTML = `
       <div class="flex-1 min-w-0 blur-sm select-none pointer-events-none">
@@ -286,20 +313,16 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // Live counters
       if (typeof data.newly_unlocked==='number' && data.newly_unlocked>0) updateLiveLeadCounter(data.newly_unlocked);
       if (typeof data.searches_used==='number') updateLiveQuotaCounter(data.searches_used);
 
-      // Mark leads as seen in localStorage
       const seenIds = getSeenIds();
       if (data.leads && data.leads.length) {
         markSeen(data.leads.map(l=>l.id));
       }
 
-      // Dot map
       renderDotMap(data.leads || [], city);
 
-      // Cache notice
       if (data.from_cache) {
         const notice = document.createElement('div');
         notice.className = 'flex items-center justify-between gap-3 text-xs text-slate-400 mb-3 px-1';
@@ -314,9 +337,9 @@ document.addEventListener('DOMContentLoaded', function () {
         leadsList.appendChild(notice);
       }
 
-      // Summary row
       if (data.leads && data.leads.length>0) {
-        const seenCount = data.leads.filter(l=>seenIds.has(String(l.id))).length;
+        const currentSeenIds = getSeenIds();
+        const seenCount = data.leads.filter(l=>currentSeenIds.has(String(l.id))).length;
         const summary = document.createElement('div');
         summary.className='flex items-center justify-between text-xs text-slate-500 mb-2 px-1';
         summary.innerHTML=`
@@ -337,11 +360,17 @@ document.addEventListener('DOMContentLoaded', function () {
         empty.textContent='No leads found. Try a different city or industry.';
         leadsList.appendChild(empty);
       } else {
-        // Filter out seen if checkbox unchecked
         const currentSeenIds = getSeenIds();
         let toShow = data.leads;
+        // If "include seen" is unchecked, hide seen leads entirely
         if (!includeSeen) {
-          // Show all but visually dim seen ones (don't actually hide them)
+          toShow = data.leads.filter(l => !currentSeenIds.has(String(l.id)));
+          if (toShow.length === 0) {
+            const allSeen = document.createElement('p');
+            allSeen.className = 'text-slate-400 text-center py-6 text-sm';
+            allSeen.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i>All results were already seen. Check <em>Include already-seen leads</em> to show them.';
+            leadsList.appendChild(allSeen);
+          }
         }
         toShow.forEach(lead => leadsList.appendChild(renderLeadRow(lead, currentSeenIds)));
       }
@@ -372,7 +401,7 @@ document.addEventListener('DOMContentLoaded', function () {
     runSearch(city, industry, keywords, leadCount, includeSeen, false);
   });
 
-  // Auto-run
+  // Auto-run from URL params
   const params = new URLSearchParams(window.location.search);
   if (params.get('autorun')==='1') {
     const city=params.get('city')||''; const industry=params.get('industry')||'';
