@@ -249,32 +249,42 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 </div><!-- /main column -->
 
-<!-- ====== HISTORY SIDEBAR — matches left nav exactly ====== -->
-<aside class="hidden lg:block w-64 shrink-0">
-  <div class="sticky top-6">
+<!-- ====== HISTORY SIDEBAR — ChatGPT-style, matches left nav theme ====== -->
+<aside class="hidden lg:flex w-72 shrink-0 flex-col gap-0">
+  <div class="sticky top-6 flex flex-col gap-3">
 
-    <!-- Same card shell as left sidebar -->
-    <div class="w-64 bg-slate-900/95 border border-white/5 rounded-2xl flex flex-col backdrop-blur-xl overflow-hidden">
+    <!-- Sidebar shell: same bg/border/radius as left nav -->
+    <div class="bg-slate-900/95 border border-white/6 rounded-2xl flex flex-col overflow-hidden backdrop-blur-xl" style="max-height:calc(100vh - 3rem);">
 
-      <!-- Header — same px-5 py-5 border-b as logo row -->
-      <div class="px-5 py-5 border-b border-white/5 flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-white/8 flex items-center justify-center shrink-0">
-          <i class="fa-solid fa-clock-rotate-left text-slate-300 text-sm"></i>
+      <!-- Header row -->
+      <div class="flex items-center justify-between px-4 py-4 border-b border-white/6 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded-lg bg-white/8 flex items-center justify-center shrink-0">
+            <i class="fa-solid fa-clock-rotate-left text-slate-300 text-xs"></i>
+          </div>
+          <span class="text-sm font-semibold text-white">Recent Searches</span>
         </div>
-        <span class="text-sm font-semibold text-white">Recent Searches</span>
+        <span id="historyCount" class="text-[10px] font-bold text-slate-600 bg-white/5 px-2 py-0.5 rounded-full hidden"></span>
       </div>
 
-      <!-- Nav area — same px-3 py-4 as the nav list -->
-      <nav id="searchHistoryList" class="flex-1 overflow-y-auto px-3 py-4 space-y-0.5 max-h-[70vh]">
-        <!-- Items injected by JS -->
+      <!-- Scrollable list -->
+      <nav id="searchHistoryList" class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5"
+           style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.08) transparent;">
+        <!-- items injected by JS -->
       </nav>
 
-      <!-- Empty state shown when no history -->
-      <div id="searchHistoryEmpty" class="px-5 py-8 text-center" style="display:none">
-        <div class="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center mx-auto mb-3">
+      <!-- Empty state -->
+      <div id="searchHistoryEmpty" class="flex flex-col items-center justify-center px-5 py-10 text-center">
+        <div class="w-10 h-10 rounded-xl bg-white/5 border border-white/8 flex items-center justify-center mb-3">
           <i class="fa-solid fa-magnifying-glass text-slate-600 text-sm"></i>
         </div>
-        <p class="text-xs text-slate-500 leading-relaxed">No searches yet.<br>Run one to see history here.</p>
+        <p class="text-xs font-semibold text-slate-500 mb-1">No searches yet</p>
+        <p class="text-[11px] text-slate-600 leading-relaxed">Run a search above to<br>see your history here.</p>
+      </div>
+
+      <!-- Footer hint -->
+      <div class="px-4 py-3 border-t border-white/5 shrink-0">
+        <p class="text-[10px] text-slate-600 text-center"><i class="fa-solid fa-circle-info mr-1"></i>Click any search to re-run it</p>
       </div>
 
     </div>
@@ -292,4 +302,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-limit="<?= $FREE_SEARCH_LIMIT ?>"
   data-slider-max="<?= $slider_max ?>"
 ></script>
-<script src="/assets/js/leads.js?v=v1100"></script>
+<script src="/assets/js/leads.js?v=v1200"></script>
