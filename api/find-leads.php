@@ -22,7 +22,8 @@ if (!is_logged_in()) {
     exit;
 }
 $user   = current_user();
-$is_pro = ($user['plan'] ?? 'free') === 'pro';
+$plan   = $user['plan'] ?? 'free';
+$is_pro = in_array($plan, ['pro', 'entrepreneur'], true);
 
 // ── 2. Per-minute burst rate limit (session-based, all plans) ─────────────────
 if (!rate_limit_check('find_leads', RATE_LIMIT_FIND_LEADS)) {
@@ -73,20 +74,14 @@ try {
     $pdo = get_platform_db();
 
     // ── 6. Free-plan daily search limit (DB-backed, user_id + IP hash) ────────
-    // Pro users skip this entirely.
     $searches_remaining = null;
     if (!$is_pro) {
         $daily_limit = defined('FREE_SEARCH_DAILY_LIMIT') ? (int)FREE_SEARCH_DAILY_LIMIT : 2;
 
-        // Fingerprint = user_id + hashed IP (SHA-256, non-reversible)
-        // Tying to user_id means changing IP alone doesn't reset the counter.
-        // Tying to IP hash means if someone shares an account we still catch
-        // abuse from a single machine.
         $ip_hash     = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? 'unknown');
         $fingerprint = 'u' . $user['id'] . '_' . substr($ip_hash, 0, 16);
 
         try {
-            // Ensure table exists (auto-create if missing — no manual SQL step needed)
             $pdo->exec(
                 'CREATE TABLE IF NOT EXISTS `lead_search_quota` (
                    `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -103,7 +98,6 @@ try {
             $now    = new \DateTime();
             $cutoff = (clone $now)->modify('-24 hours')->format('Y-m-d H:i:s');
 
-            // Fetch or create quota row
             $qStmt = $pdo->prepare(
                 'SELECT id, count, window_start FROM lead_search_quota
                  WHERE fingerprint = ? LIMIT 1'
@@ -112,7 +106,6 @@ try {
             $quota = $qStmt->fetch(PDO::FETCH_ASSOC);
 
             if (!$quota) {
-                // First search ever for this fingerprint
                 $pdo->prepare(
                     'INSERT INTO lead_search_quota (fingerprint, user_id, count, window_start)
                      VALUES (?, ?, 1, NOW())'
@@ -122,7 +115,6 @@ try {
                 if ($debug) $debug_log[] = 'Quota: new row created, count=1';
 
             } elseif ($quota['window_start'] < $cutoff) {
-                // Window expired — reset
                 $pdo->prepare(
                     'UPDATE lead_search_quota SET count = 1, window_start = NOW() WHERE id = ?'
                 )->execute([$quota['id']]);
@@ -133,8 +125,7 @@ try {
             } else {
                 $searches_used = (int)$quota['count'];
                 if ($searches_used >= $daily_limit) {
-                    // Over limit
-                    $reset_ts  = strtotime($quota['window_start']) + 86400;
+                    $reset_ts = strtotime($quota['window_start']) + 86400;
                     http_response_code(429);
                     echo json_encode([
                         'success'      => false,
@@ -144,7 +135,6 @@ try {
                     ]);
                     exit;
                 }
-                // Increment
                 $pdo->prepare(
                     'UPDATE lead_search_quota SET count = count + 1 WHERE id = ?'
                 )->execute([$quota['id']]);
@@ -154,7 +144,6 @@ try {
             }
 
         } catch (\Throwable $e) {
-            // Quota table error is non-fatal — log and continue
             log_error('find_leads_quota_check', $e, ['user_id' => $user['id']]);
             if ($debug) $debug_log[] = 'Quota check error (non-fatal): ' . $e->getMessage();
             $searches_remaining = null;
@@ -239,7 +228,10 @@ try {
         $lookup_count = 0;
 
         foreach ($results as $place) {
-            if (!empty($place['website'])) continue; // Only businesses without a website
+            $has_website = !empty($place['website']);
+
+            // Skip businesses that DO have a website (only want no-website leads)
+            if ($has_website) continue;
 
             $place_id = $place['place_id']              ?? '';
             $types    = $place['types']                 ?? [];
@@ -248,6 +240,11 @@ try {
             $category = !empty($types)
                 ? str_replace('_', ' ', ucwords($types[0], '_'))
                 : $industry;
+
+            // Maps URL
+            $maps_url = $place_id !== ''
+                ? 'https://www.google.com/maps/place/?q=place_id:' . urlencode($place_id)
+                : '';
 
             // Phone via Details API (capped to save quota)
             $phone = '';
@@ -268,6 +265,11 @@ try {
                 'business_name'     => $place['name'] ?? 'Unknown',
                 'business_address'  => $place['formatted_address'] ?? '',
                 'business_phone'    => $phone,
+                'business_category' => $category,
+                'rating'            => $rating,
+                'total_ratings'     => $reviews,
+                'maps_url'          => $maps_url,
+                'no_website'        => true,   // always true — we filtered out businesses with websites above
                 'opportunity_score' => opportunity_score($rating, $reviews, $category),
             ];
         }
@@ -306,14 +308,15 @@ try {
         $visible  = array_slice($all_leads, 0, $free_limit);
         $locked   = array_slice($all_leads, $free_limit);
 
-        // Server-side redaction — real data never leaves the server for locked leads
+        // Server-side redaction — real data never leaves for locked leads
         $redacted = array_map(function ($lead, $i) {
             return [
                 'id'                => $lead['id'],
-                'business_name'     => '',   // JS uses fake names — no real data sent
+                'business_name'     => '',
                 'business_address'  => '',
                 'business_phone'    => '',
                 'opportunity_score' => 0,
+                'no_website'        => true,
                 '_locked'           => true,
             ];
         }, $locked, array_keys($locked));
@@ -323,6 +326,7 @@ try {
             'leads'               => $visible,
             'locked_leads'        => $redacted,
             'is_free_tier'        => true,
+            'searches_used'       => $searches_used ?? 0,
             'searches_remaining'  => $searches_remaining,
             'from_cache'          => $from_cache,
             'cached_at'           => $cached_at,
