@@ -13,6 +13,24 @@ ErrorDocument 404 /404.php
 RewriteRule ^s/([a-zA-Z0-9\-]+)/?$ s.php?slug=$1 [L,QSA]
 
 # ---------------------------------------------------------------
+# CLEAN URLs — strip .php extension
+# ---------------------------------------------------------------
+
+# 1. If someone requests /page.php directly, redirect to /page (301)
+RewriteCond %{THE_REQUEST} \s/([^.]+)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L]
+
+# 2. Portal pages: /portal/page  ->  portal/page.php (internal rewrite)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^portal/([a-zA-Z0-9_\-]+)/?$ portal/$1.php [L,QSA]
+
+# 3. Root pages: /page  ->  page.php (internal rewrite)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^([a-zA-Z0-9_\-]+)/?$ $1.php [L,QSA]
+
+# ---------------------------------------------------------------
 # BLOCK SENSITIVE PATHS
 # ---------------------------------------------------------------
 
