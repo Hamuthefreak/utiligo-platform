@@ -6,6 +6,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const lockedList  = document.getElementById('lockedList');
   const loadingEl   = document.getElementById('leadsLoading');
   const csrfToken   = document.body.dataset.csrf;
+  const statusChip  = document.getElementById('searchStatusChip');
+  const searchBtn   = document.getElementById('searchBtn');
+  const searchBtnLbl = document.getElementById('searchBtnLabel');
 
   const cfg     = document.getElementById('leadsPageConfig');
   const PLAN    = cfg?.dataset.plan    ?? 'free';
@@ -18,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function () {
 
   if (!form) return;
 
-  // ─ localStorage seen-leads ─────────────────────────────────────────────────
+  // ─ localStorage seen-leads ──────────────────────────────────────────────────────
   const SEEN_KEY = 'utiligo_seen_leads_v1';
   function getSeenIds() {
     try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
@@ -34,7 +37,7 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch {}
   }
 
-  // ─ Slider ────────────────────────────────────────────────────────────────
+  // ─ Slider ──────────────────────────────────────────────────────────────────
   const slider     = document.getElementById('leadCountSlider');
   const sliderDisp = document.getElementById('leadCountDisplay');
   const sliderHid  = document.getElementById('leadCountHidden');
@@ -42,26 +45,24 @@ document.addEventListener('DOMContentLoaded', function () {
 
   const seenCb = document.getElementById('includeSeenLeads');
 
-  // ─ Live pro lead-unlock bar ─────────────────────────────────────────────
+  // ─ Live pro lead-unlock bar ──────────────────────────────────────────────
   function syncLeadCounter(serverCount, serverLimit) {
     if (typeof serverCount === 'number' && serverCount >= 0) leadUsed  = serverCount;
     if (typeof serverLimit === 'number' && serverLimit  > 0) leadLimit = serverLimit;
     const bar      = document.getElementById('leadLimitBar');
     const subtitle = document.getElementById('leadLimitSubtitle');
-    const countEl  = document.getElementById('leadLimitCount');
     const noteEl   = document.getElementById('leadLimitNote');
     const upgBtn   = document.getElementById('leadUpgradeBtn');
     if (!bar || leadLimit <= 0) return;
     const pct = Math.min(100, Math.round((leadUsed / leadLimit) * 100));
     bar.style.width = pct + '%';
-    bar.className   = 'h-2 rounded-full transition-all ' + (pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-500' : 'bg-white/60');
+    bar.className   = 'h-full transition-all ' + (pct >= 100 ? 'bg-red-500' : pct >= 80 ? 'bg-amber-400' : 'bg-emerald-500');
     if (subtitle) subtitle.textContent = leadUsed + ' of ' + leadLimit + ' used';
-    if (countEl)  countEl.textContent  = leadUsed + ' / ' + leadLimit;
     if (noteEl)   noteEl.textContent   = Math.max(0, leadLimit - leadUsed) + ' remaining';
     if (upgBtn) { pct >= 80 ? upgBtn.classList.remove('hidden') : upgBtn.classList.add('hidden'); }
   }
 
-  // ─ Live free quota bar ──────────────────────────────────────────────────
+  // ─ Live free quota bar ─────────────────────────────────────────────────
   function updateLiveQuotaCounter(newUsed) {
     quotaUsed = newUsed;
     const badge = document.getElementById('quotaBadge');
@@ -70,68 +71,121 @@ document.addEventListener('DOMContentLoaded', function () {
     const rem   = Math.max(0, quotaLimit - quotaUsed);
     const pct   = quotaLimit > 0 ? Math.min(100, Math.round((quotaUsed / quotaLimit) * 100)) : 0;
     if (badge) {
-      badge.className = 'flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold ' +
-        (rem===0?'bg-red-500/10 border border-red-500/20 text-red-400':rem===1?'bg-amber-500/10 border border-amber-500/20 text-amber-400':'bg-white/8 border border-white/10 text-slate-300');
-      badge.textContent = rem===0?'No searches left today':rem+' search'+(rem!==1?'es':'')+' left';
+      badge.className = 'text-xs font-bold px-2.5 py-1 rounded border ' +
+        (rem===0?'bg-red-500/10 border-red-500/20 text-red-400':rem===1?'bg-amber-500/10 border-amber-500/20 text-amber-400':'bg-white/5 border-white/8 text-slate-300');
+      badge.textContent = rem===0?'No searches left':rem+' search'+(rem!==1?'es':'')+' left';
     }
-    if (bar) { bar.style.width=pct+'%'; bar.className='h-2 rounded-full transition-all duration-500 '+(pct>=100?'bg-red-500':pct>=50?'bg-amber-500':'bg-white/60'); }
-    if (text) text.textContent = quotaUsed+' of '+quotaLimit+' searches used';
+    if (bar) { bar.style.width=pct+'%'; bar.className='h-full transition-all duration-500 '+(pct>=100?'bg-red-500':pct>=50?'bg-amber-400':'bg-emerald-500'); }
+    if (text) text.textContent = quotaUsed+' of '+quotaLimit+' used';
   }
 
-  // ─ Helpers ─────────────────────────────────────────────────────────────
+  // ─ Helpers ─────────────────────────────────────────────────────────────────
   function escHtml(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
-  function scoreColor(s) { return s>=80?'bg-white/15 text-white':s>=60?'bg-amber-500/20 text-amber-400':'bg-red-500/20 text-red-400'; }
+  function scoreColor(s) { return s>=80?'bg-white/10 text-white':s>=60?'bg-amber-500/20 text-amber-400':'bg-red-500/20 text-red-400'; }
   function scorLabel(s)  { return s>=80?'High':s>=60?'Med':'Low'; }
 
-  // ─ Lead card ────────────────────────────────────────────────────────────────
-  function renderLeadRow(lead, seenIdsBefore) {
-    const row      = document.createElement('div');
-    const wasSeen  = seenIdsBefore.has(String(lead.id));
-    row.className  = 'glass rounded-2xl border transition-all p-4 flex flex-col gap-3' + (wasSeen ? ' border-white/8 opacity-75' : ' border-white/5 hover:border-white/15');
+  // Exact timestamp: "Today at 3:42 PM", "Yesterday at 9:00 AM", or "Jul 14 at 2:30 PM"
+  function fmtTimestamp(dateStr) {
+    const d    = new Date(dateStr.replace(' ', 'T'));
+    const now  = new Date();
+    const sod  = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const yest = new Date(sod - 86400000);
+    const time = d.toLocaleTimeString('en-CA', { hour: 'numeric', minute: '2-digit', hour12: true });
+    if (d >= sod)  return 'Today at '     + time;
+    if (d >= yest) return 'Yesterday at ' + time;
+    return d.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' }) + ' at ' + time;
+  }
+
+  // Relative time: "2 seconds ago", "just now", etc.
+  function fmtRelative(ms) {
+    const s = Math.floor(ms / 1000);
+    if (s < 5)  return 'just now';
+    if (s < 60) return s + ' seconds ago';
+    const m = Math.floor(s / 60);
+    if (m < 60) return m + ' minute' + (m!==1?'s':'') + ' ago';
+    return 'a while ago';
+  }
+
+  // Copy to clipboard helper
+  function copyToClipboard(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
+      btn.classList.add('text-emerald-400');
+      setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('text-emerald-400'); }, 1500);
+    }).catch(() => {});
+  }
+
+  // ─ Lead card ──────────────────────────────────────────────────────────────────
+  function renderLeadRow(lead, seenIdsBefore, idx) {
+    const row     = document.createElement('div');
+    const wasSeen = seenIdsBefore.has(String(lead.id));
+    row.className = 'lead-card-enter border bg-white/[.02] rounded-lg p-4 transition-all hover:bg-white/[.04] ' +
+                    (wasSeen ? 'border-white/5 opacity-70' : 'border-white/8 hover:border-white/15');
+    row.style.animationDelay = (idx * 40) + 'ms';
     row.dataset.leadId = lead.id;
+
     const sc = scoreColor(lead.opportunity_score);
     const hasRating = lead.rating && parseFloat(lead.rating) > 0;
-    const stars = hasRating ? '\u2605'.repeat(Math.round(parseFloat(lead.rating))) + '\u2606'.repeat(5-Math.round(parseFloat(lead.rating))) : '';
-
-    const phoneLine = lead.business_phone
-      ? `<a href="tel:${escHtml(lead.business_phone)}" class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-slate-200 px-3 py-1.5 rounded-lg font-medium transition-all"><i class="fa-solid fa-phone text-[10px]"></i>${escHtml(lead.business_phone)}</a>`
-      : `<span class="inline-flex items-center gap-1.5 text-xs bg-white/4 text-slate-600 px-3 py-1.5 rounded-lg"><i class="fa-solid fa-phone text-[10px]"></i>No phone listed</span>`;
-    const mapsLine = lead.maps_url
-      ? `<a href="${escHtml(lead.maps_url)}" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 text-xs bg-white/8 hover:bg-white/15 text-slate-200 px-3 py-1.5 rounded-lg font-medium transition-all"><i class="fa-brands fa-google text-[10px]"></i>Google Maps</a>`
+    const ratingStars = hasRating
+      ? '★'.repeat(Math.round(parseFloat(lead.rating))) + '☆'.repeat(5 - Math.round(parseFloat(lead.rating)))
       : '';
 
-    // FIX: pass all prefill fields as URL params so generate.php pre-fills the form
-    const generateUrl = '/portal/generate.php?lead_id=' + encodeURIComponent(lead.id)
+    const generateUrl = '/portal/generate?lead_id=' + encodeURIComponent(lead.id)
       + '&name='     + encodeURIComponent(lead.business_name     || '')
       + '&category=' + encodeURIComponent(lead.business_category || '')
       + '&city='     + encodeURIComponent(lead.business_city     || '')
       + '&phone='    + encodeURIComponent(lead.business_phone    || '');
 
+    const phoneLine = lead.business_phone
+      ? `<span class="inline-flex items-center gap-1.5 text-xs bg-white/5 border border-white/8 text-slate-300 px-2.5 py-1.5 rounded font-medium">
+           <i class="fa-solid fa-phone text-[10px] text-slate-500"></i>${escHtml(lead.business_phone)}
+           <button type="button" class="copy-phone ml-1 text-slate-600 hover:text-white transition" data-phone="${escHtml(lead.business_phone)}" title="Copy phone">
+             <i class="fa-regular fa-copy text-[10px]"></i>
+           </button>
+         </span>`
+      : `<span class="inline-flex items-center gap-1.5 text-xs text-slate-700 px-2.5 py-1.5"><i class="fa-solid fa-phone text-[10px]"></i>No phone</span>`;
+
+    const mapsLine = lead.maps_url
+      ? `<a href="${escHtml(lead.maps_url)}" target="_blank" rel="noopener"
+            class="inline-flex items-center gap-1.5 text-xs bg-white/5 border border-white/8 text-slate-300 hover:bg-white/10 px-2.5 py-1.5 rounded font-medium transition">
+           <i class="fa-brands fa-google text-[10px] text-slate-500"></i>Maps
+         </a>`
+      : '';
+
     row.innerHTML = `
       <div class="flex flex-col sm:flex-row sm:items-start gap-3">
         <div class="flex-1 min-w-0">
-          <div class="flex items-center gap-2 flex-wrap mb-1">
-            <h3 class="font-bold text-white text-base">${escHtml(lead.business_name)}</h3>
-            <span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${sc}">${scorLabel(lead.opportunity_score)} &middot; ${lead.opportunity_score}</span>
-            ${lead.no_website?'<span class="text-[10px] px-2 py-0.5 rounded-full bg-white/8 text-slate-400 font-semibold">No Website</span>':''}
-            ${wasSeen?'<span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700/60 text-slate-400 font-semibold">Seen</span>':''}
+          <div class="flex items-center gap-2 flex-wrap mb-1.5">
+            <h3 class="font-bold text-white text-sm leading-tight">${escHtml(lead.business_name)}</h3>
+            <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${sc}">${scorLabel(lead.opportunity_score)} · ${lead.opportunity_score}</span>
+            ${lead.no_website ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/6 border border-white/8 text-slate-400 font-semibold">No Website</span>' : ''}
+            ${wasSeen ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-500 font-semibold">Seen</span>' : ''}
           </div>
-          <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-400 mt-1">
-            <span><i class="fa-solid fa-location-dot mr-1"></i>${escHtml(lead.business_address||'Address unavailable')}</span>
-            ${hasRating?`<span class="text-amber-400" title="${lead.rating} stars">${stars} <span class="text-slate-400">${lead.rating}</span></span>`:''}
-            ${lead.total_ratings?`<span class="text-slate-500">${lead.total_ratings} reviews</span>`:''}
-            ${lead.business_category?`<span class="text-slate-500"><i class="fa-solid fa-tag mr-1"></i>${escHtml(lead.business_category)}</span>`:''}
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
+            <span><i class="fa-solid fa-location-dot mr-1 text-slate-600"></i>${escHtml(lead.business_address || 'Address unavailable')}</span>
+            ${hasRating ? `<span class="text-amber-500/80 text-[11px]" title="${lead.rating} stars">${ratingStars} <span class="text-slate-500">${lead.rating}</span></span>` : ''}
+            ${lead.total_ratings ? `<span class="text-slate-600">${lead.total_ratings} reviews</span>` : ''}
+            ${lead.business_category ? `<span class="text-slate-600"><i class="fa-solid fa-tag mr-1"></i>${escHtml(lead.business_category)}</span>` : ''}
           </div>
         </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <a href="${generateUrl}"
-             class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all">
-            <i class="fa-solid fa-bolt text-[10px]"></i> Build Site
-          </a>
-        </div>
+        <a href="${generateUrl}"
+           class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-100 active:scale-95 text-black px-4 py-2 rounded-md font-bold whitespace-nowrap transition-all shrink-0">
+          <i class="fa-solid fa-bolt text-[10px]"></i> Build Site
+        </a>
       </div>
-      <div class="flex flex-wrap gap-2 border-t border-white/5 pt-3">${phoneLine}${mapsLine}</div>
-    `;
+      <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/5">
+        ${phoneLine}${mapsLine}
+      </div>`;
+
+    // Copy phone handler
+    row.querySelectorAll('.copy-phone').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        copyToClipboard(btn.dataset.phone, btn);
+      });
+    });
+
     return row;
   }
 
@@ -141,18 +195,22 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function renderLockedRow(lead, index) {
     const row = document.createElement('div');
-    row.className = 'glass rounded-2xl border border-white/5 p-4 flex items-center gap-4 overflow-hidden';
+    row.className = 'lead-card-enter border border-white/5 bg-white/[.02] rounded-lg p-4 flex items-center gap-4 overflow-hidden';
+    row.style.animationDelay = (index * 40) + 'ms';
     const score = FAKE_SCORES[index % FAKE_SCORES.length];
     row.innerHTML = `
       <div class="flex-1 min-w-0 blur-sm select-none pointer-events-none">
-        <div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-white">${escHtml(FAKE_NAMES[index%FAKE_NAMES.length])}</h3><span class="text-[10px] px-2 py-0.5 rounded-full font-bold ${scoreColor(score)}">${score}</span></div>
-        <p class="text-xs text-slate-400"><i class="fa-solid fa-location-dot mr-1"></i>${escHtml(FAKE_CITIES[index%FAKE_CITIES.length])} &nbsp;<i class="fa-solid fa-phone mr-1"></i>(514) 555-0${100+index}</p>
+        <div class="flex items-center gap-2 mb-1"><h3 class="font-bold text-white text-sm">${escHtml(FAKE_NAMES[index%FAKE_NAMES.length])}</h3>
+        <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${scoreColor(score)}">${score}</span></div>
+        <p class="text-xs text-slate-500"><i class="fa-solid fa-location-dot mr-1"></i>${escHtml(FAKE_CITIES[index%FAKE_CITIES.length])}</p>
       </div>
-      <span class="inline-flex items-center gap-1.5 text-xs bg-white/5 border border-white/10 text-slate-400 px-3 py-2 rounded-xl font-semibold shrink-0"><i class="fa-solid fa-lock text-[10px]"></i> Locked</span>`;
+      <span class="inline-flex items-center gap-1.5 text-xs border border-white/8 text-slate-500 px-3 py-1.5 rounded font-semibold shrink-0">
+        <i class="fa-solid fa-lock text-[10px]"></i> Locked
+      </span>`;
     return row;
   }
 
-  // ─ History sidebar — ChatGPT-style ─────────────────────────────────────────
+  // ─ History sidebar ────────────────────────────────────────────────────────────
   function fillAndFocusSearch(city, industry, keywords) {
     document.getElementById('fieldCity').value     = city;
     document.getElementById('fieldIndustry').value = industry;
@@ -162,21 +220,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
   function renderHistoryItem(entry) {
     const item = document.createElement('div');
-    item.className = 'group relative';
-
-    const date = new Date(entry.created_at.replace(' ', 'T'));
-    const label = date.toLocaleDateString('en-CA', { month: 'short', day: 'numeric' });
+    item.className = 'group';
+    const ts = fmtTimestamp(entry.created_at);
 
     item.innerHTML = `
       <button type="button"
-        class="w-full text-left flex flex-col gap-0.5 px-3 py-2.5 rounded-xl hover:bg-white/6 active:bg-white/10 transition-colors cursor-pointer"
+        class="w-full text-left flex flex-col gap-0.5 px-3 py-2.5 rounded hover:bg-white/5 active:bg-white/8 transition-colors cursor-pointer"
         data-city="${escHtml(entry.city)}" data-industry="${escHtml(entry.industry)}" data-keywords="${escHtml(entry.keywords||'')}">
         <div class="flex items-center justify-between gap-2 w-full">
-          <span class="text-sm font-semibold text-white truncate flex-1 leading-snug">${escHtml(entry.city)}</span>
+          <span class="text-xs font-semibold text-white truncate flex-1 leading-snug">${escHtml(entry.city)}</span>
           ${entry.result_count > 0 ? `<span class="text-[10px] font-bold text-slate-600 shrink-0 tabular-nums">${entry.result_count}</span>` : ''}
         </div>
-        <span class="text-xs text-slate-500 truncate w-full leading-snug">${escHtml(entry.industry)}${entry.keywords ? ' &middot; ' + escHtml(entry.keywords) : ''}</span>
-        <span class="text-[10px] text-slate-700 mt-0.5">${label}</span>
+        <span class="text-[11px] text-slate-500 truncate w-full">${escHtml(entry.industry)}${entry.keywords ? ' · ' + escHtml(entry.keywords) : ''}</span>
+        <span class="text-[10px] text-slate-700 mt-0.5">${ts}</span>
       </button>`;
 
     item.querySelector('button').addEventListener('click', function () {
@@ -207,12 +263,29 @@ document.addEventListener('DOMContentLoaded', function () {
 
   loadSearchHistory();
 
-  // ─ Main search ────────────────────────────────────────────────────────────
+  // ─ Search state ────────────────────────────────────────────────────────────
+  function setSearching(on) {
+    if (!searchBtn || !searchBtnLbl) return;
+    if (on) {
+      searchBtn.disabled = true;
+      searchBtnLbl.textContent = 'Searching…';
+      searchBtn.classList.add('opacity-60', 'cursor-not-allowed');
+    } else {
+      searchBtn.disabled = false;
+      searchBtnLbl.textContent = 'Find Leads';
+      searchBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+    }
+  }
+
+  // ─ Main search ──────────────────────────────────────────────────────────────
   function runSearch(city, industry, keywords, leadCount, includeSeen, forceRefresh) {
+    const searchStart = Date.now();
     loadingEl.classList.remove('hidden');
     resultsWrap.classList.add('hidden');
     leadsList.innerHTML  = '';
     lockedList.innerHTML = '';
+    if (statusChip) statusChip.classList.add('hidden');
+    setSearching(true);
 
     fetch('/api/find-leads.php', {
       method: 'POST',
@@ -221,45 +294,62 @@ document.addEventListener('DOMContentLoaded', function () {
     })
     .then(r => r.json())
     .then(data => {
+      const elapsed = Date.now() - searchStart;
       loadingEl.classList.add('hidden');
       resultsWrap.classList.remove('hidden');
+      setSearching(false);
 
       if (!data.success) {
-        leadsList.innerHTML = `<div class="glass rounded-xl p-5 text-sm text-center ${data.rate_limited?'text-amber-400':'text-red-400'}"><i class="fa-solid fa-${data.rate_limited?'clock':'triangle-exclamation'} mr-2"></i>${escHtml(data.error||'Search failed.')}${data.resets_at?`<span class="block text-xs text-slate-400 mt-1">Resets at ${new Date(data.resets_at*1000).toLocaleTimeString()}</span>`:''}</div>`;
+        leadsList.innerHTML = `<div class="border border-white/8 bg-white/[.02] rounded-lg p-5 text-sm text-center ${data.rate_limited?'text-amber-400':'text-red-400'}">
+          <i class="fa-solid fa-${data.rate_limited?'clock':'triangle-exclamation'} mr-2"></i>${escHtml(data.error||'Search failed.')}
+          ${data.resets_at ? `<span class="block text-xs text-slate-500 mt-1">Resets at <strong>${new Date(data.resets_at*1000).toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit',hour12:true})}</strong></span>` : ''}
+        </div>`;
         lockedWrap.classList.add('hidden');
         return;
       }
 
-      // Always sync both counters
       if (typeof data.pro_lead_count === 'number') syncLeadCounter(data.pro_lead_count, data.lead_limit || leadLimit);
       if (typeof data.searches_used  === 'number') updateLiveQuotaCounter(data.searches_used);
 
       const seenIdsBefore = getSeenIds();
       if (data.leads && data.leads.length) markSeen(data.leads.map(l => String(l.id)));
 
+      // Results header
+      const header = document.createElement('div');
+      header.className = 'flex items-center justify-between text-xs text-slate-500 mb-3 px-0.5';
+      const leadCount2 = data.leads?.length || 0;
+      const seenCount  = (data.leads||[]).filter(l => seenIdsBefore.has(String(l.id))).length;
+      const secStr     = (elapsed / 1000).toFixed(1);
+
+      let leftHtml = `<span><strong class="text-white">${leadCount2}</strong> leads`;
+      if (data.from_cache) leftHtml += ' <span class="text-slate-700">(cached)</span>';
+      leftHtml += ` &middot; <em class="not-italic text-slate-400">${escHtml(city)}, ${escHtml(industry)}</em>`;
+      leftHtml += ` &middot; <span class="text-slate-600">${secStr}s</span></span>`;
+
+      let rightHtml = '';
+      if (seenCount > 0) rightHtml += `<span class="text-slate-600">${seenCount} seen</span>`;
       if (data.from_cache) {
-        const notice = document.createElement('div');
-        notice.className = 'flex items-center justify-between gap-3 text-xs text-slate-400 mb-3 px-1';
-        const cachedDate = data.cached_at ? new Date(data.cached_at.replace(' ','T')).toLocaleString() : '';
-        notice.innerHTML = `<span><i class="fa-solid fa-clock-rotate-left mr-1"></i>Showing saved results from ${cachedDate}</span>`;
-        const rb = document.createElement('button');
-        rb.type = 'button'; rb.className = 'text-slate-300 hover:text-white font-semibold underline'; rb.textContent = 'Refresh';
-        rb.addEventListener('click', () => runSearch(city, industry, keywords, leadCount, includeSeen, true));
-        notice.appendChild(rb);
-        leadsList.appendChild(notice);
+        const cachedTs = data.cached_at ? fmtTimestamp(data.cached_at) : '';
+        rightHtml += `<span class="text-slate-700 ml-2">cached ${cachedTs}</span>
+          <button type="button" id="refreshBtn" class="ml-2 text-slate-400 hover:text-white font-semibold text-[11px] underline">Refresh</button>`;
+      }
+      header.innerHTML = `<div>${leftHtml}</div><div class="flex items-center gap-1">${rightHtml}</div>`;
+      leadsList.appendChild(header);
+
+      if (data.from_cache) {
+        const rb = leadsList.querySelector('#refreshBtn');
+        if (rb) rb.addEventListener('click', () => runSearch(city, industry, keywords, leadCount, includeSeen, true));
       }
 
-      if (data.leads && data.leads.length > 0) {
-        const seenCount = data.leads.filter(l => seenIdsBefore.has(String(l.id))).length;
-        const summary = document.createElement('div');
-        summary.className = 'flex items-center justify-between text-xs text-slate-500 mb-2 px-1';
-        summary.innerHTML = `<span><i class="fa-solid fa-list mr-1"></i><strong class="text-white">${data.leads.length}</strong> leads in <strong class="text-white">${escHtml(city)}</strong> &bull; <strong class="text-white">${escHtml(industry)}</strong>${keywords?` &bull; <em class="text-slate-400">${escHtml(keywords)}</em>`:''}</span>${seenCount>0?`<span class="text-slate-600">${seenCount} seen before</span>`:''}`;
-        leadsList.appendChild(summary);
+      // Show status chip in form header
+      if (statusChip) {
+        statusChip.classList.remove('hidden');
+        statusChip.innerHTML = `<i class="fa-solid fa-circle-check mr-1"></i>${leadCount2} results · ${secStr}s`;
       }
 
       if (!data.leads || !data.leads.length) {
         const em = document.createElement('p');
-        em.className = 'text-slate-400 text-center py-6';
+        em.className = 'text-slate-500 text-center py-8 text-sm';
         em.textContent = 'No leads found. Try a different city or industry.';
         leadsList.appendChild(em);
       } else {
@@ -268,12 +358,12 @@ document.addEventListener('DOMContentLoaded', function () {
           toShow = data.leads.filter(l => !seenIdsBefore.has(String(l.id)));
           if (!toShow.length) {
             const as = document.createElement('p');
-            as.className = 'text-slate-400 text-center py-6 text-sm';
-            as.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i>All results were already seen. Check <em>Include already-seen leads</em> to show them.';
+            as.className = 'text-slate-500 text-center py-8 text-sm';
+            as.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i>All results were already seen. Toggle <em>Include seen leads</em>.';
             leadsList.appendChild(as);
           }
         }
-        toShow.forEach(lead => leadsList.appendChild(renderLeadRow(lead, seenIdsBefore)));
+        toShow.forEach((lead, i) => leadsList.appendChild(renderLeadRow(lead, seenIdsBefore, i)));
       }
 
       if (data.is_free_tier && data.locked_leads && data.locked_leads.length) {
@@ -288,18 +378,19 @@ document.addEventListener('DOMContentLoaded', function () {
     .catch(() => {
       loadingEl.classList.add('hidden');
       resultsWrap.classList.remove('hidden');
-      leadsList.innerHTML = '<div class="glass rounded-xl p-5 text-red-400 text-sm text-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Something went wrong. Please try again.</div>';
+      setSearching(false);
+      leadsList.innerHTML = '<div class="border border-white/8 bg-white/[.02] rounded-lg p-5 text-red-400 text-sm text-center"><i class="fa-solid fa-triangle-exclamation mr-2"></i>Something went wrong. Please try again.</div>';
       lockedWrap.classList.add('hidden');
     });
   }
 
   form.addEventListener('submit', function(e) {
     e.preventDefault();
-    const city       = form.querySelector('[name="city"]').value.trim();
-    const industry   = form.querySelector('[name="industry"]').value.trim();
-    const keywords   = form.querySelector('[name="keywords"]')?.value.trim() || '';
-    const leadCount  = parseInt(sliderHid?.value) || 10;
-    const incSeen    = seenCb?.checked ?? false;
+    const city      = form.querySelector('[name="city"]').value.trim();
+    const industry  = form.querySelector('[name="industry"]').value.trim();
+    const keywords  = form.querySelector('[name="keywords"]')?.value.trim() || '';
+    const leadCount = parseInt(sliderHid?.value) || 10;
+    const incSeen   = seenCb?.checked ?? false;
     if (!city || !industry) return;
     runSearch(city, industry, keywords, leadCount, incSeen, false);
   });
