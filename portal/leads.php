@@ -63,67 +63,123 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
-/* ── Leads page overrides ─────────────────────────────────────── */
-.search-input {
+/* ── Leads page local styles ─────────────────────────────────── */
+
+/* Input fields — matches the glass system */
+.leads-input {
   width: 100%;
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
-  color: #fff;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  color: #f1f5f9;
   font-size: .875rem;
-  padding: .625rem .75rem .625rem 2.25rem;
-  border-radius: 6px;
+  padding: .6rem .75rem .6rem 2.2rem;
+  border-radius: 10px;
   outline: none;
   transition: border-color .15s, background .15s;
+  -webkit-appearance: none;
 }
-.search-input::placeholder { color: #475569; }
-.search-input:focus {
-  border-color: rgba(255,255,255,0.25);
-  background: rgba(255,255,255,0.07);
+.leads-input::placeholder { color: #334155; }
+.leads-input:focus {
+  border-color: rgba(255,255,255,.18);
+  background: rgba(255,255,255,.06);
 }
-.search-input:focus + .input-glow { opacity: 1; }
-.field-icon {
-  position: absolute; left: .7rem; top: 50%; transform: translateY(-50%);
-  color: #475569; font-size: .75rem; pointer-events: none;
+.leads-input:focus + .leads-icon { color: #64748b; }
+.leads-icon {
+  position: absolute;
+  left: .75rem;
+  top: 50%;
+  transform: translateY(-50%);
+  color: #1e293b;
+  font-size: .7rem;
+  pointer-events: none;
   transition: color .15s;
 }
-.search-input:focus ~ .field-icon { color: #94a3b8; }
-/* Skeleton shimmer */
-@keyframes shimmer {
-  0%   { background-position: -600px 0; }
-  100% { background-position:  600px 0; }
-}
-.skeleton {
-  background: linear-gradient(90deg, rgba(255,255,255,.04) 25%, rgba(255,255,255,.09) 50%, rgba(255,255,255,.04) 75%);
-  background-size: 600px 100%;
-  animation: shimmer 1.4s infinite linear;
-  border-radius: 4px;
-}
-/* Lead card entry animation */
-@keyframes leadIn {
-  from { opacity:0; transform: translateY(8px); }
-  to   { opacity:1; transform: translateY(0); }
-}
-.lead-card-enter { animation: leadIn .22s ease forwards; }
-/* Range slider */
-#leadCountSlider {
+
+/* Slim progress track */
+.quota-track { height: 2px; background: rgba(255,255,255,.06); border-radius: 2px; overflow: hidden; }
+.quota-fill  { height: 100%; border-radius: 2px; transition: width .5s ease; }
+
+/* Range slider — clean white thumb */
+.leads-slider {
   -webkit-appearance: none;
   appearance: none;
-  height: 3px;
+  width: 100%;
+  height: 2px;
+  background: rgba(255,255,255,.1);
   border-radius: 2px;
-  background: rgba(255,255,255,0.1);
   outline: none;
   cursor: pointer;
-  width: 100%;
 }
-#leadCountSlider::-webkit-slider-thumb {
+.leads-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   width: 14px; height: 14px;
   border-radius: 50%;
   background: #fff;
   cursor: pointer;
   transition: transform .1s;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.08);
 }
-#leadCountSlider::-webkit-slider-thumb:hover { transform: scale(1.2); }
+.leads-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.leads-slider::-moz-range-thumb {
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: none;
+  cursor: pointer;
+}
+
+/* Toggle switch */
+.toggle-track {
+  width: 30px; height: 16px;
+  background: rgba(255,255,255,.08);
+  border-radius: 8px;
+  position: relative;
+  transition: background .2s;
+  flex-shrink: 0;
+}
+.toggle-track.on { background: rgba(255,255,255,.25); }
+.toggle-thumb {
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #64748b;
+  transition: transform .2s, background .2s;
+}
+.toggle-track.on .toggle-thumb { transform: translateX(14px); background: #fff; }
+
+/* Skeleton shimmer */
+@keyframes leads-shimmer {
+  0%   { background-position: -500px 0; }
+  100% { background-position:  500px 0; }
+}
+.skel {
+  background: linear-gradient(90deg,
+    rgba(255,255,255,.03) 25%,
+    rgba(255,255,255,.07) 50%,
+    rgba(255,255,255,.03) 75%);
+  background-size: 500px 100%;
+  animation: leads-shimmer 1.5s infinite linear;
+  border-radius: 6px;
+}
+
+/* Lead card stagger-in */
+@keyframes lead-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.lead-in { animation: lead-in .2s ease both; }
+
+/* Status chip in form header */
+#searchStatusChip {
+  font-size: .65rem;
+  font-weight: 700;
+  letter-spacing: .04em;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,.07);
+  color: #94a3b8;
+}
 </style>
 
 <div class="flex gap-6 items-start">
@@ -137,61 +193,65 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <p class="text-slate-500 text-sm mt-1">Discover local businesses with no website &mdash; your next paying clients.</p>
 </div>
 
-<?php /* ====== QUOTA / PLAN BARS ====== */ ?>
+<?php /* ====== QUOTA / PLAN BANNERS ====== */ ?>
 <?php if (!$is_paid): ?>
 <div class="space-y-3 mb-7">
+
   <!-- Quota card -->
-  <div class="border border-white/6 bg-white/[.03] rounded-lg p-4">
-    <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
-      <div class="flex items-center gap-2.5">
-        <i class="fa-solid fa-magnifying-glass text-slate-500 text-xs"></i>
+  <div class="glass rounded-2xl p-5">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-magnifying-glass text-slate-400 text-xs"></i>
+        </div>
         <div>
           <p class="text-sm font-semibold text-white leading-none">Daily Search Quota</p>
           <p class="text-xs text-slate-600 mt-0.5">Resets every 24 hours</p>
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <span id="quotaBadge" class="text-xs font-bold px-2.5 py-1 rounded border <?= $quota_remaining===0?'bg-red-500/10 border-red-500/20 text-red-400':($quota_remaining===1?'bg-amber-500/10 border-amber-500/20 text-amber-400':'bg-white/5 border-white/8 text-slate-300') ?>">
+        <span id="quotaBadge" class="text-xs font-bold px-2.5 py-1 rounded-full
+          <?= $quota_remaining===0 ? 'bg-red-500/10 text-red-400' : ($quota_remaining===1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400') ?>">
           <?= $quota_remaining===0 ? 'No searches left' : $quota_remaining.' search'.($quota_remaining!==1?'es':'').' left' ?>
         </span>
-        <a href="/portal/billing" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1 rounded transition">
+        <a href="/portal/billing?upgrade=1"
+           class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full transition">
           <i class="fa-solid fa-crown mr-1"></i>Upgrade
         </a>
       </div>
     </div>
-    <div class="w-full h-[2px] bg-white/5 rounded-full overflow-hidden">
-      <div id="quotaBar" class="h-full transition-all duration-500 <?= $quota_pct>=100?'bg-red-500':($quota_pct>=50?'bg-amber-400':'bg-emerald-500') ?>" style="width:<?= $quota_pct ?>%"></div>
+    <div class="quota-track">
+      <div id="quotaBar" class="quota-fill <?= $quota_pct>=100?'bg-red-400':($quota_pct>=50?'bg-amber-400':'bg-white/50') ?>" style="width:<?= $quota_pct ?>%"></div>
     </div>
-    <div class="flex justify-between text-[11px] text-slate-600 mt-1.5">
-      <span id="quotaText"><?= $quota_used ?> of <?= $FREE_SEARCH_LIMIT ?> used</span>
-      <?php if($quota_resets_at): ?>
-        <span>Resets at <strong class="text-slate-400"><?= date('g:i A',$quota_resets_at) ?></strong></span>
-      <?php else: ?>
-        <span>Resets 24 h after first search</span>
-      <?php endif; ?>
+    <div class="flex justify-between text-[11px] text-slate-600 mt-2">
+      <span id="quotaText"><?= $quota_used ?> of <?= $FREE_SEARCH_LIMIT ?> searches used</span>
+      <span><?php if($quota_resets_at): ?>Resets at <span class="text-slate-500"><?= date('g:i A',$quota_resets_at) ?></span><?php else: ?>Resets 24 h after first search<?php endif; ?></span>
     </div>
   </div>
-  <!-- Limit chips -->
+
+  <!-- Stat chips -->
   <div class="grid grid-cols-4 gap-2">
     <?php foreach([
-      ['Leads','per search',$FREE_LEAD_LIMIT],
-      ['Searches','per day',$FREE_SEARCH_LIMIT],
-      ['Sites','per day',$FREE_GEN_LIMIT],
-      ['Templates','available',$FREE_TMPL_LIMIT],
-    ] as [$lbl,$sub,$val]): ?>
-    <div class="border border-white/6 bg-white/[.02] rounded-lg p-3 text-center">
+      ['fa-users',     'Leads',     'per search', $FREE_LEAD_LIMIT],
+      ['fa-magnifying-glass','Searches','per day', $FREE_SEARCH_LIMIT],
+      ['fa-bolt',      'Sites',     'per day',    $FREE_GEN_LIMIT],
+      ['fa-layer-group','Templates','available',  $FREE_TMPL_LIMIT],
+    ] as [$icon,$lbl,$sub,$val]): ?>
+    <div class="glass rounded-xl p-3 text-center">
       <p class="text-xl font-extrabold text-white"><?= $val ?></p>
-      <p class="text-[10px] text-slate-500 mt-0.5 uppercase tracking-wide"><?= $lbl ?></p>
+      <p class="text-[10px] font-semibold text-slate-500 mt-0.5 uppercase tracking-wide"><?= $lbl ?></p>
       <p class="text-[10px] text-slate-700"><?= $sub ?></p>
     </div>
     <?php endforeach; ?>
   </div>
+
   <!-- Upsell strip -->
-  <div class="flex items-center gap-3 border border-white/6 bg-white/[.02] rounded-lg px-4 py-3">
+  <div class="flex items-center gap-3 glass rounded-xl px-4 py-3">
     <i class="fa-solid fa-arrow-trend-up text-slate-400 text-sm shrink-0"></i>
     <p class="text-xs text-slate-400 flex-1">Upgrade to <strong class="text-white">Pro</strong> for <?= $PRO_LEAD_LIMIT ?> lead unlocks, <?= $PRO_SITE_LIMIT ?> active sites &amp; unlimited searches.</p>
-    <a href="/portal/billing?upgrade=1" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded whitespace-nowrap transition">Go Pro</a>
+    <a href="/portal/billing?upgrade=1" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full whitespace-nowrap transition">Go Pro</a>
   </div>
+
 </div>
 
 <?php elseif ($plan === 'pro'): ?>
@@ -200,193 +260,196 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   $sl_pct = $PRO_SITE_LIMIT > 0 ? min(100, round(($active_site_count/$PRO_SITE_LIMIT)*100)) : 0;
 ?>
 <div class="grid sm:grid-cols-2 gap-3 mb-7">
-  <div class="border border-white/6 bg-white/[.02] rounded-lg p-4">
-    <div class="flex items-center justify-between mb-3">
-      <div class="flex items-center gap-2">
-        <i class="fa-solid fa-users text-slate-500 text-xs"></i>
-        <p class="text-sm font-semibold text-white">Lead Unlocks</p>
+  <div class="glass rounded-2xl p-5">
+    <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center"><i class="fa-solid fa-users text-slate-400 text-xs"></i></div>
+        <div>
+          <p class="text-sm font-semibold text-white leading-none">Lead Unlocks</p>
+          <p class="text-xs text-slate-600 mt-0.5" id="leadLimitSubtitle"><?= $pro_lead_count ?> of <?= $PRO_LEAD_LIMIT ?> used</p>
+        </div>
       </div>
       <span id="leadUpgradeBtn" class="<?= $ll_pct<80?'hidden':'' ?>">
-        <a href="/portal/billing?upgrade=1&plan=entrepreneur" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1 rounded transition"><i class="fa-solid fa-rocket mr-1"></i>Upgrade</a>
+        <a href="/portal/billing?upgrade=1&plan=entrepreneur" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full transition"><i class="fa-solid fa-rocket mr-1"></i>Upgrade</a>
       </span>
     </div>
-    <div class="w-full h-[2px] bg-white/5 rounded-full overflow-hidden">
-      <div id="leadLimitBar" class="h-full transition-all <?= $ll_pct>=100?'bg-red-500':($ll_pct>=80?'bg-amber-400':'bg-emerald-500') ?>" style="width:<?= $ll_pct ?>%" data-used="<?= $pro_lead_count ?>" data-limit="<?= $PRO_LEAD_LIMIT ?>"></div>
+    <div class="quota-track">
+      <div id="leadLimitBar" class="quota-fill <?= $ll_pct>=100?'bg-red-400':($ll_pct>=80?'bg-amber-400':'bg-white/50') ?>" style="width:<?= $ll_pct ?>%" data-used="<?= $pro_lead_count ?>" data-limit="<?= $PRO_LEAD_LIMIT ?>"></div>
     </div>
-    <div class="flex justify-between text-[11px] text-slate-500 mt-1.5">
-      <span id="leadLimitSubtitle"><?= $pro_lead_count ?> of <?= $PRO_LEAD_LIMIT ?> used</span>
+    <div class="flex justify-between text-[11px] text-slate-600 mt-2">
       <span id="leadLimitNote"><?= max(0,$PRO_LEAD_LIMIT-$pro_lead_count) ?> remaining</span>
+      <span id="leadLimitCount"><?= $pro_lead_count ?> / <?= $PRO_LEAD_LIMIT ?></span>
     </div>
   </div>
-  <div class="border border-white/6 bg-white/[.02] rounded-lg p-4">
-    <div class="flex items-center gap-2 mb-3">
-      <i class="fa-solid fa-globe text-slate-500 text-xs"></i>
-      <p class="text-sm font-semibold text-white">Active Sites</p>
+  <div class="glass rounded-2xl p-5">
+    <div class="flex items-center gap-2.5 mb-4">
+      <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center"><i class="fa-solid fa-globe text-slate-400 text-xs"></i></div>
+      <div>
+        <p class="text-sm font-semibold text-white leading-none">Active Sites</p>
+        <p class="text-xs text-slate-600 mt-0.5"><?= $active_site_count ?> of <?= $PRO_SITE_LIMIT ?> used</p>
+      </div>
     </div>
-    <div class="w-full h-[2px] bg-white/5 rounded-full overflow-hidden">
-      <div class="h-full transition-all <?= $sl_pct>=100?'bg-red-500':($sl_pct>=80?'bg-amber-400':'bg-emerald-500') ?>" style="width:<?= $sl_pct ?>%"></div>
+    <div class="quota-track">
+      <div class="quota-fill <?= $sl_pct>=100?'bg-red-400':($sl_pct>=80?'bg-amber-400':'bg-white/50') ?>" style="width:<?= $sl_pct ?>%"></div>
     </div>
-    <div class="flex justify-between text-[11px] text-slate-500 mt-1.5">
-      <span><?= $active_site_count ?> of <?= $PRO_SITE_LIMIT ?> used</span>
-      <span><?= max(0,$PRO_SITE_LIMIT-$active_site_count) ?> remaining</span>
-    </div>
+    <p class="text-[11px] text-slate-600 mt-2"><?= max(0,$PRO_SITE_LIMIT-$active_site_count) ?> slots remaining</p>
   </div>
 </div>
 
 <?php else: ?>
 <?php $sl_pct=$ENT_SITE_LIMIT>0?min(100,round(($active_site_count/$ENT_SITE_LIMIT)*100)):0; ?>
 <div class="grid sm:grid-cols-2 gap-3 mb-7">
-  <div class="flex items-center gap-3 border border-white/6 bg-white/[.02] rounded-lg px-4 py-4">
+  <div class="glass rounded-2xl px-5 py-4 flex items-center gap-3">
     <i class="fa-solid fa-infinity text-white text-xl"></i>
     <div><p class="text-sm font-semibold text-white">Unlimited Lead Searches</p><p class="text-xs text-slate-500">Entrepreneur plan &mdash; no cap</p></div>
   </div>
-  <div class="border border-white/6 bg-white/[.02] rounded-lg p-4">
-    <div class="flex items-center gap-2 mb-3"><i class="fa-solid fa-globe text-slate-500 text-xs"></i><p class="text-sm font-semibold text-white">Active Sites</p></div>
-    <div class="w-full h-[2px] bg-white/5 rounded-full overflow-hidden"><div class="h-full transition-all <?= $sl_pct>=90?'bg-red-500':($sl_pct>=70?'bg-amber-400':'bg-emerald-500') ?>" style="width:<?= $sl_pct ?>%"></div></div>
-    <div class="flex justify-between text-[11px] text-slate-500 mt-1.5"><span><?= $active_site_count ?> of <?= $ENT_SITE_LIMIT ?> used</span><span><?= max(0,$ENT_SITE_LIMIT-$active_site_count) ?> remaining</span></div>
+  <div class="glass rounded-2xl p-5">
+    <div class="flex items-center gap-2.5 mb-4"><div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center"><i class="fa-solid fa-globe text-slate-400 text-xs"></i></div><div><p class="text-sm font-semibold text-white leading-none">Active Sites</p><p class="text-xs text-slate-600 mt-0.5"><?= $active_site_count ?> of <?= $ENT_SITE_LIMIT ?> used</p></div></div>
+    <div class="quota-track"><div class="quota-fill <?= $sl_pct>=90?'bg-red-400':($sl_pct>=70?'bg-amber-400':'bg-white/50') ?>" style="width:<?= $sl_pct ?>%"></div></div>
+    <p class="text-[11px] text-slate-600 mt-2"><?= max(0,$ENT_SITE_LIMIT-$active_site_count) ?> remaining</p>
   </div>
 </div>
 <?php endif; ?>
 
-<!-- ====== SEARCH FORM ====== -->
-<div class="border border-white/8 bg-white/[.025] rounded-lg mb-6" id="searchBox">
 
-  <!-- Form header -->
-  <div class="flex items-center justify-between px-5 py-3.5 border-b border-white/6">
+<!-- ====== SEARCH BOX ====== -->
+<div class="glass rounded-2xl mb-6" id="searchBox">
+
+  <!-- Header row -->
+  <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/5">
     <div class="flex items-center gap-2">
-      <i class="fa-solid fa-crosshairs text-slate-400 text-xs"></i>
-      <span class="text-xs font-semibold text-slate-300 uppercase tracking-widest">Search Parameters</span>
+      <i class="fa-solid fa-crosshairs text-slate-600 text-xs"></i>
+      <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Search Parameters</span>
     </div>
-    <span id="searchStatusChip" class="hidden text-[10px] font-bold px-2 py-0.5 rounded border border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
-      <i class="fa-solid fa-circle-check mr-1"></i>Results ready
-    </span>
+    <span id="searchStatusChip" class="hidden"></span>
   </div>
 
   <form id="leadSearchForm" class="p-5">
-    <!-- Inputs row -->
+
+    <!-- Three inputs -->
     <div class="grid sm:grid-cols-3 gap-3 mb-5">
-      <!-- City -->
+
       <div>
-        <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1.5">City <span class="text-red-500">*</span></label>
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
+          City <span class="text-slate-700">*</span>
+        </label>
         <div class="relative">
-          <i class="fa-solid fa-city field-icon"></i>
-          <input type="text" name="city" id="fieldCity" placeholder="e.g. Calgary" required autocomplete="off" class="search-input">
+          <i class="fa-solid fa-city leads-icon"></i>
+          <input type="text" name="city" id="fieldCity"
+                 placeholder="e.g. Calgary" required autocomplete="off"
+                 class="leads-input">
         </div>
       </div>
-      <!-- Industry -->
+
       <div>
-        <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1.5">Industry <span class="text-red-500">*</span></label>
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
+          Industry <span class="text-slate-700">*</span>
+        </label>
         <div class="relative">
-          <i class="fa-solid fa-briefcase field-icon"></i>
-          <input type="text" name="industry" id="fieldIndustry" placeholder="e.g. Plumber, Dentist" required autocomplete="off" class="search-input">
+          <i class="fa-solid fa-briefcase leads-icon"></i>
+          <input type="text" name="industry" id="fieldIndustry"
+                 placeholder="e.g. Plumber, Dentist" required autocomplete="off"
+                 class="leads-input">
         </div>
       </div>
-      <!-- Keywords -->
+
       <div>
-        <label class="block text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-1.5">Keywords <span class="text-slate-700 normal-case font-normal">(optional)</span></label>
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
+          Keywords <span class="text-slate-700 normal-case font-normal text-[9px]">(optional)</span>
+        </label>
         <div class="relative">
-          <i class="fa-solid fa-tags field-icon"></i>
-          <input type="text" name="keywords" id="fieldKeywords" placeholder="e.g. family-owned" class="search-input">
+          <i class="fa-solid fa-tags leads-icon"></i>
+          <input type="text" name="keywords" id="fieldKeywords"
+                 placeholder="e.g. family-owned"
+                 class="leads-input">
         </div>
       </div>
+
     </div>
 
-    <!-- Bottom row: slider + checkbox + button -->
+    <!-- Slider + toggle + button -->
     <div class="flex flex-col sm:flex-row sm:items-center gap-5">
 
-      <!-- Slider -->
+      <!-- Lead count slider -->
       <div class="flex-1">
         <div class="flex items-center justify-between mb-2">
-          <label class="text-[10px] font-bold text-slate-600 uppercase tracking-widest">Lead count</label>
+          <span class="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">Lead count</span>
           <span class="text-sm font-extrabold text-white tabular-nums" id="leadCountDisplay"><?= $slider_default ?></span>
         </div>
-        <input type="range" id="leadCountSlider" name="lead_count_slider" min="1" max="<?= $slider_max ?>" value="<?= $slider_default ?>">
-        <div class="flex justify-between text-[10px] text-slate-700 mt-1"><span>1</span><span><?= $slider_max ?></span></div>
+        <input type="range" id="leadCountSlider" name="lead_count_slider"
+               min="1" max="<?= $slider_max ?>" value="<?= $slider_default ?>"
+               class="leads-slider">
+        <div class="flex justify-between text-[10px] text-slate-700 mt-1">
+          <span>1</span><span><?= $slider_max ?></span>
+        </div>
       </div>
 
-      <!-- Include seen -->
-      <label class="flex items-center gap-2 cursor-pointer select-none shrink-0">
-        <div class="relative">
-          <input type="checkbox" id="includeSeenLeads" name="include_seen" class="sr-only peer">
-          <div class="w-8 h-4 bg-white/8 border border-white/10 rounded-sm peer-checked:bg-emerald-600 peer-checked:border-emerald-500 transition-all"></div>
-          <div class="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-sm transition-all peer-checked:translate-x-4"></div>
+      <!-- Include seen toggle -->
+      <label class="flex items-center gap-2.5 cursor-pointer select-none shrink-0" id="seenToggleLabel">
+        <div class="toggle-track" id="seenToggleTrack">
+          <div class="toggle-thumb"></div>
         </div>
         <span class="text-xs text-slate-500">Include seen leads</span>
+        <input type="checkbox" id="includeSeenLeads" name="include_seen" class="sr-only">
       </label>
 
       <input type="hidden" id="leadCountHidden" name="lead_count" value="<?= $slider_default ?>">
 
-      <!-- Submit -->
+      <!-- Submit button -->
       <button type="submit" id="searchBtn"
-        class="inline-flex items-center gap-2 bg-white hover:bg-slate-100 active:scale-95 text-black px-6 py-2.5 rounded-md font-bold text-sm transition-all shrink-0 whitespace-nowrap">
+        class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 active:scale-95 text-black px-6 py-2.5 rounded-xl font-bold text-sm transition-all shrink-0 whitespace-nowrap">
         <i class="fa-solid fa-magnifying-glass text-xs"></i>
         <span id="searchBtnLabel">Find Leads</span>
       </button>
     </div>
+
   </form>
 </div>
 
+
 <!-- ====== SKELETON LOADER ====== -->
 <div id="leadsLoading" class="hidden space-y-3">
-  <div class="border border-white/6 rounded-lg p-4">
+  <?php for($i=0;$i<3;$i++): ?>
+  <div class="glass rounded-2xl p-5">
     <div class="flex items-start gap-3">
-      <div class="flex-1 space-y-2">
-        <div class="skeleton h-4 w-48"></div>
-        <div class="skeleton h-3 w-64"></div>
-        <div class="skeleton h-3 w-32"></div>
+      <div class="flex-1 space-y-2.5">
+        <div class="skel h-4" style="width:<?= [52,60,44][$i] ?>%"></div>
+        <div class="skel h-3" style="width:<?= [70,55,65][$i] ?>%"></div>
+        <div class="skel h-3" style="width:<?= [38,45,30][$i] ?>%"></div>
       </div>
-      <div class="skeleton h-8 w-20 rounded-md"></div>
+      <div class="skel h-8 w-20 rounded-xl"></div>
     </div>
-    <div class="mt-3 pt-3 border-t border-white/5 flex gap-2">
-      <div class="skeleton h-7 w-28 rounded-md"></div>
-      <div class="skeleton h-7 w-24 rounded-md"></div>
+    <div class="mt-4 pt-4 border-t border-white/5 flex gap-2">
+      <div class="skel h-7 w-28 rounded-lg"></div>
+      <?php if($i!==1): ?><div class="skel h-7 w-22 rounded-lg"></div><?php endif; ?>
     </div>
   </div>
-  <div class="border border-white/6 rounded-lg p-4">
-    <div class="flex items-start gap-3">
-      <div class="flex-1 space-y-2">
-        <div class="skeleton h-4 w-56"></div>
-        <div class="skeleton h-3 w-44"></div>
-        <div class="skeleton h-3 w-36"></div>
-      </div>
-      <div class="skeleton h-8 w-20 rounded-md"></div>
-    </div>
-    <div class="mt-3 pt-3 border-t border-white/5 flex gap-2">
-      <div class="skeleton h-7 w-28 rounded-md"></div>
-    </div>
-  </div>
-  <div class="border border-white/6 rounded-lg p-4">
-    <div class="flex items-start gap-3">
-      <div class="flex-1 space-y-2">
-        <div class="skeleton h-4 w-40"></div>
-        <div class="skeleton h-3 w-52"></div>
-        <div class="skeleton h-3 w-28"></div>
-      </div>
-      <div class="skeleton h-8 w-20 rounded-md"></div>
-    </div>
-    <div class="mt-3 pt-3 border-t border-white/5 flex gap-2">
-      <div class="skeleton h-7 w-28 rounded-md"></div>
-      <div class="skeleton h-7 w-24 rounded-md"></div>
-    </div>
-  </div>
-  <p class="text-xs text-slate-600 text-center pt-1"><i class="fa-solid fa-satellite-dish mr-1 animate-pulse"></i>Scanning Google Places&hellip;</p>
+  <?php endfor; ?>
+  <p class="text-xs text-slate-700 text-center pt-1">
+    <i class="fa-solid fa-satellite-dish mr-1 animate-pulse"></i>Scanning Google Places&hellip;
+  </p>
 </div>
+
 
 <!-- ====== RESULTS ====== -->
 <div id="leadsResultsWrap" class="hidden">
   <div id="leadsList" class="space-y-2.5"></div>
   <div id="lockedWrap" class="hidden mt-3">
     <div id="lockedList" class="space-y-2.5"></div>
-    <div class="mt-5 border border-white/8 bg-white/[.02] rounded-lg overflow-hidden">
+    <div class="mt-5 glass rounded-2xl overflow-hidden">
       <div class="px-6 pt-6 pb-3 text-center">
-        <div class="inline-flex items-center justify-center w-12 h-12 rounded-lg bg-white/6 border border-white/10 mb-4">
+        <div class="inline-flex items-center justify-center w-12 h-12 rounded-xl bg-white/5 mb-4">
           <i class="fa-solid fa-lock text-white text-lg"></i>
         </div>
         <h3 class="text-base font-bold text-white mb-1">More Leads Are Waiting</h3>
-        <p class="text-slate-400 text-sm max-w-xs mx-auto">You're seeing <strong class="text-white"><?= $FREE_LEAD_LIMIT ?> of the top results.</strong> Upgrade to unlock every lead.</p>
+        <p class="text-slate-400 text-sm max-w-xs mx-auto">
+          You&rsquo;re seeing <strong class="text-white"><?= $FREE_LEAD_LIMIT ?> of the top results.</strong>
+          Upgrade to unlock every lead.
+        </p>
       </div>
-      <div class="px-6 pb-5 flex flex-col sm:flex-row items-center justify-center gap-3">
-        <a href="/portal/billing?upgrade=1" class="w-full sm:w-auto bg-white hover:bg-slate-200 text-black px-7 py-2.5 rounded-md font-bold text-sm text-center transition">
+      <div class="px-6 pb-6 flex flex-col sm:flex-row items-center justify-center gap-3">
+        <a href="/portal/billing?upgrade=1"
+           class="w-full sm:w-auto bg-white hover:bg-slate-200 text-black px-7 py-2.5 rounded-xl font-bold text-sm text-center transition">
           <i class="fa-solid fa-crown mr-2"></i>Upgrade Plan
         </a>
         <p class="text-xs text-slate-600">Cancel anytime &bull; Instant access</p>
@@ -395,36 +458,43 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
+
 </div><!-- /main column -->
 
-<!-- ====== HISTORY SIDEBAR ====== -->
-<aside class="hidden lg:flex w-64 shrink-0 flex-col gap-0">
-  <div class="sticky top-6 flex flex-col gap-3">
-    <div class="border border-white/6 bg-slate-900/80 rounded-lg flex flex-col overflow-hidden backdrop-blur-xl" style="max-height:calc(100vh - 3rem);">
 
-      <div class="flex items-center justify-between px-4 py-3.5 border-b border-white/6 shrink-0">
+<!-- ====== HISTORY SIDEBAR ====== -->
+<aside class="hidden lg:flex w-64 shrink-0 flex-col">
+  <div class="sticky top-6 flex flex-col gap-3">
+    <div class="bg-slate-900/95 border border-white/5 rounded-2xl flex flex-col overflow-hidden backdrop-blur-xl" style="max-height:calc(100vh - 3rem);">
+
+      <div class="flex items-center justify-between px-4 py-3.5 border-b border-white/5 shrink-0">
         <div class="flex items-center gap-2">
           <i class="fa-solid fa-clock-rotate-left text-slate-500 text-xs"></i>
-          <span class="text-xs font-bold text-slate-300 uppercase tracking-widest">Recent Searches</span>
+          <span class="text-xs font-semibold text-slate-400 uppercase tracking-widest">History</span>
         </div>
-        <span id="historyCount" class="text-[10px] font-bold text-slate-600 bg-white/5 px-1.5 py-0.5 rounded hidden"></span>
+        <span id="historyCount" class="text-[10px] font-bold text-slate-600 bg-white/5 px-1.5 py-0.5 rounded-full hidden"></span>
       </div>
 
-      <nav id="searchHistoryList" class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5"
-           style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.06) transparent;"></nav>
+      <nav id="searchHistoryList"
+           class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5"
+           style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.05) transparent;"></nav>
 
-      <div id="searchHistoryEmpty" class="flex flex-col items-center justify-center px-5 py-8 text-center">
-        <i class="fa-solid fa-magnifying-glass text-slate-700 text-xl mb-3"></i>
+      <div id="searchHistoryEmpty" class="flex flex-col items-center justify-center px-5 py-10 text-center">
+        <div class="w-10 h-10 rounded-xl bg-white/4 flex items-center justify-center mb-3">
+          <i class="fa-solid fa-magnifying-glass text-slate-700 text-sm"></i>
+        </div>
         <p class="text-xs font-semibold text-slate-600">No searches yet</p>
         <p class="text-[11px] text-slate-700 mt-0.5 leading-relaxed">Run a search to see<br>your history here.</p>
       </div>
 
-      <div class="px-4 py-2.5 border-t border-white/5 shrink-0">
+      <div class="px-4 py-3 border-t border-white/5 shrink-0">
         <p class="text-[10px] text-slate-700 text-center">Click any search to re-run it</p>
       </div>
+
     </div>
   </div>
 </aside>
+
 
 </div><!-- /page flex -->
 
@@ -437,4 +507,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-limit="<?= $FREE_SEARCH_LIMIT ?>"
   data-slider-max="<?= $slider_max ?>"
 ></script>
-<script src="/assets/js/leads.js?v=v1300"></script>
+<script src="/assets/js/leads.js?v=v1400"></script>
