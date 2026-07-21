@@ -13,11 +13,15 @@ ErrorDocument 404 /404.php
 RewriteRule ^s/([a-zA-Z0-9\-]+)/?$ s.php?slug=$1 [L,QSA]
 
 # ---------------------------------------------------------------
-# CLEAN URLs — strip .php extension
+# CLEAN URLs — strip .php extension (portal & root pages only)
+# api/ is intentionally excluded: fetch() calls go directly to
+# /api/find-leads.php etc. and must NOT be 301'd to /api/find-leads
 # ---------------------------------------------------------------
 
-# 1. If someone requests /page.php directly, redirect to /page (301)
+# 1. If someone requests /page.php directly (but NOT under api/),
+#    redirect to /page (301)
 RewriteCond %{THE_REQUEST} \s/([^.]+)\.php[\s?] [NC]
+RewriteCond %{REQUEST_URI} !^/api/ [NC]
 RewriteRule ^ /%1 [R=301,L]
 
 # 2. Portal pages: /portal/page  ->  portal/page.php (internal rewrite)
