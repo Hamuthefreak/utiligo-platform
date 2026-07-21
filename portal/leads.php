@@ -10,15 +10,15 @@ $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 
-$FREE_LEAD_LIMIT    = defined('FREE_LEAD_LIMIT')           ? (int)FREE_LEAD_LIMIT           : 3;
-$FREE_SEARCH_LIMIT  = defined('FREE_SEARCH_DAILY_LIMIT')   ? (int)FREE_SEARCH_DAILY_LIMIT   : 2;
-$FREE_GEN_LIMIT     = defined('FREE_GENERATE_DAILY_LIMIT') ? (int)FREE_GENERATE_DAILY_LIMIT : 1;
-$FREE_TMPL_LIMIT    = defined('FREE_TEMPLATE_LIMIT')       ? (int)FREE_TEMPLATE_LIMIT       : 2;
-$PRO_LEAD_LIMIT     = defined('PRO_LEAD_LIMIT')            ? (int)PRO_LEAD_LIMIT            : 120;
-$PRO_SITE_LIMIT     = defined('PRO_SITE_LIMIT')            ? (int)PRO_SITE_LIMIT            : 200;
-$ENT_SITE_LIMIT     = defined('ENT_SITE_LIMIT')            ? (int)ENT_SITE_LIMIT            : 500;
+$FREE_LEAD_LIMIT   = defined('FREE_LEAD_LIMIT')           ? (int)FREE_LEAD_LIMIT           : 3;
+$FREE_SEARCH_LIMIT = defined('FREE_SEARCH_DAILY_LIMIT')   ? (int)FREE_SEARCH_DAILY_LIMIT   : 2;
+$FREE_GEN_LIMIT    = defined('FREE_GENERATE_DAILY_LIMIT') ? (int)FREE_GENERATE_DAILY_LIMIT : 1;
+$FREE_TMPL_LIMIT   = defined('FREE_TEMPLATE_LIMIT')       ? (int)FREE_TEMPLATE_LIMIT       : 2;
+$PRO_LEAD_LIMIT    = defined('PRO_LEAD_LIMIT')            ? (int)PRO_LEAD_LIMIT            : 120;
+$PRO_SITE_LIMIT    = defined('PRO_SITE_LIMIT')            ? (int)PRO_SITE_LIMIT            : 200;
+$ENT_SITE_LIMIT    = defined('ENT_SITE_LIMIT')            ? (int)ENT_SITE_LIMIT            : 500;
 
-// ── Free search quota ────────────────────────────────────────────────────────
+// ── Free search quota ─────────────────────────────────────────────────────
 $quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
@@ -35,31 +35,24 @@ if (!$is_paid) {
 $quota_remaining = max(0, $FREE_SEARCH_LIMIT - $quota_used);
 $quota_pct       = $FREE_SEARCH_LIMIT > 0 ? min(100, round(($quota_used/$FREE_SEARCH_LIMIT)*100)) : 0;
 
-// ── Pro lead unlock count (from unlocked_leads) ──────────────────────────────
-// unlocked_leads is written by generate.php when a pro user builds a site.
-// We show this as the "lead unlock" usage bar.
+// ── Pro lead unlock count ────────────────────────────────────────────────────
 $pro_lead_count = 0;
 if ($plan === 'pro') {
     try {
-        $pdo  = get_platform_db();
-        // Try unlocked_leads first
+        $pdo = get_platform_db();
         try {
             $stmt = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id = ?');
             $stmt->execute([$user['id']]);
             $pro_lead_count = (int)$stmt->fetchColumn();
-        } catch (\Throwable $inner) {
-            // fallback: count distinct leads the user has ever received in a search result
-            // (we can't easily get that here, so default 0 is fine)
-            $pro_lead_count = 0;
-        }
+        } catch (\Throwable $inner) { $pro_lead_count = 0; }
     } catch (\Throwable $e) { $pro_lead_count = 0; }
 }
 
-// ── Active site count ────────────────────────────────────────────────────────
+// ── Active site count ─────────────────────────────────────────────────────
 $active_site_count = 0;
 if ($is_paid) {
     try {
-        $pdo  = get_platform_db();
+        $pdo = get_platform_db();
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM utiligo_generated_sites WHERE user_id = ? AND link_active = 1');
         $stmt->execute([$user['id']]);
         $active_site_count = (int)$stmt->fetchColumn();
@@ -71,170 +64,138 @@ $slider_default = match($plan) { 'entrepreneur' => 20, 'pro' => 10, default => 5
 
 $pageTitle = 'Find Leads — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
+// portal_layout.php opens <main class="lg:ml-64 min-h-screen"><div class="max-w-5xl mx-auto px-6 py-8">
+// We close that inner div and reopen it so we control the right-padding for the rail.
 ?>
-<style>
-/* ─── Leads page ─────────────────────────────────────────── */
+<?php
+// Close the inner wrapper portal_layout opened so we can control our own padding
+echo '</div></main>';
+// We now render the full page ourselves inside main
+?>
+<main class="lg:ml-64 min-h-screen">
 
-/* Right-rail sidebar — mirrors left sidebar style */
-#leadsRail {
-  width: 256px;
-  flex-shrink: 0;
-}
-@media (max-width: 1279px) { #leadsRail { display: none !important; } }
+<?php /* ═══ RIGHT RAIL — fixed, mirrors left sidebar exactly ═══════════════════════
+   Left sidebar: w-64 h-screen bg-slate-900/95 border-r border-white/5 lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl
+   Right rail:   same width, same colours, same fixed behaviour, just on the right.
+   On xl+ the main content gets pr-64 to avoid being hidden under it.
+   On <xl it's hidden; history is in the bottom drawer instead.
+*/ ?>
+<aside id="leadsRail"
+  class="w-64 h-screen bg-slate-900/95 border-l border-white/5 flex flex-col
+         fixed top-0 right-0 z-20 backdrop-blur-xl
+         hidden xl:flex">
 
-/* Mobile history drawer */
-#historyDrawer {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 60;
-  transform: translateY(100%);
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
-  max-height: 70vh;
-}
-#historyDrawer.open { transform: translateY(0); }
-#historyDrawerOverlay {
-  position: fixed; inset: 0; z-index: 59;
-  background: rgba(0,0,0,.55);
-  opacity: 0; pointer-events: none;
-  transition: opacity .25s;
-}
-#historyDrawerOverlay.open { opacity: 1; pointer-events: all; }
+  <!-- Logo-area placeholder so top aligns with left sidebar -->
+  <div class="px-5 py-5 border-b border-white/5 shrink-0">
+    <div class="flex items-center gap-2">
+      <i class="fa-solid fa-clock-rotate-left text-slate-600 text-xs"></i>
+      <span class="text-sm font-bold text-white tracking-tight">Recent Searches</span>
+      <span id="historyCount" class="ml-auto text-[10px] font-bold text-slate-600 bg-white/5 px-1.5 py-0.5 rounded-full hidden"></span>
+    </div>
+  </div>
 
-/* Input fields */
-.leads-input {
-  width: 100%;
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.07);
-  color: #f1f5f9;
-  font-size: .875rem;
-  padding: .6rem .75rem .6rem 2.2rem;
-  border-radius: 10px;
-  outline: none;
-  transition: border-color .15s, background .15s;
-}
-.leads-input::placeholder { color: #334155; }
-.leads-input:focus {
-  border-color: rgba(255,255,255,.22);
-  background: rgba(255,255,255,.06);
-}
-.leads-icon {
-  position: absolute; left: .75rem; top: 50%;
-  transform: translateY(-50%);
-  color: #1e293b; font-size: .7rem; pointer-events: none;
-  transition: color .15s;
-}
-.leads-input:focus ~ .leads-icon { color: #64748b; }
+  <!-- History list -->
+  <nav id="searchHistoryList"
+       class="flex-1 overflow-y-auto px-3 py-3"
+       style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.05) transparent;"></nav>
 
-/* Progress bars */
-.q-track { height: 2px; background: rgba(255,255,255,.06); border-radius: 2px; overflow: hidden; }
-.q-fill  { height: 100%; border-radius: 2px; transition: width .5s ease; }
+  <!-- Empty state -->
+  <div id="searchHistoryEmpty" class="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
+    <div class="w-10 h-10 rounded-2xl bg-white/[.03] border border-white/5 flex items-center justify-center mb-4">
+      <i class="fa-solid fa-magnifying-glass text-slate-700 text-sm"></i>
+    </div>
+    <p class="text-xs font-semibold text-slate-500">No searches yet</p>
+    <p class="text-[11px] text-slate-700 mt-1 leading-relaxed">Run your first search and<br>it’ll appear here.</p>
+  </div>
 
-/* Range slider */
-.leads-slider {
-  -webkit-appearance: none; appearance: none;
-  width: 100%; height: 2px;
-  background: rgba(255,255,255,.1);
-  border-radius: 2px; outline: none; cursor: pointer;
-}
-.leads-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #fff; cursor: pointer;
-  box-shadow: 0 0 0 3px rgba(255,255,255,.08);
-  transition: transform .1s;
-}
-.leads-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
-.leads-slider::-moz-range-thumb {
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #fff; border: none; cursor: pointer;
-}
+  <!-- Footer hint -->
+  <div class="px-4 py-4 border-t border-white/5 shrink-0">
+    <p class="text-[10px] text-slate-700 text-center leading-relaxed">
+      <i class="fa-solid fa-hand-pointer mr-1"></i>Click any entry to re-run it
+    </p>
+  </div>
 
-/* Toggle */
-.tog-track {
-  width: 30px; height: 16px;
-  background: rgba(255,255,255,.08);
-  border-radius: 8px; position: relative;
-  transition: background .2s; flex-shrink: 0;
-}
-.tog-track.on { background: rgba(255,255,255,.28); }
-.tog-thumb {
-  position: absolute; top: 2px; left: 2px;
-  width: 12px; height: 12px; border-radius: 50%;
-  background: #475569; transition: transform .18s, background .18s;
-}
-.tog-track.on .tog-thumb { transform: translateX(14px); background: #fff; }
+</aside>
 
-/* Skeleton */
-@keyframes leads-shimmer {
-  0%   { background-position: -500px 0; }
-  100% { background-position:  500px 0; }
-}
-.skel {
-  background: linear-gradient(90deg, rgba(255,255,255,.03) 25%, rgba(255,255,255,.07) 50%, rgba(255,255,255,.03) 75%);
-  background-size: 500px 100%;
-  animation: leads-shimmer 1.5s infinite linear;
-  border-radius: 6px;
-}
 
-/* Card entry */
-@keyframes lead-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-.lead-in { animation: lead-in .22s ease both; }
+<!-- ═══ MOBILE: bottom history drawer ═══════════════════════════════════════ -->
+<!-- Overlay -->
+<div id="historyDrawerOverlay"
+     class="fixed inset-0 bg-black/60 z-40 opacity-0 pointer-events-none transition-opacity duration-200"
+     onclick="closeHistoryDrawer()"></div>
 
-/* Status chip */
-#searchStatusChip {
-  font-size: .65rem; font-weight: 700;
-  letter-spacing: .04em;
-  padding: 2px 8px; border-radius: 4px;
-  background: rgba(255,255,255,.07); color: #94a3b8;
-}
-</style>
+<!-- Drawer -->
+<div id="historyDrawer"
+     class="xl:hidden fixed bottom-0 left-0 right-0 z-50
+            bg-slate-900/98 border-t border-white/8 rounded-t-2xl
+            flex flex-col backdrop-blur-xl"
+     style="max-height:72vh;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);">
 
-<!-- Mobile history button (bottom-right FAB, hidden on xl) -->
-<button id="historyFab"
-  class="xl:hidden fixed bottom-5 right-5 z-50 w-12 h-12 rounded-full bg-slate-800 border border-white/10 flex items-center justify-center shadow-xl transition hover:bg-slate-700 active:scale-95"
-  onclick="openHistoryDrawer()">
-  <i class="fa-solid fa-clock-rotate-left text-slate-300 text-sm"></i>
-</button>
-
-<!-- Mobile history drawer -->
-<div id="historyDrawerOverlay" onclick="closeHistoryDrawer()"></div>
-<div id="historyDrawer" class="bg-slate-900 border-t border-white/8 rounded-t-2xl flex flex-col">
-  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 shrink-0">
+  <!-- Handle -->
+  <div class="flex justify-center pt-3 pb-1 shrink-0">
+    <div class="w-8 h-1 rounded-full bg-white/10"></div>
+  </div>
+  <!-- Header -->
+  <div class="flex items-center justify-between px-5 py-3 border-b border-white/5 shrink-0">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-clock-rotate-left text-slate-500 text-xs"></i>
-      <span class="text-xs font-bold text-slate-300 uppercase tracking-widest">Search History</span>
+      <span class="text-sm font-bold text-white">Recent Searches</span>
     </div>
-    <button onclick="closeHistoryDrawer()" class="text-slate-500 hover:text-white transition p-1">
-      <i class="fa-solid fa-xmark"></i>
+    <button onclick="closeHistoryDrawer()" class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
+      <i class="fa-solid fa-xmark text-xs"></i>
     </button>
   </div>
-  <div id="historyDrawerList" class="flex-1 overflow-y-auto px-3 py-2 space-y-0.5"
-       style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.05) transparent;"></div>
-  <div id="historyDrawerEmpty" class="flex flex-col items-center justify-center py-10 text-center">
-    <i class="fa-solid fa-magnifying-glass text-slate-700 text-xl mb-2"></i>
-    <p class="text-xs text-slate-600">No searches yet</p>
+  <!-- List -->
+  <div id="historyDrawerList" class="flex-1 overflow-y-auto px-3 py-2"
+       style="scrollbar-width:thin;"></div>
+  <!-- Empty -->
+  <div id="historyDrawerEmpty" class="flex flex-col items-center justify-center py-12 text-center px-6">
+    <i class="fa-solid fa-magnifying-glass text-slate-700 text-2xl mb-3"></i>
+    <p class="text-sm font-semibold text-slate-600">Nothing here yet</p>
+    <p class="text-xs text-slate-700 mt-1">Search for a city &amp; industry first.</p>
   </div>
-  <div class="px-4 py-3 border-t border-white/5 shrink-0">
-    <p class="text-[10px] text-slate-700 text-center">Tap any search to re-run it</p>
+  <div class="px-4 py-4 border-t border-white/5 shrink-0">
+    <p class="text-[11px] text-slate-700 text-center">Tap any entry to re-run it</p>
   </div>
 </div>
 
-<!-- ══ Page layout ══════════════════════════════════════════════════════════ -->
-<div class="flex gap-6 items-start">
+<!-- Mobile FAB — opens drawer -->
+<button id="historyFab"
+  class="xl:hidden fixed bottom-6 right-6 z-50 h-12 px-4 rounded-full
+         bg-slate-800 border border-white/10 shadow-xl
+         flex items-center gap-2
+         text-slate-300 text-xs font-semibold
+         hover:bg-slate-700 active:scale-95 transition-all"
+  onclick="openHistoryDrawer()">
+  <i class="fa-solid fa-clock-rotate-left text-sm"></i>
+  <span>History</span>
+</button>
 
-<!-- ── Main column ─────────────────────────────────────────────────────────── -->
-<div class="flex-1 min-w-0">
+
+<!-- ═══ MAIN CONTENT ════════════════════════════════════════════════════════ -->
+<!-- On xl+ we add right padding so content doesn't slide under the rail -->
+<div class="max-w-5xl mx-auto px-6 py-8 xl:pr-[17rem]">
 
 <!-- Page header -->
 <div class="mb-7">
-  <h1 class="text-2xl font-bold tracking-tight">Find Leads</h1>
-  <p class="text-slate-500 text-sm mt-1">Discover local businesses with no website — your next paying clients.</p>
+  <div class="flex items-center justify-between flex-wrap gap-3">
+    <div>
+      <h1 class="text-2xl font-bold tracking-tight">Find Leads</h1>
+      <p class="text-slate-500 text-sm mt-1">Discover local businesses with no website — your next paying clients.</p>
+    </div>
+    <!-- mobile history toggle inside header -->
+    <button onclick="openHistoryDrawer()"
+      class="xl:hidden flex items-center gap-1.5 text-xs text-slate-500 hover:text-white
+             bg-white/5 border border-white/8 px-3 py-2 rounded-xl transition">
+      <i class="fa-solid fa-clock-rotate-left text-[10px]"></i> History
+    </button>
+  </div>
 </div>
 
-<?php /* ── Quota / plan cards ───────────────────────────────────────────── */ ?>
+
+<?php /* ── Quota / plan banners ───────────────────────────────────────────── */ ?>
 <?php if (!$is_paid): ?>
 <div class="space-y-3 mb-7">
-
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
       <div class="flex items-center gap-3">
@@ -248,18 +209,18 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <div class="flex items-center gap-2">
         <span id="quotaBadge" class="text-xs font-bold px-2.5 py-1 rounded-full
-          <?= $quota_remaining===0?'bg-red-500/10 text-red-400':($quota_remaining===1?'bg-amber-500/10 text-amber-400':'bg-white/5 text-slate-400') ?>">
-          <?= $quota_remaining===0?'No searches left':$quota_remaining.' search'.($quota_remaining!==1?'es':'').' left' ?>
+          <?= $quota_remaining===0 ? 'bg-red-500/10 text-red-400' : ($quota_remaining===1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400') ?>">
+          <?= $quota_remaining===0 ? 'No searches left' : $quota_remaining.' search'.($quota_remaining!==1?'es':'').' left' ?>
         </span>
         <a href="/portal/billing.php?upgrade=1" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full transition">
           <i class="fa-solid fa-crown mr-1"></i>Upgrade
         </a>
       </div>
     </div>
-    <div class="q-track"><div id="quotaBar" class="q-fill <?= $quota_pct>=100?'bg-red-400':($quota_pct>=50?'bg-amber-400':'bg-white/40') ?>" style="width:<?= $quota_pct ?>%"></div></div>
+    <div class="q-track"><div id="quotaBar" class="q-fill <?= $quota_pct>=100?'bg-red-400':($quota_pct>=50?'bg-amber-400':'bg-white/40') ?>" style="width:<?=$quota_pct?>%"></div></div>
     <div class="flex justify-between text-[11px] text-slate-600 mt-2">
-      <span id="quotaText"><?= $quota_used ?> of <?= $FREE_SEARCH_LIMIT ?> used</span>
-      <span><?php if($quota_resets_at):?>Resets at <span class="text-slate-500"><?= date('g:i A',$quota_resets_at) ?></span><?php else:?>Resets 24 h after first search<?php endif;?></span>
+      <span id="quotaText"><?=$quota_used?> of <?=$FREE_SEARCH_LIMIT?> used</span>
+      <span><?php if($quota_resets_at):?>Resets at <span class="text-slate-500"><?=date('g:i A',$quota_resets_at)?></span><?php else:?>Resets 24h after first search<?php endif;?></span>
     </div>
   </div>
 
@@ -283,16 +244,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <p class="text-xs text-slate-400 flex-1">Upgrade to <strong class="text-white">Pro</strong> for <?=$PRO_LEAD_LIMIT?> lead unlocks, <?=$PRO_SITE_LIMIT?> active sites &amp; unlimited searches.</p>
     <a href="/portal/billing.php?upgrade=1" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full whitespace-nowrap transition">Go Pro</a>
   </div>
-
-</div><!-- /free -->
+</div>
 
 <?php elseif ($plan==='pro'):
   $ll_pct = $PRO_LEAD_LIMIT>0 ? min(100,round(($pro_lead_count/$PRO_LEAD_LIMIT)*100)) : 0;
   $sl_pct = $PRO_SITE_LIMIT>0 ? min(100,round(($active_site_count/$PRO_SITE_LIMIT)*100)) : 0;
 ?>
 <div class="grid sm:grid-cols-2 gap-3 mb-7">
-
-  <!-- Lead unlock bar -->
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <div class="flex items-center gap-2.5">
@@ -322,8 +280,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <span id="leadLimitCount"><?=$pro_lead_count?> / <?=$PRO_LEAD_LIMIT?></span>
     </div>
   </div>
-
-  <!-- Active sites bar -->
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center gap-2.5 mb-3">
       <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
@@ -335,17 +291,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
     </div>
     <div class="q-track">
-      <div class="q-fill <?=$sl_pct>=100?'bg-red-400':($sl_pct>=80?'bg-amber-400':'bg-white/40')?>"
-           style="width:<?=$sl_pct?>%"></div>
+      <div class="q-fill <?=$sl_pct>=100?'bg-red-400':($sl_pct>=80?'bg-amber-400':'bg-white/40')?>" style="width:<?=$sl_pct?>%"></div>
     </div>
-    <p class="text-[11px] text-slate-600 mt-2"><?=max(0,$PRO_SITE_LIMIT-$active_site_count)?> slots remaining</p>
+    <p class="text-[11px] text-slate-600 mt-2"><?=max(0,$PRO_SITE_LIMIT-$active_site_count)?> remaining</p>
   </div>
+</div>
 
-</div><!-- /pro -->
-
-<?php else: // entrepreneur
-  $sl_pct = $ENT_SITE_LIMIT>0 ? min(100,round(($active_site_count/$ENT_SITE_LIMIT)*100)) : 0;
-?>
+<?php else: $sl_pct = $ENT_SITE_LIMIT>0 ? min(100,round(($active_site_count/$ENT_SITE_LIMIT)*100)) : 0; ?>
 <div class="grid sm:grid-cols-2 gap-3 mb-7">
   <div class="glass rounded-2xl px-5 py-4 flex items-center gap-3">
     <i class="fa-solid fa-infinity text-white text-xl"></i>
@@ -369,7 +321,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
     <p class="text-[11px] text-slate-600 mt-2"><?=max(0,$ENT_SITE_LIMIT-$active_site_count)?> remaining</p>
   </div>
-</div><!-- /ent -->
+</div>
 <?php endif; ?>
 
 
@@ -380,14 +332,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <i class="fa-solid fa-crosshairs text-slate-600 text-xs"></i>
       <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Search Parameters</span>
     </div>
-    <div class="flex items-center gap-2">
-      <span id="searchStatusChip" class="hidden"></span>
-      <!-- Mobile history toggle -->
-      <button onclick="openHistoryDrawer()"
-        class="xl:hidden flex items-center gap-1.5 text-[11px] text-slate-500 hover:text-white transition">
-        <i class="fa-solid fa-clock-rotate-left text-[10px]"></i> History
-      </button>
-    </div>
+    <span id="searchStatusChip" class="hidden text-[11px] font-semibold text-slate-500 bg-white/5 px-2.5 py-1 rounded-full"></span>
   </div>
 
   <form id="leadSearchForm" class="p-5">
@@ -427,15 +372,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
                min="1" max="<?=$slider_max?>" value="<?=$slider_default?>" class="leads-slider">
         <div class="flex justify-between text-[10px] text-slate-700 mt-1"><span>1</span><span><?=$slider_max?></span></div>
       </div>
-
-      <label class="flex items-center gap-2.5 cursor-pointer select-none shrink-0" id="seenToggleLabel">
+      <label class="flex items-center gap-2.5 cursor-pointer select-none shrink-0">
         <div class="tog-track" id="togTrack"><div class="tog-thumb"></div></div>
         <span class="text-xs text-slate-500">Include seen</span>
-        <input type="checkbox" id="includeSeenLeads" name="include_seen" class="sr-only">
+        <input type="checkbox" id="includeSeenLeads" class="sr-only">
       </label>
-
       <input type="hidden" id="leadCountHidden" name="lead_count" value="<?=$slider_default?>">
-
       <button type="submit" id="searchBtn"
         class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 active:scale-95 text-black px-6 py-2.5 rounded-xl font-bold text-sm transition-all shrink-0 whitespace-nowrap">
         <i class="fa-solid fa-magnifying-glass text-xs"></i>
@@ -446,7 +388,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 
-<!-- ── Skeleton ────────────────────────────────────────────────────────────── -->
+<!-- ── Skeleton ─────────────────────────────────────────────────────────────── -->
 <div id="leadsLoading" class="hidden space-y-3">
   <?php for($i=0;$i<3;$i++):?>
   <div class="glass rounded-2xl p-5">
@@ -494,49 +436,80 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-</div><!-- /main col -->
+
+</div><!-- /max-w-5xl -->
+</main><!-- /our main -->
 
 
-<!-- ── RIGHT RAIL (xl+) ─────────────────────────────────────────────────────── -->
-<div id="leadsRail">
-  <div class="sticky top-6">
-    <!-- Matches left sidebar exactly: bg-slate-900/95 border border-white/5 backdrop-blur-xl -->
-    <div class="bg-slate-900/95 border border-white/5 rounded-2xl flex flex-col overflow-hidden backdrop-blur-xl"
-         style="max-height: calc(100vh - 3rem);">
+<style>
+/* ─── Leads page styles ───────────────────────────────────────────── */
 
-      <!-- Header -->
-      <div class="flex items-center justify-between px-4 py-3.5 border-b border-white/5 shrink-0">
-        <div class="flex items-center gap-2">
-          <i class="fa-solid fa-clock-rotate-left text-slate-500 text-xs"></i>
-          <span class="text-xs font-bold text-slate-400 uppercase tracking-widest">History</span>
-        </div>
-        <span id="historyCount" class="text-[10px] font-bold text-slate-600 bg-white/5 px-1.5 py-0.5 rounded-full hidden"></span>
-      </div>
+/* Form inputs */
+.leads-input {
+  width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07);
+  color:#f1f5f9; font-size:.875rem; padding:.6rem .75rem .6rem 2.2rem;
+  border-radius:10px; outline:none; transition:border-color .15s,background .15s;
+}
+.leads-input::placeholder { color:#334155; }
+.leads-input:focus { border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.06); }
+.leads-icon {
+  position:absolute; left:.75rem; top:50%; transform:translateY(-50%);
+  color:#1e293b; font-size:.7rem; pointer-events:none; transition:color .15s;
+}
+.leads-input:focus ~ .leads-icon { color:#64748b; }
 
-      <!-- List -->
-      <nav id="searchHistoryList"
-           class="flex-1 overflow-y-auto px-2 py-2 space-y-0.5"
-           style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.05) transparent;"></nav>
+/* Progress bars */
+.q-track { height:2px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
+.q-fill  { height:100%; border-radius:2px; transition:width .5s ease; }
 
-      <!-- Empty state -->
-      <div id="searchHistoryEmpty" class="flex flex-col items-center justify-center px-5 py-10 text-center">
-        <div class="w-10 h-10 rounded-xl bg-white/4 flex items-center justify-center mb-3">
-          <i class="fa-solid fa-magnifying-glass text-slate-700 text-sm"></i>
-        </div>
-        <p class="text-xs font-semibold text-slate-600">No searches yet</p>
-        <p class="text-[11px] text-slate-700 mt-0.5 leading-relaxed">Your recent searches<br>will appear here.</p>
-      </div>
+/* Slider */
+.leads-slider {
+  -webkit-appearance:none; appearance:none; width:100%; height:2px;
+  background:rgba(255,255,255,.1); border-radius:2px; outline:none; cursor:pointer;
+}
+.leads-slider::-webkit-slider-thumb {
+  -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
+  background:#fff; cursor:pointer; box-shadow:0 0 0 3px rgba(255,255,255,.08); transition:transform .1s;
+}
+.leads-slider::-webkit-slider-thumb:hover { transform:scale(1.15); }
+.leads-slider::-moz-range-thumb { width:14px; height:14px; border-radius:50%; background:#fff; border:none; cursor:pointer; }
 
-      <!-- Footer hint -->
-      <div class="px-4 py-3 border-t border-white/5 shrink-0">
-        <p class="text-[10px] text-slate-700 text-center">Click any search to re-run it</p>
-      </div>
+/* Toggle */
+.tog-track  { width:30px; height:16px; background:rgba(255,255,255,.08); border-radius:8px; position:relative; transition:background .2s; flex-shrink:0; }
+.tog-track.on { background:rgba(255,255,255,.28); }
+.tog-thumb  { position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#475569; transition:transform .18s,background .18s; }
+.tog-track.on .tog-thumb { transform:translateX(14px); background:#fff; }
 
-    </div>
-  </div>
-</div><!-- /right rail -->
+/* Skeleton shimmer */
+@keyframes leads-shimmer {
+  0%   { background-position:-500px 0; }
+  100% { background-position: 500px 0; }
+}
+.skel {
+  background:linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.07) 50%,rgba(255,255,255,.03) 75%);
+  background-size:500px 100%; animation:leads-shimmer 1.5s infinite linear; border-radius:6px;
+}
 
-</div><!-- /page flex -->
+/* Card entry animation */
+@keyframes lead-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.lead-in { animation:lead-in .22s ease both; }
+
+/* Right rail history items */
+.hist-item {
+  display:block; width:100%;
+  padding:10px 12px;
+  border-radius:12px;
+  border:1px solid transparent;
+  text-align:left;
+  transition:background .15s, border-color .15s;
+  cursor:pointer;
+}
+.hist-item:hover {
+  background:rgba(255,255,255,.05);
+  border-color:rgba(255,255,255,.06);
+}
+.hist-item:active { background:rgba(255,255,255,.08); }
+</style>
 
 
 <script
@@ -547,36 +520,42 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-used="<?=$quota_used?>"
   data-quota-limit="<?=$FREE_SEARCH_LIMIT?>"
 ></script>
-<script src="/assets/js/leads.js?v=v1500"></script>
+<script src="/assets/js/leads.js?v=v1600"></script>
 
 <script>
 function openHistoryDrawer() {
-  document.getElementById('historyDrawer').classList.add('open');
-  document.getElementById('historyDrawerOverlay').classList.add('open');
-  document.body.style.overflow = 'hidden';
-  // mirror desktop list into mobile drawer
-  const src  = document.getElementById('searchHistoryList');
-  const dest = document.getElementById('historyDrawerList');
-  const emptyD = document.getElementById('historyDrawerEmpty');
+  const drawer  = document.getElementById('historyDrawer');
+  const overlay = document.getElementById('historyDrawerOverlay');
+  const src     = document.getElementById('searchHistoryList');
+  const dest    = document.getElementById('historyDrawerList');
+  const emptyD  = document.getElementById('historyDrawerEmpty');
+
+  // Mirror desktop list into drawer
   if (src && dest) {
     dest.innerHTML = src.innerHTML;
-    const hasItems = dest.children.length > 0;
-    if (emptyD) emptyD.style.display = hasItems ? 'none' : '';
-    // re-bind click handlers
-    dest.querySelectorAll('button[data-city]').forEach(btn => {
+    const has = dest.querySelector('.hist-item') !== null;
+    if (emptyD) emptyD.style.display = has ? 'none' : '';
+    dest.querySelectorAll('.hist-item').forEach(btn => {
       btn.addEventListener('click', function() {
         document.getElementById('fieldCity').value     = this.dataset.city     || '';
         document.getElementById('fieldIndustry').value = this.dataset.industry || '';
         document.getElementById('fieldKeywords').value = this.dataset.keywords || '';
         closeHistoryDrawer();
-        document.getElementById('leadSearchForm').scrollIntoView({ behavior:'smooth', block:'start' });
+        setTimeout(() => document.getElementById('leadSearchForm').scrollIntoView({ behavior:'smooth', block:'start' }), 150);
       });
     });
   }
+
+  drawer.style.transform  = 'translateY(0)';
+  overlay.style.opacity   = '1';
+  overlay.style.pointerEvents = 'all';
+  document.body.style.overflow = 'hidden';
 }
+
 function closeHistoryDrawer() {
-  document.getElementById('historyDrawer').classList.remove('open');
-  document.getElementById('historyDrawerOverlay').classList.remove('open');
+  document.getElementById('historyDrawer').style.transform = 'translateY(100%)';
+  const ov = document.getElementById('historyDrawerOverlay');
+  ov.style.opacity = '0'; ov.style.pointerEvents = 'none';
   document.body.style.overflow = '';
 }
 </script>
