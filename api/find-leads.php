@@ -2,6 +2,7 @@
 /**
  * api/find-leads.php
  * Lead search — fixed:
+ *   - Creates lead_cache table if it does not exist (prevents fatal on first run)
  *   - Upserts each lead into utiligo_leads so generate.php can find them by integer id
  *   - Returns pro_lead_count on EVERY response (not just pro branch)
  *   - Returns searches_used on EVERY response (not just free branch) so both bars always update
@@ -77,8 +78,7 @@ $debug_log = [];
 try {
     $pdo = get_platform_db();
 
-    // ── Ensure tables exist ───────────────────────────────────────────────────
-    // History table — with unique key for dedup
+    // ── Ensure all required tables exist ─────────────────────────────────────
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS `utiligo_lead_search_history` (
            `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -94,7 +94,6 @@ try {
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
-    // utiligo_leads table — stores each unique place so generate.php can lookup by integer id
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS `utiligo_leads` (
            `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -111,6 +110,21 @@ try {
            `updated_at`        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
            PRIMARY KEY (`id`),
            UNIQUE KEY `uq_place_id` (`place_id`)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+
+    // ── FIX: create lead_cache table if it does not exist ────────────────────
+    // Previously this was missing, causing a fatal PDOException on the first
+    // SELECT from lead_cache, which was caught by the outer catch and returned
+    // "Something went wrong" to the user.
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS `lead_cache` (
+           `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+           `cache_key`  VARCHAR(255) NOT NULL,
+           `leads_json` MEDIUMTEXT   NOT NULL,
+           `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+           PRIMARY KEY (`id`),
+           UNIQUE KEY `uq_cache_key` (`cache_key`)
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
@@ -228,7 +242,7 @@ try {
 
             $all_leads[] = [
                 'place_id'          => $place_id,
-                'id'                => $place_id, // temporary — replaced below with DB int id
+                'id'                => $place_id,
                 'business_name'     => $place['name'] ?? 'Unknown',
                 'business_address'  => $place['formatted_address'] ?? '',
                 'business_city'     => $city,
@@ -253,9 +267,8 @@ try {
         $from_cache = false;
     }
 
-    // ── 10. Upsert each lead into utiligo_leads so generate.php can find them ─
-    // Map place_id -> integer DB id for Build Site links
-    $place_id_map = []; // place_id => int id
+    // ── 10. Upsert each lead into utiligo_leads ───────────────────────────────
+    $place_id_map = [];
     foreach ($all_leads as $lead) {
         $pid = $lead['place_id'] ?? $lead['id'] ?? '';
         if ($pid === '') continue;
@@ -286,7 +299,6 @@ try {
                 $lead['maps_url'],
                 $lead['opportunity_score'],
             ]);
-            // Fetch the integer id (works for both INSERT and UPDATE)
             $idStmt = $pdo->prepare('SELECT id FROM utiligo_leads WHERE place_id = ? LIMIT 1');
             $idStmt->execute([$pid]);
             $dbId = $idStmt->fetchColumn();
@@ -296,7 +308,6 @@ try {
         }
     }
 
-    // Replace placeholder 'id' with integer DB id in each lead
     foreach ($all_leads as &$lead) {
         $pid = $lead['place_id'] ?? '';
         if ($pid !== '' && isset($place_id_map[$pid])) {
@@ -308,7 +319,6 @@ try {
     // ── 11. Plan gating ───────────────────────────────────────────────────────
     $free_limit = defined('FREE_LEAD_LIMIT') ? (int)FREE_LEAD_LIMIT : 3;
 
-    // Always fetch pro_lead_count so the JS counter can update on every response
     $pro_lead_count = 0;
     $pro_lead_limit = 0;
     if ($plan === 'pro') {
@@ -318,14 +328,11 @@ try {
             $pro_lead_count = (int)$stmt->fetchColumn();
             $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
         } catch (\Throwable $e) {
-            // unlocked_leads may not exist; count from utiligo_leads viewed instead
             $pro_lead_count = 0;
             $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
         }
     }
 
-    // FIX: both payloads now always include searches_used AND pro_lead_count
-    // so the JS quota bar and lead-limit bar both update live regardless of plan.
     if ($is_pro) {
         $leads_to_show = array_slice($all_leads, 0, $lead_count_requested);
         $payload = [
@@ -337,7 +344,7 @@ try {
             'cached_at'          => $cached_at,
             'pro_lead_count'     => $pro_lead_count,
             'lead_limit'         => $pro_lead_limit,
-            'searches_used'      => 0,         // pro has no quota; 0 keeps JS logic safe
+            'searches_used'      => 0,
             'searches_remaining' => null,
         ];
     } else {
@@ -361,7 +368,7 @@ try {
         ];
     }
 
-    // ── 12. Save/update search history (DEDUP: same city+industry+keywords → update date only) ──
+    // ── 12. Save/update search history ────────────────────────────────────────
     try {
         $result_count = count($all_leads);
         $pdo->prepare(
