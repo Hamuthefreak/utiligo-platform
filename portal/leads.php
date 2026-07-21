@@ -18,7 +18,7 @@ $PRO_LEAD_LIMIT    = defined('PRO_LEAD_LIMIT')            ? (int)PRO_LEAD_LIMIT 
 $PRO_SITE_LIMIT    = defined('PRO_SITE_LIMIT')            ? (int)PRO_SITE_LIMIT            : 200;
 $ENT_SITE_LIMIT    = defined('ENT_SITE_LIMIT')            ? (int)ENT_SITE_LIMIT            : 500;
 
-// ── Free search quota ─────────────────────────────────────────────────────
+// Free quota
 $quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
@@ -35,7 +35,7 @@ if (!$is_paid) {
 $quota_remaining = max(0, $FREE_SEARCH_LIMIT - $quota_used);
 $quota_pct       = $FREE_SEARCH_LIMIT > 0 ? min(100, round(($quota_used/$FREE_SEARCH_LIMIT)*100)) : 0;
 
-// ── Pro lead unlock count ────────────────────────────────────────────────────
+// Pro lead count
 $pro_lead_count = 0;
 if ($plan === 'pro') {
     try {
@@ -48,11 +48,11 @@ if ($plan === 'pro') {
     } catch (\Throwable $e) { $pro_lead_count = 0; }
 }
 
-// ── Active site count ─────────────────────────────────────────────────────
+// Active sites
 $active_site_count = 0;
 if ($is_paid) {
     try {
-        $pdo = get_platform_db();
+        $pdo  = get_platform_db();
         $stmt = $pdo->prepare('SELECT COUNT(*) FROM utiligo_generated_sites WHERE user_id = ? AND link_active = 1');
         $stmt->execute([$user['id']]);
         $active_site_count = (int)$stmt->fetchColumn();
@@ -64,28 +64,179 @@ $slider_default = match($plan) { 'entrepreneur' => 20, 'pro' => 10, default => 5
 
 $pageTitle = 'Find Leads — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
-// portal_layout.php opens <main class="lg:ml-64 min-h-screen"><div class="max-w-5xl mx-auto px-6 py-8">
-// We close that inner div and reopen it so we control the right-padding for the rail.
+// portal_layout.php opens (but never closes):
+//   <main class="lg:ml-64 min-h-screen">
+//     <div class="max-w-5xl mx-auto px-6 py-8">
+// We work INSIDE that structure — no closing/reopening needed.
 ?>
-<?php
-// Close the inner wrapper portal_layout opened so we can control our own padding
-echo '</div></main>';
-// We now render the full page ourselves inside main
-?>
-<main class="lg:ml-64 min-h-screen">
+<style>
+/*
+ * On xl+ we need room for the fixed right rail (w-64 = 16rem).
+ * Override the inner div's max-width and add right padding so
+ * content never slides under the rail.
+ * The rail itself is position:fixed so it sits outside normal flow.
+ */
+@media (min-width: 1280px) {
+  main > div:first-child {
+    max-width: calc(100% - 1rem);
+    padding-right: 17rem;
+  }
+}
 
-<?php /* ═══ RIGHT RAIL — fixed, mirrors left sidebar exactly ═══════════════════════
-   Left sidebar: w-64 h-screen bg-slate-900/95 border-r border-white/5 lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl
-   Right rail:   same width, same colours, same fixed behaviour, just on the right.
-   On xl+ the main content gets pr-64 to avoid being hidden under it.
-   On <xl it's hidden; history is in the bottom drawer instead.
-*/ ?>
-<aside id="leadsRail"
-  class="w-64 h-screen bg-slate-900/95 border-l border-white/5 flex flex-col
-         fixed top-0 right-0 z-20 backdrop-blur-xl
-         hidden xl:flex">
+/* ─── Right rail ────────────────────────────────────────────── */
+#leadsRail {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 256px;   /* same as left sidebar w-64 */
+  height: 100vh;
+  display: none;  /* hidden by default; shown on xl */
+  flex-direction: column;
+  background: rgba(15,23,42,.95);   /* bg-slate-900/95 */
+  border-left: 1px solid rgba(255,255,255,.05);  /* border-l border-white/5 */
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  z-index: 20;
+  overflow: hidden;
+}
+@media (min-width: 1280px) {
+  #leadsRail { display: flex; }
+}
 
-  <!-- Logo-area placeholder so top aligns with left sidebar -->
+/* ─── History nav items (mirror left sidebar .nav-link) ───────── */
+.hist-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  text-align: left;
+  font-size: .875rem;
+  color: #94a3b8;
+  transition: background .15s, color .15s, border-color .15s;
+  cursor: pointer;
+  background: none;
+}
+.hist-item:hover {
+  background: rgba(255,255,255,.06);
+  color: #fff;
+  border-color: rgba(255,255,255,.06);
+}
+.hist-item:active { background: rgba(255,255,255,.1); }
+
+/* ─── Form inputs ─────────────────────────────────────────── */
+.leads-input {
+  width: 100%;
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.07);
+  color: #f1f5f9;
+  font-size: .875rem;
+  padding: .6rem .75rem .6rem 2.2rem;
+  border-radius: 10px;
+  outline: none;
+  transition: border-color .15s, background .15s;
+}
+.leads-input::placeholder { color: #334155; }
+.leads-input:focus {
+  border-color: rgba(255,255,255,.22);
+  background: rgba(255,255,255,.06);
+}
+.leads-icon {
+  position: absolute; left: .75rem; top: 50%;
+  transform: translateY(-50%);
+  color: #1e293b; font-size: .7rem;
+  pointer-events: none; transition: color .15s;
+}
+
+/* ─── Progress bars ────────────────────────────────────────── */
+.q-track { height: 2px; background: rgba(255,255,255,.06); border-radius: 2px; overflow: hidden; }
+.q-fill  { height: 100%; border-radius: 2px; transition: width .5s ease; }
+
+/* ─── Slider ─────────────────────────────────────────────── */
+.leads-slider {
+  -webkit-appearance: none; appearance: none;
+  width: 100%; height: 2px;
+  background: rgba(255,255,255,.1);
+  border-radius: 2px; outline: none; cursor: pointer;
+}
+.leads-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(255,255,255,.08);
+  transition: transform .1s;
+}
+.leads-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
+.leads-slider::-moz-range-thumb {
+  width: 14px; height: 14px; border-radius: 50%;
+  background: #fff; border: none; cursor: pointer;
+}
+
+/* ─── Toggle switch ────────────────────────────────────────── */
+.tog-track {
+  width: 30px; height: 16px;
+  background: rgba(255,255,255,.08);
+  border-radius: 8px; position: relative;
+  transition: background .2s; flex-shrink: 0;
+}
+.tog-track.on { background: rgba(255,255,255,.28); }
+.tog-thumb {
+  position: absolute; top: 2px; left: 2px;
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #475569;
+  transition: transform .18s, background .18s;
+}
+.tog-track.on .tog-thumb { transform: translateX(14px); background: #fff; }
+
+/* ─── Skeleton shimmer ─────────────────────────────────────── */
+@keyframes leads-shimmer {
+  0%   { background-position: -500px 0; }
+  100% { background-position:  500px 0; }
+}
+.skel {
+  background: linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.07) 50%,rgba(255,255,255,.03) 75%);
+  background-size: 500px 100%;
+  animation: leads-shimmer 1.5s infinite linear;
+  border-radius: 6px;
+}
+
+/* ─── Lead card entry animation ───────────────────────────── */
+@keyframes lead-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
+.lead-in { animation: lead-in .22s ease both; }
+
+/* ─── Mobile history drawer ──────────────────────────────── */
+#historyDrawer {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 60;
+  transform: translateY(100%);
+  transition: transform .28s cubic-bezier(.4,0,.2,1);
+  max-height: 72vh;
+  background: rgba(15,23,42,.98);
+  border-top: 1px solid rgba(255,255,255,.08);
+  border-radius: 20px 20px 0 0;
+  backdrop-filter: blur(24px);
+  display: flex;
+  flex-direction: column;
+}
+#historyDrawer.open { transform: translateY(0); }
+#historyDrawerOverlay {
+  position: fixed; inset: 0; z-index: 59;
+  background: rgba(0,0,0,.6);
+  opacity: 0; pointer-events: none;
+  transition: opacity .25s;
+}
+#historyDrawerOverlay.open { opacity: 1; pointer-events: all; }
+</style>
+
+
+<!-- ═══ FIXED RIGHT RAIL ════════════════════════════════════════════════ -->
+<!-- position:fixed right:0, same dims/colours as #sidebar on left -->
+<aside id="leadsRail">
+
+  <!-- Header row mirrors sidebar logo row height/padding exactly -->
   <div class="px-5 py-5 border-b border-white/5 shrink-0">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-clock-rotate-left text-slate-600 text-xs"></i>
@@ -94,23 +245,25 @@ echo '</div></main>';
     </div>
   </div>
 
-  <!-- History list -->
+  <!-- Scrollable history list -->
   <nav id="searchHistoryList"
-       class="flex-1 overflow-y-auto px-3 py-3"
+       class="flex-1 overflow-y-auto px-3 py-3 space-y-0.5"
        style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.05) transparent;"></nav>
 
   <!-- Empty state -->
-  <div id="searchHistoryEmpty" class="flex-1 flex flex-col items-center justify-center px-6 py-12 text-center">
-    <div class="w-10 h-10 rounded-2xl bg-white/[.03] border border-white/5 flex items-center justify-center mb-4">
+  <div id="searchHistoryEmpty"
+       class="flex-1 flex flex-col items-center justify-center px-6 pb-8 text-center">
+    <div class="w-10 h-10 rounded-2xl bg-white/[.03] border border-white/5
+                flex items-center justify-center mb-4">
       <i class="fa-solid fa-magnifying-glass text-slate-700 text-sm"></i>
     </div>
     <p class="text-xs font-semibold text-slate-500">No searches yet</p>
-    <p class="text-[11px] text-slate-700 mt-1 leading-relaxed">Run your first search and<br>it’ll appear here.</p>
+    <p class="text-[11px] text-slate-700 mt-1 leading-relaxed">Run your first search<br>and it’ll show up here.</p>
   </div>
 
-  <!-- Footer hint -->
+  <!-- Footer -->
   <div class="px-4 py-4 border-t border-white/5 shrink-0">
-    <p class="text-[10px] text-slate-700 text-center leading-relaxed">
+    <p class="text-[10px] text-slate-700 text-center">
       <i class="fa-solid fa-hand-pointer mr-1"></i>Click any entry to re-run it
     </p>
   </div>
@@ -118,37 +271,24 @@ echo '</div></main>';
 </aside>
 
 
-<!-- ═══ MOBILE: bottom history drawer ═══════════════════════════════════════ -->
-<!-- Overlay -->
-<div id="historyDrawerOverlay"
-     class="fixed inset-0 bg-black/60 z-40 opacity-0 pointer-events-none transition-opacity duration-200"
-     onclick="closeHistoryDrawer()"></div>
-
-<!-- Drawer -->
-<div id="historyDrawer"
-     class="xl:hidden fixed bottom-0 left-0 right-0 z-50
-            bg-slate-900/98 border-t border-white/8 rounded-t-2xl
-            flex flex-col backdrop-blur-xl"
-     style="max-height:72vh;transform:translateY(100%);transition:transform .28s cubic-bezier(.4,0,.2,1);">
-
-  <!-- Handle -->
+<!-- ═══ MOBILE HISTORY DRAWER ═════════════════════════════════════════ -->
+<div id="historyDrawerOverlay" onclick="closeHistoryDrawer()"></div>
+<div id="historyDrawer">
   <div class="flex justify-center pt-3 pb-1 shrink-0">
     <div class="w-8 h-1 rounded-full bg-white/10"></div>
   </div>
-  <!-- Header -->
   <div class="flex items-center justify-between px-5 py-3 border-b border-white/5 shrink-0">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-clock-rotate-left text-slate-500 text-xs"></i>
       <span class="text-sm font-bold text-white">Recent Searches</span>
     </div>
-    <button onclick="closeHistoryDrawer()" class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
+    <button onclick="closeHistoryDrawer()"
+      class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
       <i class="fa-solid fa-xmark text-xs"></i>
     </button>
   </div>
-  <!-- List -->
-  <div id="historyDrawerList" class="flex-1 overflow-y-auto px-3 py-2"
+  <div id="historyDrawerList" class="flex-1 overflow-y-auto px-3 py-2 space-y-0.5"
        style="scrollbar-width:thin;"></div>
-  <!-- Empty -->
   <div id="historyDrawerEmpty" class="flex flex-col items-center justify-center py-12 text-center px-6">
     <i class="fa-solid fa-magnifying-glass text-slate-700 text-2xl mb-3"></i>
     <p class="text-sm font-semibold text-slate-600">Nothing here yet</p>
@@ -159,22 +299,19 @@ echo '</div></main>';
   </div>
 </div>
 
-<!-- Mobile FAB — opens drawer -->
+<!-- Mobile FAB -->
 <button id="historyFab"
-  class="xl:hidden fixed bottom-6 right-6 z-50 h-12 px-4 rounded-full
+  class="xl:hidden fixed bottom-6 right-6 z-50 h-11 px-4 rounded-full
          bg-slate-800 border border-white/10 shadow-xl
-         flex items-center gap-2
-         text-slate-300 text-xs font-semibold
+         flex items-center gap-2 text-slate-300 text-xs font-semibold
          hover:bg-slate-700 active:scale-95 transition-all"
   onclick="openHistoryDrawer()">
   <i class="fa-solid fa-clock-rotate-left text-sm"></i>
-  <span>History</span>
+  <span class="xl:hidden">History</span>
 </button>
 
 
-<!-- ═══ MAIN CONTENT ════════════════════════════════════════════════════════ -->
-<!-- On xl+ we add right padding so content doesn't slide under the rail -->
-<div class="max-w-5xl mx-auto px-6 py-8 xl:pr-[17rem]">
+<!-- ═══ PAGE CONTENT ══════════════════════════════════════════════════════ -->
 
 <!-- Page header -->
 <div class="mb-7">
@@ -183,7 +320,6 @@ echo '</div></main>';
       <h1 class="text-2xl font-bold tracking-tight">Find Leads</h1>
       <p class="text-slate-500 text-sm mt-1">Discover local businesses with no website — your next paying clients.</p>
     </div>
-    <!-- mobile history toggle inside header -->
     <button onclick="openHistoryDrawer()"
       class="xl:hidden flex items-center gap-1.5 text-xs text-slate-500 hover:text-white
              bg-white/5 border border-white/8 px-3 py-2 rounded-xl transition">
@@ -193,8 +329,8 @@ echo '</div></main>';
 </div>
 
 
-<?php /* ── Quota / plan banners ───────────────────────────────────────────── */ ?>
 <?php if (!$is_paid): ?>
+<!-- Free plan banners -->
 <div class="space-y-3 mb-7">
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -223,7 +359,6 @@ echo '</div></main>';
       <span><?php if($quota_resets_at):?>Resets at <span class="text-slate-500"><?=date('g:i A',$quota_resets_at)?></span><?php else:?>Resets 24h after first search<?php endif;?></span>
     </div>
   </div>
-
   <div class="grid grid-cols-4 gap-2">
     <?php foreach([
       ['fa-users','Leads','per search',$FREE_LEAD_LIMIT],
@@ -238,7 +373,6 @@ echo '</div></main>';
     </div>
     <?php endforeach;?>
   </div>
-
   <div class="flex items-center gap-3 glass rounded-xl px-4 py-3">
     <i class="fa-solid fa-arrow-trend-up text-slate-400 text-sm shrink-0"></i>
     <p class="text-xs text-slate-400 flex-1">Upgrade to <strong class="text-white">Pro</strong> for <?=$PRO_LEAD_LIMIT?> lead unlocks, <?=$PRO_SITE_LIMIT?> active sites &amp; unlimited searches.</p>
@@ -297,7 +431,9 @@ echo '</div></main>';
   </div>
 </div>
 
-<?php else: $sl_pct = $ENT_SITE_LIMIT>0 ? min(100,round(($active_site_count/$ENT_SITE_LIMIT)*100)) : 0; ?>
+<?php else:
+  $sl_pct = $ENT_SITE_LIMIT>0 ? min(100,round(($active_site_count/$ENT_SITE_LIMIT)*100)) : 0;
+?>
 <div class="grid sm:grid-cols-2 gap-3 mb-7">
   <div class="glass rounded-2xl px-5 py-4 flex items-center gap-3">
     <i class="fa-solid fa-infinity text-white text-xl"></i>
@@ -325,30 +461,37 @@ echo '</div></main>';
 <?php endif; ?>
 
 
-<!-- ── Search box ──────────────────────────────────────────────────────────── -->
+<!-- ── Search box ───────────────────────────────────────────────────────── -->
 <div class="glass rounded-2xl mb-6" id="searchBox">
   <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/5">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-crosshairs text-slate-600 text-xs"></i>
       <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Search Parameters</span>
     </div>
-    <span id="searchStatusChip" class="hidden text-[11px] font-semibold text-slate-500 bg-white/5 px-2.5 py-1 rounded-full"></span>
+    <span id="searchStatusChip"
+      class="hidden text-[11px] font-semibold text-slate-500 bg-white/5 px-2.5 py-1 rounded-full"></span>
   </div>
 
   <form id="leadSearchForm" class="p-5">
     <div class="grid sm:grid-cols-3 gap-3 mb-5">
       <div>
-        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">City <span class="text-slate-700">*</span></label>
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
+          City <span class="text-slate-700">*</span>
+        </label>
         <div class="relative">
           <i class="fa-solid fa-city leads-icon"></i>
-          <input type="text" name="city" id="fieldCity" placeholder="e.g. Calgary" required autocomplete="off" class="leads-input">
+          <input type="text" name="city" id="fieldCity" placeholder="e.g. Calgary"
+                 required autocomplete="off" class="leads-input">
         </div>
       </div>
       <div>
-        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">Industry <span class="text-slate-700">*</span></label>
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
+          Industry <span class="text-slate-700">*</span>
+        </label>
         <div class="relative">
           <i class="fa-solid fa-briefcase leads-icon"></i>
-          <input type="text" name="industry" id="fieldIndustry" placeholder="e.g. Plumber, Dentist" required autocomplete="off" class="leads-input">
+          <input type="text" name="industry" id="fieldIndustry" placeholder="e.g. Plumber, Dentist"
+                 required autocomplete="off" class="leads-input">
         </div>
       </div>
       <div>
@@ -357,7 +500,8 @@ echo '</div></main>';
         </label>
         <div class="relative">
           <i class="fa-solid fa-tags leads-icon"></i>
-          <input type="text" name="keywords" id="fieldKeywords" placeholder="e.g. family-owned" class="leads-input">
+          <input type="text" name="keywords" id="fieldKeywords" placeholder="e.g. family-owned"
+                 class="leads-input">
         </div>
       </div>
     </div>
@@ -368,9 +512,10 @@ echo '</div></main>';
           <span class="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">Lead count</span>
           <span class="text-sm font-extrabold text-white tabular-nums" id="leadCountDisplay"><?=$slider_default?></span>
         </div>
-        <input type="range" id="leadCountSlider" name="lead_count_slider"
-               min="1" max="<?=$slider_max?>" value="<?=$slider_default?>" class="leads-slider">
-        <div class="flex justify-between text-[10px] text-slate-700 mt-1"><span>1</span><span><?=$slider_max?></span></div>
+        <input type="range" id="leadCountSlider" min="1" max="<?=$slider_max?>" value="<?=$slider_default?>" class="leads-slider">
+        <div class="flex justify-between text-[10px] text-slate-700 mt-1">
+          <span>1</span><span><?=$slider_max?></span>
+        </div>
       </div>
       <label class="flex items-center gap-2.5 cursor-pointer select-none shrink-0">
         <div class="tog-track" id="togTrack"><div class="tog-thumb"></div></div>
@@ -379,7 +524,8 @@ echo '</div></main>';
       </label>
       <input type="hidden" id="leadCountHidden" name="lead_count" value="<?=$slider_default?>">
       <button type="submit" id="searchBtn"
-        class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 active:scale-95 text-black px-6 py-2.5 rounded-xl font-bold text-sm transition-all shrink-0 whitespace-nowrap">
+        class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 active:scale-95 text-black
+               px-6 py-2.5 rounded-xl font-bold text-sm transition-all shrink-0 whitespace-nowrap">
         <i class="fa-solid fa-magnifying-glass text-xs"></i>
         <span id="searchBtnLabel">Find Leads</span>
       </button>
@@ -388,7 +534,7 @@ echo '</div></main>';
 </div>
 
 
-<!-- ── Skeleton ─────────────────────────────────────────────────────────────── -->
+<!-- ── Skeleton ──────────────────────────────────────────────────────────── -->
 <div id="leadsLoading" class="hidden space-y-3">
   <?php for($i=0;$i<3;$i++):?>
   <div class="glass rounded-2xl p-5">
@@ -412,7 +558,7 @@ echo '</div></main>';
 </div>
 
 
-<!-- ── Results ─────────────────────────────────────────────────────────────── -->
+<!-- ── Results ──────────────────────────────────────────────────────────── -->
 <div id="leadsResultsWrap" class="hidden">
   <div id="leadsList" class="space-y-2.5"></div>
   <div id="lockedWrap" class="hidden mt-3">
@@ -423,7 +569,10 @@ echo '</div></main>';
           <i class="fa-solid fa-lock text-white text-lg"></i>
         </div>
         <h3 class="text-base font-bold text-white mb-1">More Leads Are Waiting</h3>
-        <p class="text-slate-400 text-sm max-w-xs mx-auto">You&rsquo;re seeing <strong class="text-white"><?=$FREE_LEAD_LIMIT?> of the top results.</strong> Upgrade to unlock every lead.</p>
+        <p class="text-slate-400 text-sm max-w-xs mx-auto">You&rsquo;re seeing
+          <strong class="text-white"><?=$FREE_LEAD_LIMIT?> of the top results.</strong>
+          Upgrade to unlock every lead.
+        </p>
       </div>
       <div class="px-6 pb-6 flex flex-col sm:flex-row items-center justify-center gap-3">
         <a href="/portal/billing.php?upgrade=1"
@@ -437,81 +586,6 @@ echo '</div></main>';
 </div>
 
 
-</div><!-- /max-w-5xl -->
-</main><!-- /our main -->
-
-
-<style>
-/* ─── Leads page styles ───────────────────────────────────────────── */
-
-/* Form inputs */
-.leads-input {
-  width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07);
-  color:#f1f5f9; font-size:.875rem; padding:.6rem .75rem .6rem 2.2rem;
-  border-radius:10px; outline:none; transition:border-color .15s,background .15s;
-}
-.leads-input::placeholder { color:#334155; }
-.leads-input:focus { border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.06); }
-.leads-icon {
-  position:absolute; left:.75rem; top:50%; transform:translateY(-50%);
-  color:#1e293b; font-size:.7rem; pointer-events:none; transition:color .15s;
-}
-.leads-input:focus ~ .leads-icon { color:#64748b; }
-
-/* Progress bars */
-.q-track { height:2px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
-.q-fill  { height:100%; border-radius:2px; transition:width .5s ease; }
-
-/* Slider */
-.leads-slider {
-  -webkit-appearance:none; appearance:none; width:100%; height:2px;
-  background:rgba(255,255,255,.1); border-radius:2px; outline:none; cursor:pointer;
-}
-.leads-slider::-webkit-slider-thumb {
-  -webkit-appearance:none; width:14px; height:14px; border-radius:50%;
-  background:#fff; cursor:pointer; box-shadow:0 0 0 3px rgba(255,255,255,.08); transition:transform .1s;
-}
-.leads-slider::-webkit-slider-thumb:hover { transform:scale(1.15); }
-.leads-slider::-moz-range-thumb { width:14px; height:14px; border-radius:50%; background:#fff; border:none; cursor:pointer; }
-
-/* Toggle */
-.tog-track  { width:30px; height:16px; background:rgba(255,255,255,.08); border-radius:8px; position:relative; transition:background .2s; flex-shrink:0; }
-.tog-track.on { background:rgba(255,255,255,.28); }
-.tog-thumb  { position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#475569; transition:transform .18s,background .18s; }
-.tog-track.on .tog-thumb { transform:translateX(14px); background:#fff; }
-
-/* Skeleton shimmer */
-@keyframes leads-shimmer {
-  0%   { background-position:-500px 0; }
-  100% { background-position: 500px 0; }
-}
-.skel {
-  background:linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.07) 50%,rgba(255,255,255,.03) 75%);
-  background-size:500px 100%; animation:leads-shimmer 1.5s infinite linear; border-radius:6px;
-}
-
-/* Card entry animation */
-@keyframes lead-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-.lead-in { animation:lead-in .22s ease both; }
-
-/* Right rail history items */
-.hist-item {
-  display:block; width:100%;
-  padding:10px 12px;
-  border-radius:12px;
-  border:1px solid transparent;
-  text-align:left;
-  transition:background .15s, border-color .15s;
-  cursor:pointer;
-}
-.hist-item:hover {
-  background:rgba(255,255,255,.05);
-  border-color:rgba(255,255,255,.06);
-}
-.hist-item:active { background:rgba(255,255,255,.08); }
-</style>
-
-
 <script
   id="leadsPageConfig"
   data-plan="<?=htmlspecialchars($plan)?>"
@@ -520,7 +594,7 @@ echo '</div></main>';
   data-quota-used="<?=$quota_used?>"
   data-quota-limit="<?=$FREE_SEARCH_LIMIT?>"
 ></script>
-<script src="/assets/js/leads.js?v=v1600"></script>
+<script src="/assets/js/leads.js?v=v1700"></script>
 
 <script>
 function openHistoryDrawer() {
@@ -529,8 +603,6 @@ function openHistoryDrawer() {
   const src     = document.getElementById('searchHistoryList');
   const dest    = document.getElementById('historyDrawerList');
   const emptyD  = document.getElementById('historyDrawerEmpty');
-
-  // Mirror desktop list into drawer
   if (src && dest) {
     dest.innerHTML = src.innerHTML;
     const has = dest.querySelector('.hist-item') !== null;
@@ -541,21 +613,18 @@ function openHistoryDrawer() {
         document.getElementById('fieldIndustry').value = this.dataset.industry || '';
         document.getElementById('fieldKeywords').value = this.dataset.keywords || '';
         closeHistoryDrawer();
-        setTimeout(() => document.getElementById('leadSearchForm').scrollIntoView({ behavior:'smooth', block:'start' }), 150);
+        setTimeout(() => document.getElementById('searchBox')
+          .scrollIntoView({ behavior:'smooth', block:'start' }), 160);
       });
     });
   }
-
-  drawer.style.transform  = 'translateY(0)';
-  overlay.style.opacity   = '1';
-  overlay.style.pointerEvents = 'all';
+  drawer.classList.add('open');
+  overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
 }
-
 function closeHistoryDrawer() {
-  document.getElementById('historyDrawer').style.transform = 'translateY(100%)';
-  const ov = document.getElementById('historyDrawerOverlay');
-  ov.style.opacity = '0'; ov.style.pointerEvents = 'none';
+  document.getElementById('historyDrawer').classList.remove('open');
+  document.getElementById('historyDrawerOverlay').classList.remove('open');
   document.body.style.overflow = '';
 }
 </script>
