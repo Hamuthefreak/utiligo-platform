@@ -1,8 +1,7 @@
 <?php
 /**
- * portal/errors.php — Admin error log viewer
- * Reads storage/error_log.txt via get_recent_errors() and displays entries
- * in a searchable, filterable UI. Admin-only (admin_flag = 1).
+ * portal/errors.php — Error log viewer
+ * Accessible to any logged-in user.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -10,10 +9,6 @@ require_once __DIR__ . '/../includes/error_logger.php';
 
 if (!is_logged_in()) {
     header('Location: /login.php'); exit;
-}
-$user = current_user();
-if (empty($user['admin_flag'])) {
-    header('Location: /portal/index.php'); exit;
 }
 
 $limit   = min(500, max(10, (int)($_GET['limit'] ?? 100)));
@@ -31,7 +26,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <p class="text-xs text-slate-500 mt-0.5">
       <?= $total ?> most recent entries
       &middot; Log size: <span class="text-slate-400"><?= number_format($logSize / 1024, 1) ?> KB</span>
-      &middot; <span class="text-slate-600"><?= htmlspecialchars(ERROR_LOG_PATH) ?></span>
     </p>
   </div>
   <div class="flex items-center gap-2">
@@ -51,9 +45,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <?php if (empty($errors)): ?>
 <div class="glass rounded-2xl p-10 text-center">
-  <i class="fa-solid fa-circle-check text-3xl text-emerald-400 mb-3"></i>
+  <i class="fa-solid fa-circle-check text-3xl text-emerald-400 block mb-3"></i>
   <p class="text-white font-semibold">No errors logged.</p>
-  <p class="text-slate-500 text-sm mt-1">The log file is empty or doesn't exist yet.</p>
+  <p class="text-slate-500 text-sm mt-1">The log file is empty or doesn't exist yet — that's a good sign!</p>
 </div>
 <?php else: ?>
 
