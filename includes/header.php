@@ -25,9 +25,84 @@ $_has_logo  = file_exists($_logo_path);
     letter-spacing: -0.03em;
     line-height: 1;
   }
+
+  /* ─── Page Transition Loader ─────────────────────────────── */
+  #utl-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    background: #020817; /* slate-950 */
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  #utl-loader.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  /* Progress bar at top */
+  #utl-progress-track {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 2px;
+    background: rgba(255,255,255,0.06);
+  }
+  #utl-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 10px #10b98166;
+    transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  /* Spinning ring */
+  .utl-ring {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 2.5px solid rgba(255,255,255,0.08);
+    border-top-color: #10b981;
+    animation: utl-spin 0.7s linear infinite;
+  }
+  @keyframes utl-spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Logo wordmark fade */
+  #utl-loader .utl-brand {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 800;
+    font-size: 1.1rem;
+    letter-spacing: -0.03em;
+    color: rgba(255,255,255,0.35);
+  }
+
+  /* Page body fade-in on arrival */
+  body.page-ready > *:not(#utl-loader) {
+    animation: utl-fadein 0.22s ease forwards;
+  }
+  @keyframes utl-fadein {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0);   }
+  }
 </style>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
+
+<!-- ─── Transition Loader Overlay ─────────────────────────── -->
+<div id="utl-loader" role="status" aria-label="Loading" aria-live="polite">
+  <div id="utl-progress-track"><div id="utl-progress-bar"></div></div>
+  <div class="utl-ring"></div>
+  <span class="utl-brand">Utiligo</span>
+</div>
+
 <nav class="sticky top-0 z-50 backdrop-blur-lg bg-slate-950/80 border-b border-white/10">
   <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
     <a href="/" class="flex items-center gap-2">

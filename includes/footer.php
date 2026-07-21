@@ -56,5 +56,88 @@
 </footer>
 
 <script src="/assets/js/main.js?v=v163"></script>
+
+<script>
+// ─── Utiligo Page Transition System ───────────────────────────────────────────
+(function () {
+  const loader   = document.getElementById('utl-loader');
+  const bar      = document.getElementById('utl-progress-bar');
+  if (!loader || !bar) return;
+
+  // ── Helpers ──
+  function showLoader() {
+    bar.style.width = '0%';
+    loader.classList.add('visible');
+    // Animate bar: quick jump to 70%, then stall waiting for page load
+    requestAnimationFrame(() => {
+      bar.style.transition = 'width 0.35s cubic-bezier(0.4,0,0.2,1)';
+      bar.style.width = '72%';
+    });
+  }
+
+  function hideLoader() {
+    bar.style.transition = 'width 0.15s ease';
+    bar.style.width = '100%';
+    setTimeout(() => {
+      loader.classList.remove('visible');
+      document.body.classList.add('page-ready');
+    }, 160);
+  }
+
+  // ── On page arrival: brief loader then fade in ──
+  showLoader();
+  // Use 'load' for full page, but cap at 600ms so it never feels slow
+  let done = false;
+  function finish() {
+    if (done) return;
+    done = true;
+    hideLoader();
+  }
+  window.addEventListener('load', finish);
+  setTimeout(finish, 600); // safety cap
+
+  // ── On link click: show loader before navigating ──
+  document.addEventListener('click', function (e) {
+    const anchor = e.target.closest('a');
+    if (!anchor) return;
+
+    const href = anchor.getAttribute('href');
+    if (!href) return;
+
+    // Skip: new tab, external, anchor-only, JS, mailto, tel, download
+    if (
+      anchor.target === '_blank' ||
+      anchor.hasAttribute('download') ||
+      href.startsWith('#') ||
+      href.startsWith('javascript') ||
+      href.startsWith('mailto') ||
+      href.startsWith('tel') ||
+      (href.startsWith('http') && !href.includes(location.hostname))
+    ) return;
+
+    e.preventDefault();
+    showLoader();
+    // Small delay so the loader renders before browser unloads
+    setTimeout(() => { location.href = href; }, 220);
+  });
+
+  // ── On form submit: show loader ──
+  document.addEventListener('submit', function (e) {
+    // Don't trigger on resend/inline forms that POST to the same page (they handle their own state)
+    const form = e.target;
+    if (form.dataset.noLoader) return;
+    showLoader();
+  });
+
+  // ── Browser back/forward: show loader ──
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) {
+      // Came from bfcache — immediately hide loader
+      hideLoader();
+    }
+  });
+})();
+</script>
+
 </body>
 </html>
