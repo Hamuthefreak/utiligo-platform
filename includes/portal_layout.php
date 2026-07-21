@@ -46,9 +46,83 @@ function _nav_active(string $href, string $current): string {
   }
   #sidebar::before { content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%); width:200px; height:200px; background:radial-gradient(circle,rgba(255,255,255,.03) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
   ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+
+  /* ─── Portal Page Transition Loader ──────────────────────── */
+  #utl-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    /* Sidebar-aware: starts full width, sidebar pushes it on desktop */
+    background: #020817;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.18s ease;
+  }
+  #utl-loader.visible {
+    opacity: 1;
+    pointer-events: all;
+  }
+  /* Thin progress bar at top */
+  #utl-progress-track {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 2px;
+    background: rgba(255,255,255,0.05);
+  }
+  #utl-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 12px #10b98166;
+    transition: width 0.38s cubic-bezier(0.4,0,0.2,1);
+  }
+  /* Spinning ring */
+  .utl-ring {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2.5px solid rgba(255,255,255,0.07);
+    border-top-color: #10b981;
+    animation: utl-spin 0.65s linear infinite;
+  }
+  @keyframes utl-spin { to { transform: rotate(360deg); } }
+  /* Wordmark */
+  .utl-brand {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+  }
+  /* Page content fade-in on arrival */
+  body.page-ready main > div {
+    animation: utl-fadein 0.2s ease forwards;
+  }
+  @keyframes utl-fadein {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  /* Active nav item click pulse */
+  .nav-link-loading {
+    opacity: 0.5;
+    pointer-events: none;
+  }
 </style>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
+
+<!-- ─── Transition Loader Overlay ──────────────────────────── -->
+<div id="utl-loader" role="status" aria-label="Loading" aria-live="polite">
+  <div id="utl-progress-track"><div id="utl-progress-bar"></div></div>
+  <div class="utl-ring"></div>
+  <span class="utl-brand">Utiligo</span>
+</div>
 
 <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 z-40 hidden lg:hidden" onclick="closeSidebar()"></div>
 
@@ -153,4 +227,72 @@ function _nav_active(string $href, string $current): string {
 <script>
 function openSidebar()  { document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.remove('hidden'); }
 function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.add('hidden'); }
+
+// ─── Utiligo Portal Transition System ─────────────────────────────────────
+(function () {
+  const loader = document.getElementById('utl-loader');
+  const bar    = document.getElementById('utl-progress-bar');
+  if (!loader || !bar) return;
+
+  function showLoader() {
+    bar.style.width = '0%';
+    loader.classList.add('visible');
+    requestAnimationFrame(() => {
+      bar.style.transition = 'width 0.38s cubic-bezier(0.4,0,0.2,1)';
+      bar.style.width = '70%';
+    });
+  }
+
+  function hideLoader() {
+    bar.style.transition = 'width 0.14s ease';
+    bar.style.width = '100%';
+    setTimeout(() => {
+      loader.classList.remove('visible');
+      document.body.classList.add('page-ready');
+    }, 150);
+  }
+
+  // On page arrival
+  showLoader();
+  let done = false;
+  function finish() { if (done) return; done = true; hideLoader(); }
+  window.addEventListener('load', finish);
+  setTimeout(finish, 550);
+
+  // Intercept nav link clicks
+  document.addEventListener('click', function (e) {
+    const anchor = e.target.closest('a');
+    if (!anchor) return;
+    const href = anchor.getAttribute('href');
+    if (!href) return;
+    if (
+      anchor.target === '_blank' ||
+      anchor.hasAttribute('download') ||
+      href.startsWith('#') ||
+      href.startsWith('javascript') ||
+      href.startsWith('mailto') ||
+      href.startsWith('tel') ||
+      (href.startsWith('http') && !href.includes(location.hostname))
+    ) return;
+
+    // Highlight the clicked nav item immediately so it feels responsive
+    const navLink = anchor.closest('.nav-link');
+    if (navLink) navLink.classList.add('nav-link-loading');
+
+    e.preventDefault();
+    showLoader();
+    setTimeout(() => { location.href = href; }, 200);
+  });
+
+  // Intercept form submits
+  document.addEventListener('submit', function (e) {
+    if (e.target.dataset.noLoader) return;
+    showLoader();
+  });
+
+  // bfcache back/forward
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) hideLoader();
+  });
+})();
 </script>
