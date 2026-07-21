@@ -10,18 +10,20 @@ document.addEventListener('DOMContentLoaded', function () {
   const searchBtn    = document.getElementById('searchBtn');
   const searchBtnLbl = document.getElementById('searchBtnLabel');
 
-  const cfg      = document.getElementById('leadsPageConfig');
-  const PLAN     = cfg?.dataset.plan ?? 'free';
-  const IS_PAID  = PLAN === 'pro' || PLAN === 'entrepreneur';
+  const cfg     = document.getElementById('leadsPageConfig');
+  const PLAN    = cfg?.dataset.plan    ?? 'free';
+  const IS_PAID = PLAN === 'pro' || PLAN === 'entrepreneur';
 
-  let leadUsed   = parseInt(cfg?.dataset.leadUsed  ?? 0);
-  let leadLimit  = parseInt(cfg?.dataset.leadLimit ?? 0);
-  let quotaUsed  = parseInt(cfg?.dataset.quotaUsed  ?? 0);
-  let quotaLimit = parseInt(cfg?.dataset.quotaLimit ?? 0);
+  // Initialise bar counters from PHP-rendered data-* attrs
+  // so the bar is correct on page load, not just after a search
+  let leadUsed   = parseInt(cfg?.dataset.leadUsed  ?? '0', 10);
+  let leadLimit  = parseInt(cfg?.dataset.leadLimit ?? '0', 10);
+  let quotaUsed  = parseInt(cfg?.dataset.quotaUsed  ?? '0', 10);
+  let quotaLimit = parseInt(cfg?.dataset.quotaLimit ?? '0', 10);
 
   if (!form) return;
 
-  // ─ seen-leads (localStorage) ────────────────────────────────────────────
+  // ─ seen-leads ───────────────────────────────────────────────────────────────
   const SEEN_KEY = 'utiligo_seen_leads_v1';
   function getSeenIds() {
     try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
@@ -37,7 +39,7 @@ document.addEventListener('DOMContentLoaded', function () {
     } catch {}
   }
 
-  // ─ Slider ─────────────────────────────────────────────────────────────────
+  // ─ Slider ───────────────────────────────────────────────────────────────────
   const slider     = document.getElementById('leadCountSlider');
   const sliderDisp = document.getElementById('leadCountDisplay');
   const sliderHid  = document.getElementById('leadCountHidden');
@@ -46,36 +48,50 @@ document.addEventListener('DOMContentLoaded', function () {
     sliderHid.value = slider.value;
   });
 
-  // ─ Custom toggle (replaces native checkbox visually) ───────────────────
+  // ─ Toggle ───────────────────────────────────────────────────────────────────
   const seenCb    = document.getElementById('includeSeenLeads');
-  const seenTrack = document.getElementById('seenToggleTrack');
-  if (seenTrack && seenCb) {
-    seenTrack.parentElement.addEventListener('click', () => {
+  const togTrack  = document.getElementById('togTrack');
+  if (togTrack && seenCb) {
+    togTrack.parentElement.addEventListener('click', () => {
       seenCb.checked = !seenCb.checked;
-      seenTrack.classList.toggle('on', seenCb.checked);
+      togTrack.classList.toggle('on', seenCb.checked);
     });
   }
 
-  // ─ Pro lead-unlock bar ────────────────────────────────────────────────
+  // ─ Lead-unlock bar (Pro) ────────────────────────────────────────────────────
+  // Called after each search with the freshest server-side count.
+  // Also called once on page load via syncLeadCounter(leadUsed, leadLimit)
+  // so the bar is never stuck at 0.
   function syncLeadCounter(serverCount, serverLimit) {
     if (typeof serverCount === 'number' && serverCount >= 0) leadUsed  = serverCount;
     if (typeof serverLimit === 'number' && serverLimit  > 0) leadLimit = serverLimit;
+
     const bar      = document.getElementById('leadLimitBar');
     const subtitle = document.getElementById('leadLimitSubtitle');
     const noteEl   = document.getElementById('leadLimitNote');
     const countEl  = document.getElementById('leadLimitCount');
     const upgBtn   = document.getElementById('leadUpgradeBtn');
+
     if (!bar || leadLimit <= 0) return;
     const pct = Math.min(100, Math.round((leadUsed / leadLimit) * 100));
+
     bar.style.width = pct + '%';
-    bar.className   = 'quota-fill ' + (pct >= 100 ? 'bg-red-400' : pct >= 80 ? 'bg-amber-400' : 'bg-white/50');
+    bar.className   = 'q-fill ' + (pct >= 100 ? 'bg-red-400' : pct >= 80 ? 'bg-amber-400' : 'bg-white/40');
+
     if (subtitle) subtitle.textContent = leadUsed + ' of ' + leadLimit + ' used';
     if (noteEl)   noteEl.textContent   = Math.max(0, leadLimit - leadUsed) + ' remaining';
     if (countEl)  countEl.textContent  = leadUsed + ' / ' + leadLimit;
-    if (upgBtn) { pct >= 80 ? upgBtn.classList.remove('hidden') : upgBtn.classList.add('hidden'); }
+    if (upgBtn) {
+      pct >= 80
+        ? upgBtn.classList.remove('hidden')
+        : upgBtn.classList.add('hidden');
+    }
   }
 
-  // ─ Free quota bar ──────────────────────────────────────────────────────
+  // Kick off an initial sync from PHP data so bar renders correctly on page load
+  if (PLAN === 'pro' && leadLimit > 0) syncLeadCounter(leadUsed, leadLimit);
+
+  // ─ Free quota bar ───────────────────────────────────────────────────────────
   function updateLiveQuotaCounter(newUsed) {
     quotaUsed = newUsed;
     const badge = document.getElementById('quotaBadge');
@@ -83,6 +99,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const text  = document.getElementById('quotaText');
     const rem   = Math.max(0, quotaLimit - quotaUsed);
     const pct   = quotaLimit > 0 ? Math.min(100, Math.round((quotaUsed / quotaLimit) * 100)) : 0;
+
     if (badge) {
       badge.className = 'text-xs font-bold px-2.5 py-1 rounded-full ' +
         (rem===0 ? 'bg-red-500/10 text-red-400' : rem===1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400');
@@ -90,12 +107,12 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     if (bar) {
       bar.style.width = pct + '%';
-      bar.className   = 'quota-fill ' + (pct>=100 ? 'bg-red-400' : pct>=50 ? 'bg-amber-400' : 'bg-white/50');
+      bar.className   = 'q-fill ' + (pct>=100 ? 'bg-red-400' : pct>=50 ? 'bg-amber-400' : 'bg-white/40');
     }
-    if (text) text.textContent = quotaUsed + ' of ' + quotaLimit + ' searches used';
+    if (text) text.textContent = quotaUsed + ' of ' + quotaLimit + ' used';
   }
 
-  // ─ Helpers ───────────────────────────────────────────────────────────────
+  // ─ Helpers ──────────────────────────────────────────────────────────────────
   function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
@@ -104,9 +121,8 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   function scoreLabel(s) { return s>=80 ? 'High' : s>=60 ? 'Med' : 'Low'; }
 
-  // "Today at 3:42 PM" / "Yesterday at 9:00 AM" / "Jul 14 at 2:30 PM"
   function fmtTimestamp(dateStr) {
-    const d    = new Date(dateStr.replace(' ', 'T'));
+    const d    = new Date(dateStr.replace(' ','T'));
     const now  = new Date();
     const sod  = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const yest = new Date(sod - 86400000);
@@ -116,32 +132,31 @@ document.addEventListener('DOMContentLoaded', function () {
     return d.toLocaleDateString('en-CA', { month:'short', day:'numeric' }) + ' at ' + time;
   }
 
-  // Copy to clipboard
   function copyPhone(text, btn) {
     navigator.clipboard.writeText(text).then(() => {
       const orig = btn.innerHTML;
       btn.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
       btn.style.color = '#94a3b8';
-      setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+      setTimeout(() => { btn.innerHTML = orig; btn.style.color = ''; }, 1600);
     }).catch(() => {});
   }
 
-  // ─ Lead card ───────────────────────────────────────────────────────────────
-  function renderLeadRow(lead, seenIdsBefore, idx) {
+  // ─ Lead card ────────────────────────────────────────────────────────────────
+  function renderLeadRow(lead, seenBefore, idx) {
     const row     = document.createElement('div');
-    const wasSeen = seenIdsBefore.has(String(lead.id));
-    row.className = 'lead-in glass rounded-2xl p-4 transition-all hover:border-white/15'
+    const wasSeen = seenBefore.has(String(lead.id));
+    row.className = 'lead-in glass rounded-2xl p-4 transition-all hover:border-white/[.15]'
                   + (wasSeen ? ' opacity-60' : '');
     row.style.animationDelay = (idx * 45) + 'ms';
     row.dataset.leadId = lead.id;
 
     const sc = scoreColor(lead.opportunity_score);
     const hasRating = lead.rating && parseFloat(lead.rating) > 0;
-    const ratingStars = hasRating
+    const stars = hasRating
       ? '★'.repeat(Math.round(parseFloat(lead.rating))) + '☆'.repeat(5 - Math.round(parseFloat(lead.rating)))
       : '';
 
-    const generateUrl = '/portal/generate?lead_id=' + encodeURIComponent(lead.id)
+    const generateUrl = '/portal/generate.php?lead_id=' + encodeURIComponent(lead.id)
       + '&name='     + encodeURIComponent(lead.business_name     || '')
       + '&category=' + encodeURIComponent(lead.business_category || '')
       + '&city='     + encodeURIComponent(lead.business_city     || '')
@@ -150,12 +165,11 @@ document.addEventListener('DOMContentLoaded', function () {
     const phoneLine = lead.business_phone
       ? `<span class="inline-flex items-center gap-1.5 text-xs bg-white/5 text-slate-300 px-3 py-1.5 rounded-lg font-medium">
            <i class="fa-solid fa-phone text-[10px] text-slate-600"></i>${escHtml(lead.business_phone)}
-           <button type="button" class="copy-phone ml-1 text-slate-600 hover:text-slate-300 transition"
-                   data-phone="${escHtml(lead.business_phone)}" title="Copy">
+           <button type="button" class="copy-phone ml-1 text-slate-600 hover:text-slate-300 transition" data-phone="${escHtml(lead.business_phone)}" title="Copy">
              <i class="fa-regular fa-copy text-[10px]"></i>
            </button>
          </span>`
-      : `<span class="text-xs text-slate-700 px-2 py-1.5"><i class="fa-solid fa-phone mr-1.5 text-[10px]"></i>No phone</span>`;
+      : `<span class="text-xs text-slate-700 px-2 py-1.5"><i class="fa-solid fa-phone mr-1.5"></i>No phone</span>`;
 
     const mapsLine = lead.maps_url
       ? `<a href="${escHtml(lead.maps_url)}" target="_blank" rel="noopener"
@@ -175,19 +189,16 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
           <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">
             <span><i class="fa-solid fa-location-dot mr-1 text-slate-600"></i>${escHtml(lead.business_address || 'Address unavailable')}</span>
-            ${hasRating ? `<span class="text-amber-500/70 text-[11px]">${ratingStars} <span class="text-slate-500">${lead.rating}</span></span>` : ''}
+            ${hasRating ? `<span class="text-amber-500/70 text-[11px]">${stars} <span class="text-slate-500">${lead.rating}</span></span>` : ''}
             ${lead.total_ratings ? `<span class="text-slate-600">${lead.total_ratings} reviews</span>` : ''}
             ${lead.business_category ? `<span class="text-slate-600"><i class="fa-solid fa-tag mr-1"></i>${escHtml(lead.business_category)}</span>` : ''}
           </div>
         </div>
-        <a href="${generateUrl}"
-           class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all shrink-0">
+        <a href="${generateUrl}" class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all shrink-0">
           <i class="fa-solid fa-bolt text-[10px]"></i> Build Site
         </a>
       </div>
-      <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/5">
-        ${phoneLine}${mapsLine}
-      </div>`;
+      <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/5">${phoneLine}${mapsLine}</div>`;
 
     row.querySelectorAll('.copy-phone').forEach(btn =>
       btn.addEventListener('click', e => { e.stopPropagation(); copyPhone(btn.dataset.phone, btn); })
@@ -195,7 +206,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return row;
   }
 
-  // ─ Locked row ────────────────────────────────────────────────────────────
+  // ─ Locked rows ──────────────────────────────────────────────────────────────
   const FAKE_NAMES  = ['Montreal Plumbing Co.','Apex Roofing Services','Bella Vista Restaurant','ProClean Janitorial','City Electrical Works','Green Thumb Landscaping','Maple Auto Repair','Studio 514 Hair Salon'];
   const FAKE_CITIES = ['Montreal, QC','Laval, QC','Longueuil, QC','Brossard, QC'];
   const FAKE_SCORES = [72,81,68,90,77,85,63,79];
@@ -211,7 +222,7 @@ document.addEventListener('DOMContentLoaded', function () {
           <h3 class="font-bold text-white text-sm">${escHtml(FAKE_NAMES[index%FAKE_NAMES.length])}</h3>
           <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${scoreColor(score)}">${score}</span>
         </div>
-        <p class="text-xs text-slate-500"><i class="fa-solid fa-location-dot mr-1"></i>${escHtml(FAKE_CITIES[index%FAKE_CITIES.length])}</p>
+        <p class="text-xs text-slate-500">${escHtml(FAKE_CITIES[index%FAKE_CITIES.length])}</p>
       </div>
       <span class="inline-flex items-center gap-1.5 text-xs bg-white/5 text-slate-500 px-3 py-1.5 rounded-lg font-semibold shrink-0">
         <i class="fa-solid fa-lock text-[10px]"></i> Locked
@@ -219,18 +230,10 @@ document.addEventListener('DOMContentLoaded', function () {
     return row;
   }
 
-  // ─ History sidebar ────────────────────────────────────────────────────────
-  function fillAndFocusSearch(city, industry, keywords) {
-    document.getElementById('fieldCity').value     = city;
-    document.getElementById('fieldIndustry').value = industry;
-    document.getElementById('fieldKeywords').value = keywords || '';
-    document.getElementById('leadSearchForm').scrollIntoView({ behavior:'smooth', block:'start' });
-  }
-
+  // ─ History sidebar ──────────────────────────────────────────────────────────
   function renderHistoryItem(entry) {
     const item = document.createElement('div');
-    item.className = 'group';
-    const ts = fmtTimestamp(entry.created_at);
+    const ts   = fmtTimestamp(entry.created_at);
     item.innerHTML = `
       <button type="button"
         class="w-full text-left flex flex-col gap-0.5 px-3 py-2.5 rounded-xl hover:bg-white/5 active:bg-white/8 transition-colors"
@@ -245,7 +248,10 @@ document.addEventListener('DOMContentLoaded', function () {
         <span class="text-[10px] text-slate-700 mt-0.5">${ts}</span>
       </button>`;
     item.querySelector('button').addEventListener('click', function () {
-      fillAndFocusSearch(this.dataset.city, this.dataset.industry, this.dataset.keywords);
+      document.getElementById('fieldCity').value     = this.dataset.city     || '';
+      document.getElementById('fieldIndustry').value = this.dataset.industry || '';
+      document.getElementById('fieldKeywords').value = this.dataset.keywords || '';
+      document.getElementById('leadSearchForm').scrollIntoView({ behavior:'smooth', block:'start' });
     });
     return item;
   }
@@ -259,8 +265,8 @@ document.addEventListener('DOMContentLoaded', function () {
       .then(r => r.json())
       .then(data => {
         list.innerHTML = '';
-        const has = data.history && data.history.length > 0;
-        if (empty)   empty.style.display   = has ? 'none' : '';
+        const has = data.history?.length > 0;
+        if (empty)   empty.style.display = has ? 'none' : '';
         if (countEl) { has ? (countEl.textContent = data.history.length, countEl.classList.remove('hidden')) : countEl.classList.add('hidden'); }
         if (has) data.history.forEach(e => list.appendChild(renderHistoryItem(e)));
       })
@@ -268,7 +274,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
   loadSearchHistory();
 
-  // ─ Search button state ────────────────────────────────────────────────
+  // ─ Search button state ──────────────────────────────────────────────────────
   function setSearching(on) {
     if (!searchBtn || !searchBtnLbl) return;
     searchBtn.disabled = on;
@@ -277,12 +283,12 @@ document.addEventListener('DOMContentLoaded', function () {
     searchBtn.classList.toggle('cursor-not-allowed', on);
   }
 
-  // ─ Main search ────────────────────────────────────────────────────────────
+  // ─ Main search ──────────────────────────────────────────────────────────────
   function runSearch(city, industry, keywords, leadCount, includeSeen, forceRefresh) {
     const t0 = Date.now();
     loadingEl.classList.remove('hidden');
     resultsWrap.classList.add('hidden');
-    leadsList.innerHTML  = '';
+    leadsList.innerHTML = '';
     lockedList.innerHTML = '';
     if (statusChip) { statusChip.textContent = ''; statusChip.classList.add('hidden'); }
     setSearching(true);
@@ -290,8 +296,14 @@ document.addEventListener('DOMContentLoaded', function () {
     fetch('/api/find-leads.php', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ city, industry, keywords: keywords||null, lead_count: leadCount||10,
-                             include_seen: includeSeen, csrf_token: csrfToken, force_refresh: !!forceRefresh })
+      body: JSON.stringify({
+        city, industry,
+        keywords: keywords || null,
+        lead_count: leadCount || 10,
+        include_seen: includeSeen,
+        csrf_token: csrfToken,
+        force_refresh: !!forceRefresh
+      })
     })
     .then(r => r.json())
     .then(data => {
@@ -303,40 +315,46 @@ document.addEventListener('DOMContentLoaded', function () {
       if (!data.success) {
         leadsList.innerHTML = `<div class="glass rounded-2xl p-5 text-sm text-center ${
           data.rate_limited ? 'text-amber-400' : 'text-red-400'}">
-          <i class="fa-solid fa-${ data.rate_limited ? 'clock' : 'triangle-exclamation'} mr-2"></i>
+          <i class="fa-solid fa-${data.rate_limited ? 'clock' : 'triangle-exclamation'} mr-2"></i>
           ${escHtml(data.error || 'Search failed.')}
           ${data.resets_at ? `<span class="block text-xs text-slate-500 mt-1">Resets at <strong>${
-            new Date(data.resets_at*1000).toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit',hour12:true})}</strong></span>` : ''}
+            new Date(data.resets_at*1000).toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit',hour12:true})
+          }</strong></span>` : ''}
         </div>`;
         lockedWrap.classList.add('hidden');
         return;
       }
 
-      if (typeof data.pro_lead_count === 'number') syncLeadCounter(data.pro_lead_count, data.lead_limit || leadLimit);
-      if (typeof data.searches_used  === 'number') updateLiveQuotaCounter(data.searches_used);
+      // ── Update bars from server response ──────────────────────────────────
+      // pro_lead_count is always returned by the API (0 for free users)
+      if (PLAN === 'pro' && typeof data.pro_lead_count === 'number') {
+        syncLeadCounter(data.pro_lead_count, data.lead_limit || leadLimit);
+      }
+      if (!IS_PAID && typeof data.searches_used === 'number') {
+        updateLiveQuotaCounter(data.searches_used);
+      }
 
-      const seenIdsBefore = getSeenIds();
+      const seenBefore = getSeenIds();
       if (data.leads?.length) markSeen(data.leads.map(l => String(l.id)));
 
-      // ── Results header ────────────────────────────────────────────────
+      // Results header
       const header = document.createElement('div');
       header.className = 'flex items-center justify-between text-xs text-slate-500 mb-3 px-0.5';
-      const n        = data.leads?.length || 0;
-      const seenCnt  = (data.leads||[]).filter(l => seenIdsBefore.has(String(l.id))).length;
+      const n       = data.leads?.length || 0;
+      const seenCnt = (data.leads||[]).filter(l => seenBefore.has(String(l.id))).length;
 
       header.innerHTML = `
         <span>
           <strong class="text-white">${n}</strong> leads
-          &middot; <span class="text-slate-400">${escHtml(city)}, ${escHtml(industry)}</span>
-          &middot; <span class="text-slate-600">${elapsed}s</span>
+          · <span class="text-slate-400">${escHtml(city)}, ${escHtml(industry)}</span>
+          · <span class="text-slate-600">${elapsed}s</span>
           ${data.from_cache ? '<span class="text-slate-700 ml-1">(cached)</span>' : ''}
         </span>
         <span class="flex items-center gap-2">
           ${seenCnt > 0 ? `<span class="text-slate-600">${seenCnt} seen</span>` : ''}
-          ${data.from_cache ? `<span class="text-slate-700">· ${
-            data.cached_at ? fmtTimestamp(data.cached_at) : ''}</span>
-            <button id="refreshBtn" type="button"
-              class="text-slate-400 hover:text-white font-semibold underline ml-1">Refresh</button>` : ''}
+          ${data.from_cache
+            ? `<button id="refreshBtn" type="button" class="text-slate-400 hover:text-white font-semibold underline">Refresh</button>`
+            : ''}
         </span>`;
       leadsList.appendChild(header);
 
@@ -345,7 +363,6 @@ document.addEventListener('DOMContentLoaded', function () {
         if (rb) rb.addEventListener('click', () => runSearch(city, industry, keywords, leadCount, includeSeen, true));
       }
 
-      // Update status chip in search box header
       if (statusChip) {
         statusChip.classList.remove('hidden');
         statusChip.textContent = n + ' results · ' + elapsed + 's';
@@ -359,19 +376,19 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         let toShow = data.leads;
         if (!includeSeen) {
-          toShow = data.leads.filter(l => !seenIdsBefore.has(String(l.id)));
+          toShow = data.leads.filter(l => !seenBefore.has(String(l.id)));
           if (!toShow.length) {
             const as = document.createElement('p');
             as.className = 'text-slate-500 text-center py-10 text-sm';
-            as.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i>All results were already seen. Toggle <em>Include seen leads</em>.';
+            as.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i>All results already seen. Toggle <em>Include seen</em>.';
             leadsList.appendChild(as);
           }
         }
-        toShow.forEach((lead, i) => leadsList.appendChild(renderLeadRow(lead, seenIdsBefore, i)));
+        toShow.forEach((lead, i) => leadsList.appendChild(renderLeadRow(lead, seenBefore, i)));
       }
 
       if (data.is_free_tier && data.locked_leads?.length) {
-        data.locked_leads.forEach((lead, i) => lockedList.appendChild(renderLockedRow(lead, i)));
+        data.locked_leads.forEach((l, i) => lockedList.appendChild(renderLockedRow(l, i)));
         lockedWrap.classList.remove('hidden');
       } else {
         lockedWrap.classList.add('hidden');
@@ -393,7 +410,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const city      = form.querySelector('[name="city"]').value.trim();
     const industry  = form.querySelector('[name="industry"]').value.trim();
     const keywords  = form.querySelector('[name="keywords"]')?.value.trim() || '';
-    const leadCount = parseInt(sliderHid?.value) || 10;
+    const leadCount = parseInt(sliderHid?.value, 10) || 10;
     const incSeen   = seenCb?.checked ?? false;
     if (!city || !industry) return;
     runSearch(city, industry, keywords, leadCount, incSeen, false);
@@ -405,7 +422,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const city     = params.get('city')     || '';
     const industry = params.get('industry') || '';
     const keywords = params.get('keywords') || '';
-    const count    = parseInt(params.get('count')) || 10;
+    const count    = parseInt(params.get('count'), 10) || 10;
     if (city && industry) {
       document.getElementById('fieldCity').value     = city;
       document.getElementById('fieldIndustry').value = industry;
