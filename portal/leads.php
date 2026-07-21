@@ -18,7 +18,6 @@ $PRO_LEAD_LIMIT    = defined('PRO_LEAD_LIMIT')            ? (int)PRO_LEAD_LIMIT 
 $PRO_SITE_LIMIT    = defined('PRO_SITE_LIMIT')            ? (int)PRO_SITE_LIMIT            : 200;
 $ENT_SITE_LIMIT    = defined('ENT_SITE_LIMIT')            ? (int)ENT_SITE_LIMIT            : 500;
 
-// Free quota
 $quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
@@ -35,20 +34,16 @@ if (!$is_paid) {
 $quota_remaining = max(0, $FREE_SEARCH_LIMIT - $quota_used);
 $quota_pct       = $FREE_SEARCH_LIMIT > 0 ? min(100, round(($quota_used/$FREE_SEARCH_LIMIT)*100)) : 0;
 
-// Pro lead count
 $pro_lead_count = 0;
 if ($plan === 'pro') {
     try {
-        $pdo = get_platform_db();
-        try {
-            $stmt = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id = ?');
-            $stmt->execute([$user['id']]);
-            $pro_lead_count = (int)$stmt->fetchColumn();
-        } catch (\Throwable $inner) { $pro_lead_count = 0; }
-    } catch (\Throwable $e) { $pro_lead_count = 0; }
+        $pdo  = get_platform_db();
+        $stmt = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id = ?');
+        $stmt->execute([$user['id']]);
+        $pro_lead_count = (int)$stmt->fetchColumn();
+    } catch (\Throwable $e) {}
 }
 
-// Active sites
 $active_site_count = 0;
 if ($is_paid) {
     try {
@@ -64,36 +59,22 @@ $slider_default = match($plan) { 'entrepreneur' => 20, 'pro' => 10, default => 5
 
 $pageTitle = 'Find Leads — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
-// portal_layout.php opens (but never closes):
-//   <main class="lg:ml-64 min-h-screen">
-//     <div class="max-w-5xl mx-auto px-6 py-8">
-// We work INSIDE that structure — no closing/reopening needed.
 ?>
 <style>
-/*
- * On xl+ we need room for the fixed right rail (w-64 = 16rem).
- * Override the inner div's max-width and add right padding so
- * content never slides under the rail.
- * The rail itself is position:fixed so it sits outside normal flow.
- */
-@media (min-width: 1280px) {
-  main > div:first-child {
-    max-width: calc(100% - 1rem);
-    padding-right: 17rem;
-  }
-}
-
-/* ─── Right rail ────────────────────────────────────────────── */
+/* ----------------------------------------------------------------
+   KEY FIX: #leadsRail is moved to document.body via JS below,
+   so it escapes the max-w-5xl container. These styles just define
+   how it looks once it's a direct child of <body>.
+---------------------------------------------------------------- */
 #leadsRail {
   position: fixed;
-  top: 0;
-  right: 0;
-  width: 256px;   /* same as left sidebar w-64 */
+  top: 0; right: 0;
+  width: 256px;
   height: 100vh;
-  display: none;  /* hidden by default; shown on xl */
+  display: none;
   flex-direction: column;
-  background: rgba(15,23,42,.95);   /* bg-slate-900/95 */
-  border-left: 1px solid rgba(255,255,255,.05);  /* border-l border-white/5 */
+  background: rgba(15,23,42,.95);
+  border-left: 1px solid rgba(255,255,255,.05);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
   z-index: 20;
@@ -101,142 +82,79 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 }
 @media (min-width: 1280px) {
   #leadsRail { display: flex; }
+  /* Push the main content area left so nothing hides under the rail */
+  .lg\:ml-64 { padding-right: 256px; }
 }
 
-/* ─── History nav items (mirror left sidebar .nav-link) ───────── */
+/* ── History items (mirror left .nav-link exactly) ── */
 .hist-item {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  width: 100%;
-  padding: 10px 14px;
-  border-radius: 12px;
-  border: 1px solid transparent;
-  text-align: left;
-  font-size: .875rem;
-  color: #94a3b8;
+  display: flex; flex-direction: column; gap: 2px;
+  width: 100%; padding: 10px 14px; border-radius: 12px;
+  border: 1px solid transparent; text-align: left;
+  font-size: .875rem; color: #94a3b8;
   transition: background .15s, color .15s, border-color .15s;
-  cursor: pointer;
-  background: none;
+  cursor: pointer; background: none;
 }
-.hist-item:hover {
-  background: rgba(255,255,255,.06);
-  color: #fff;
-  border-color: rgba(255,255,255,.06);
-}
+.hist-item:hover  { background: rgba(255,255,255,.06); color:#fff; border-color:rgba(255,255,255,.06); }
 .hist-item:active { background: rgba(255,255,255,.1); }
+.hist-item .hi-title { font-size:.8rem; font-weight:600; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hist-item .hi-meta  { font-size:.7rem; color:#475569; }
 
-/* ─── Form inputs ─────────────────────────────────────────── */
+/* ── Inputs ── */
 .leads-input {
-  width: 100%;
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.07);
-  color: #f1f5f9;
-  font-size: .875rem;
-  padding: .6rem .75rem .6rem 2.2rem;
-  border-radius: 10px;
-  outline: none;
-  transition: border-color .15s, background .15s;
+  width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07);
+  color:#f1f5f9; font-size:.875rem; padding:.6rem .75rem .6rem 2.2rem;
+  border-radius:10px; outline:none; transition:border-color .15s, background .15s;
 }
-.leads-input::placeholder { color: #334155; }
-.leads-input:focus {
-  border-color: rgba(255,255,255,.22);
-  background: rgba(255,255,255,.06);
-}
+.leads-input::placeholder { color:#1e293b; }
+.leads-input:focus { border-color:rgba(255,255,255,.22); background:rgba(255,255,255,.06); }
 .leads-icon {
-  position: absolute; left: .75rem; top: 50%;
-  transform: translateY(-50%);
-  color: #1e293b; font-size: .7rem;
-  pointer-events: none; transition: color .15s;
+  position:absolute; left:.75rem; top:50%; transform:translateY(-50%);
+  color:#1e293b; font-size:.7rem; pointer-events:none;
 }
 
-/* ─── Progress bars ────────────────────────────────────────── */
-.q-track { height: 2px; background: rgba(255,255,255,.06); border-radius: 2px; overflow: hidden; }
-.q-fill  { height: 100%; border-radius: 2px; transition: width .5s ease; }
+/* ── Progress bars ── */
+.q-track { height:2px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
+.q-fill  { height:100%; border-radius:2px; transition:width .5s ease; }
 
-/* ─── Slider ─────────────────────────────────────────────── */
-.leads-slider {
-  -webkit-appearance: none; appearance: none;
-  width: 100%; height: 2px;
-  background: rgba(255,255,255,.1);
-  border-radius: 2px; outline: none; cursor: pointer;
-}
-.leads-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #fff; cursor: pointer;
-  box-shadow: 0 0 0 3px rgba(255,255,255,.08);
-  transition: transform .1s;
-}
-.leads-slider::-webkit-slider-thumb:hover { transform: scale(1.15); }
-.leads-slider::-moz-range-thumb {
-  width: 14px; height: 14px; border-radius: 50%;
-  background: #fff; border: none; cursor: pointer;
-}
+/* ── Slider ── */
+.leads-slider { -webkit-appearance:none; appearance:none; width:100%; height:2px; background:rgba(255,255,255,.1); border-radius:2px; outline:none; cursor:pointer; }
+.leads-slider::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#fff; cursor:pointer; box-shadow:0 0 0 3px rgba(255,255,255,.08); transition:transform .1s; }
+.leads-slider::-webkit-slider-thumb:hover { transform:scale(1.15); }
+.leads-slider::-moz-range-thumb { width:14px; height:14px; border-radius:50%; background:#fff; border:none; cursor:pointer; }
 
-/* ─── Toggle switch ────────────────────────────────────────── */
-.tog-track {
-  width: 30px; height: 16px;
-  background: rgba(255,255,255,.08);
-  border-radius: 8px; position: relative;
-  transition: background .2s; flex-shrink: 0;
-}
-.tog-track.on { background: rgba(255,255,255,.28); }
-.tog-thumb {
-  position: absolute; top: 2px; left: 2px;
-  width: 12px; height: 12px; border-radius: 50%;
-  background: #475569;
-  transition: transform .18s, background .18s;
-}
-.tog-track.on .tog-thumb { transform: translateX(14px); background: #fff; }
+/* ── Toggle ── */
+.tog-track { width:30px; height:16px; background:rgba(255,255,255,.08); border-radius:8px; position:relative; transition:background .2s; flex-shrink:0; }
+.tog-track.on { background:rgba(255,255,255,.28); }
+.tog-thumb { position:absolute; top:2px; left:2px; width:12px; height:12px; border-radius:50%; background:#475569; transition:transform .18s, background .18s; }
+.tog-track.on .tog-thumb { transform:translateX(14px); background:#fff; }
 
-/* ─── Skeleton shimmer ─────────────────────────────────────── */
-@keyframes leads-shimmer {
-  0%   { background-position: -500px 0; }
-  100% { background-position:  500px 0; }
-}
-.skel {
-  background: linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.07) 50%,rgba(255,255,255,.03) 75%);
-  background-size: 500px 100%;
-  animation: leads-shimmer 1.5s infinite linear;
-  border-radius: 6px;
-}
+/* ── Skeleton ── */
+@keyframes leads-shimmer { 0%{background-position:-500px 0} 100%{background-position:500px 0} }
+.skel { background:linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.07) 50%,rgba(255,255,255,.03) 75%); background-size:500px 100%; animation:leads-shimmer 1.5s infinite linear; border-radius:6px; }
 
-/* ─── Lead card entry animation ───────────────────────────── */
-@keyframes lead-in { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:translateY(0); } }
-.lead-in { animation: lead-in .22s ease both; }
+/* ── Card animation ── */
+@keyframes lead-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
+.lead-in { animation:lead-in .22s ease both; }
 
-/* ─── Mobile history drawer ──────────────────────────────── */
+/* ── Mobile drawer ── */
 #historyDrawer {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  z-index: 60;
-  transform: translateY(100%);
-  transition: transform .28s cubic-bezier(.4,0,.2,1);
-  max-height: 72vh;
-  background: rgba(15,23,42,.98);
-  border-top: 1px solid rgba(255,255,255,.08);
-  border-radius: 20px 20px 0 0;
-  backdrop-filter: blur(24px);
-  display: flex;
-  flex-direction: column;
+  position:fixed; bottom:0; left:0; right:0; z-index:60;
+  transform:translateY(100%); transition:transform .28s cubic-bezier(.4,0,.2,1);
+  max-height:72vh; background:rgba(15,23,42,.98);
+  border-top:1px solid rgba(255,255,255,.08); border-radius:20px 20px 0 0;
+  backdrop-filter:blur(24px); display:flex; flex-direction:column;
 }
-#historyDrawer.open { transform: translateY(0); }
-#historyDrawerOverlay {
-  position: fixed; inset: 0; z-index: 59;
-  background: rgba(0,0,0,.6);
-  opacity: 0; pointer-events: none;
-  transition: opacity .25s;
-}
-#historyDrawerOverlay.open { opacity: 1; pointer-events: all; }
+#historyDrawer.open { transform:translateY(0); }
+#historyDrawerOverlay { position:fixed; inset:0; z-index:59; background:rgba(0,0,0,.6); opacity:0; pointer-events:none; transition:opacity .25s; }
+#historyDrawerOverlay.open { opacity:1; pointer-events:all; }
 </style>
 
-
-<!-- ═══ FIXED RIGHT RAIL ════════════════════════════════════════════════ -->
-<!-- position:fixed right:0, same dims/colours as #sidebar on left -->
+<!--
+  RIGHT RAIL — rendered here inside the layout div, then immediately
+  teleported to <body> by the script below so it's truly fixed.
+-->
 <aside id="leadsRail">
-
-  <!-- Header row mirrors sidebar logo row height/padding exactly -->
   <div class="px-5 py-5 border-b border-white/5 shrink-0">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-clock-rotate-left text-slate-600 text-xs"></i>
@@ -244,51 +162,36 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <span id="historyCount" class="ml-auto text-[10px] font-bold text-slate-600 bg-white/5 px-1.5 py-0.5 rounded-full hidden"></span>
     </div>
   </div>
-
-  <!-- Scrollable history list -->
-  <nav id="searchHistoryList"
-       class="flex-1 overflow-y-auto px-3 py-3 space-y-0.5"
-       style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.05) transparent;"></nav>
-
-  <!-- Empty state -->
-  <div id="searchHistoryEmpty"
-       class="flex-1 flex flex-col items-center justify-center px-6 pb-8 text-center">
-    <div class="w-10 h-10 rounded-2xl bg-white/[.03] border border-white/5
-                flex items-center justify-center mb-4">
+  <nav id="searchHistoryList" class="flex-1 overflow-y-auto px-3 py-3 space-y-0.5" style="scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.05) transparent;"></nav>
+  <div id="searchHistoryEmpty" class="flex-1 flex flex-col items-center justify-center px-6 pb-8 text-center">
+    <div class="w-10 h-10 rounded-2xl bg-white/[.03] border border-white/5 flex items-center justify-center mb-4">
       <i class="fa-solid fa-magnifying-glass text-slate-700 text-sm"></i>
     </div>
     <p class="text-xs font-semibold text-slate-500">No searches yet</p>
     <p class="text-[11px] text-slate-700 mt-1 leading-relaxed">Run your first search<br>and it’ll show up here.</p>
   </div>
-
-  <!-- Footer -->
   <div class="px-4 py-4 border-t border-white/5 shrink-0">
-    <p class="text-[10px] text-slate-700 text-center">
-      <i class="fa-solid fa-hand-pointer mr-1"></i>Click any entry to re-run it
-    </p>
+    <p class="text-[10px] text-slate-700 text-center"><i class="fa-solid fa-hand-pointer mr-1"></i>Click any entry to re-run it</p>
   </div>
-
 </aside>
 
+<!-- Teleport rail to <body> so it escapes the max-w-5xl container -->
+<script>document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('leadsRail');if(r)document.body.appendChild(r);});</script>
 
-<!-- ═══ MOBILE HISTORY DRAWER ═════════════════════════════════════════ -->
+<!-- Mobile drawer + overlay (also teleported to body) -->
 <div id="historyDrawerOverlay" onclick="closeHistoryDrawer()"></div>
 <div id="historyDrawer">
-  <div class="flex justify-center pt-3 pb-1 shrink-0">
-    <div class="w-8 h-1 rounded-full bg-white/10"></div>
-  </div>
+  <div class="flex justify-center pt-3 pb-1 shrink-0"><div class="w-8 h-1 rounded-full bg-white/10"></div></div>
   <div class="flex items-center justify-between px-5 py-3 border-b border-white/5 shrink-0">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-clock-rotate-left text-slate-500 text-xs"></i>
       <span class="text-sm font-bold text-white">Recent Searches</span>
     </div>
-    <button onclick="closeHistoryDrawer()"
-      class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
+    <button onclick="closeHistoryDrawer()" class="w-7 h-7 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
       <i class="fa-solid fa-xmark text-xs"></i>
     </button>
   </div>
-  <div id="historyDrawerList" class="flex-1 overflow-y-auto px-3 py-2 space-y-0.5"
-       style="scrollbar-width:thin;"></div>
+  <div id="historyDrawerList" class="flex-1 overflow-y-auto px-3 py-2 space-y-0.5" style="scrollbar-width:thin;"></div>
   <div id="historyDrawerEmpty" class="flex flex-col items-center justify-center py-12 text-center px-6">
     <i class="fa-solid fa-magnifying-glass text-slate-700 text-2xl mb-3"></i>
     <p class="text-sm font-semibold text-slate-600">Nothing here yet</p>
@@ -298,6 +201,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <p class="text-[11px] text-slate-700 text-center">Tap any entry to re-run it</p>
   </div>
 </div>
+<script>
+  document.addEventListener('DOMContentLoaded',function(){
+    ['historyDrawer','historyDrawerOverlay'].forEach(function(id){
+      var el=document.getElementById(id); if(el) document.body.appendChild(el);
+    });
+  });
+</script>
 
 <!-- Mobile FAB -->
 <button id="historyFab"
@@ -307,13 +217,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
          hover:bg-slate-700 active:scale-95 transition-all"
   onclick="openHistoryDrawer()">
   <i class="fa-solid fa-clock-rotate-left text-sm"></i>
-  <span class="xl:hidden">History</span>
+  <span>History</span>
 </button>
 
 
 <!-- ═══ PAGE CONTENT ══════════════════════════════════════════════════════ -->
 
-<!-- Page header -->
 <div class="mb-7">
   <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
@@ -330,7 +239,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 
 <?php if (!$is_paid): ?>
-<!-- Free plan banners -->
 <div class="space-y-3 mb-7">
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -344,8 +252,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <span id="quotaBadge" class="text-xs font-bold px-2.5 py-1 rounded-full
-          <?= $quota_remaining===0 ? 'bg-red-500/10 text-red-400' : ($quota_remaining===1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400') ?>">
+        <span id="quotaBadge" class="text-xs font-bold px-2.5 py-1 rounded-full <?= $quota_remaining===0 ? 'bg-red-500/10 text-red-400' : ($quota_remaining===1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400') ?>">
           <?= $quota_remaining===0 ? 'No searches left' : $quota_remaining.' search'.($quota_remaining!==1?'es':'').' left' ?>
         </span>
         <a href="/portal/billing.php?upgrade=1" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full transition">
@@ -403,11 +310,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </span>
     </div>
     <div class="q-track">
-      <div id="leadLimitBar"
-           class="q-fill <?=$ll_pct>=100?'bg-red-400':($ll_pct>=80?'bg-amber-400':'bg-white/40')?>"
-           style="width:<?=$ll_pct?>%"
-           data-used="<?=$pro_lead_count?>"
-           data-limit="<?=$PRO_LEAD_LIMIT?>"></div>
+      <div id="leadLimitBar" class="q-fill <?=$ll_pct>=100?'bg-red-400':($ll_pct>=80?'bg-amber-400':'bg-white/40')?>" style="width:<?=$ll_pct?>%" data-used="<?=$pro_lead_count?>" data-limit="<?=$PRO_LEAD_LIMIT?>"></div>
     </div>
     <div class="flex justify-between text-[11px] text-slate-600 mt-2">
       <span id="leadLimitNote"><?=max(0,$PRO_LEAD_LIMIT-$pro_lead_count)?> remaining</span>
@@ -424,9 +327,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <p class="text-xs text-slate-600 mt-0.5"><?=$active_site_count?> of <?=$PRO_SITE_LIMIT?> used</p>
       </div>
     </div>
-    <div class="q-track">
-      <div class="q-fill <?=$sl_pct>=100?'bg-red-400':($sl_pct>=80?'bg-amber-400':'bg-white/40')?>" style="width:<?=$sl_pct?>%"></div>
-    </div>
+    <div class="q-track"><div class="q-fill <?=$sl_pct>=100?'bg-red-400':($sl_pct>=80?'bg-amber-400':'bg-white/40')?>" style="width:<?=$sl_pct?>%"></div></div>
     <p class="text-[11px] text-slate-600 mt-2"><?=max(0,$PRO_SITE_LIMIT-$active_site_count)?> remaining</p>
   </div>
 </div>
@@ -452,60 +353,43 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <p class="text-xs text-slate-600 mt-0.5"><?=$active_site_count?> of <?=$ENT_SITE_LIMIT?> used</p>
       </div>
     </div>
-    <div class="q-track">
-      <div class="q-fill <?=$sl_pct>=90?'bg-red-400':($sl_pct>=70?'bg-amber-400':'bg-white/40')?>" style="width:<?=$sl_pct?>%"></div>
-    </div>
+    <div class="q-track"><div class="q-fill <?=$sl_pct>=90?'bg-red-400':($sl_pct>=70?'bg-amber-400':'bg-white/40')?>" style="width:<?=$sl_pct?>%"></div></div>
     <p class="text-[11px] text-slate-600 mt-2"><?=max(0,$ENT_SITE_LIMIT-$active_site_count)?> remaining</p>
   </div>
 </div>
 <?php endif; ?>
 
 
-<!-- ── Search box ───────────────────────────────────────────────────────── -->
+<!-- Search card -->
 <div class="glass rounded-2xl mb-6" id="searchBox">
   <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/5">
     <div class="flex items-center gap-2">
       <i class="fa-solid fa-crosshairs text-slate-600 text-xs"></i>
       <span class="text-xs font-semibold text-slate-500 uppercase tracking-widest">Search Parameters</span>
     </div>
-    <span id="searchStatusChip"
-      class="hidden text-[11px] font-semibold text-slate-500 bg-white/5 px-2.5 py-1 rounded-full"></span>
+    <span id="searchStatusChip" class="hidden text-[11px] font-semibold text-slate-500 bg-white/5 px-2.5 py-1 rounded-full"></span>
   </div>
-
   <form id="leadSearchForm" class="p-5">
     <div class="grid sm:grid-cols-3 gap-3 mb-5">
       <div>
-        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
-          City <span class="text-slate-700">*</span>
-        </label>
-        <div class="relative">
-          <i class="fa-solid fa-city leads-icon"></i>
-          <input type="text" name="city" id="fieldCity" placeholder="e.g. Calgary"
-                 required autocomplete="off" class="leads-input">
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">City <span class="text-slate-700">*</span></label>
+        <div class="relative"><i class="fa-solid fa-city leads-icon"></i>
+          <input type="text" name="city" id="fieldCity" placeholder="e.g. Calgary" required autocomplete="off" class="leads-input">
         </div>
       </div>
       <div>
-        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
-          Industry <span class="text-slate-700">*</span>
-        </label>
-        <div class="relative">
-          <i class="fa-solid fa-briefcase leads-icon"></i>
-          <input type="text" name="industry" id="fieldIndustry" placeholder="e.g. Plumber, Dentist"
-                 required autocomplete="off" class="leads-input">
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">Industry <span class="text-slate-700">*</span></label>
+        <div class="relative"><i class="fa-solid fa-briefcase leads-icon"></i>
+          <input type="text" name="industry" id="fieldIndustry" placeholder="e.g. Plumber, Dentist" required autocomplete="off" class="leads-input">
         </div>
       </div>
       <div>
-        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">
-          Keywords <span class="text-slate-700 normal-case font-normal text-[9px]">(optional)</span>
-        </label>
-        <div class="relative">
-          <i class="fa-solid fa-tags leads-icon"></i>
-          <input type="text" name="keywords" id="fieldKeywords" placeholder="e.g. family-owned"
-                 class="leads-input">
+        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-1.5">Keywords <span class="text-slate-700 normal-case font-normal text-[9px]">(optional)</span></label>
+        <div class="relative"><i class="fa-solid fa-tags leads-icon"></i>
+          <input type="text" name="keywords" id="fieldKeywords" placeholder="e.g. family-owned" class="leads-input">
         </div>
       </div>
     </div>
-
     <div class="flex flex-col sm:flex-row sm:items-center gap-5">
       <div class="flex-1">
         <div class="flex items-center justify-between mb-2">
@@ -513,9 +397,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <span class="text-sm font-extrabold text-white tabular-nums" id="leadCountDisplay"><?=$slider_default?></span>
         </div>
         <input type="range" id="leadCountSlider" min="1" max="<?=$slider_max?>" value="<?=$slider_default?>" class="leads-slider">
-        <div class="flex justify-between text-[10px] text-slate-700 mt-1">
-          <span>1</span><span><?=$slider_max?></span>
-        </div>
+        <div class="flex justify-between text-[10px] text-slate-700 mt-1"><span>1</span><span><?=$slider_max?></span></div>
       </div>
       <label class="flex items-center gap-2.5 cursor-pointer select-none shrink-0">
         <div class="tog-track" id="togTrack"><div class="tog-thumb"></div></div>
@@ -534,7 +416,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 
-<!-- ── Skeleton ──────────────────────────────────────────────────────────── -->
+<!-- Skeleton -->
 <div id="leadsLoading" class="hidden space-y-3">
   <?php for($i=0;$i<3;$i++):?>
   <div class="glass rounded-2xl p-5">
@@ -552,13 +434,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
   <?php endfor;?>
-  <p class="text-xs text-slate-700 text-center pt-1 animate-pulse">
-    <i class="fa-solid fa-satellite-dish mr-1"></i>Scanning Google Places&hellip;
-  </p>
+  <p class="text-xs text-slate-700 text-center pt-1 animate-pulse"><i class="fa-solid fa-satellite-dish mr-1"></i>Scanning Google Places&hellip;</p>
 </div>
 
 
-<!-- ── Results ──────────────────────────────────────────────────────────── -->
+<!-- Results -->
 <div id="leadsResultsWrap" class="hidden">
   <div id="leadsList" class="space-y-2.5"></div>
   <div id="lockedWrap" class="hidden mt-3">
@@ -569,14 +449,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <i class="fa-solid fa-lock text-white text-lg"></i>
         </div>
         <h3 class="text-base font-bold text-white mb-1">More Leads Are Waiting</h3>
-        <p class="text-slate-400 text-sm max-w-xs mx-auto">You&rsquo;re seeing
-          <strong class="text-white"><?=$FREE_LEAD_LIMIT?> of the top results.</strong>
-          Upgrade to unlock every lead.
-        </p>
+        <p class="text-slate-400 text-sm max-w-xs mx-auto">You&rsquo;re seeing <strong class="text-white"><?=$FREE_LEAD_LIMIT?> of the top results.</strong> Upgrade to unlock every lead.</p>
       </div>
       <div class="px-6 pb-6 flex flex-col sm:flex-row items-center justify-center gap-3">
-        <a href="/portal/billing.php?upgrade=1"
-           class="w-full sm:w-auto bg-white hover:bg-slate-200 text-black px-7 py-2.5 rounded-xl font-bold text-sm text-center transition">
+        <a href="/portal/billing.php?upgrade=1" class="w-full sm:w-auto bg-white hover:bg-slate-200 text-black px-7 py-2.5 rounded-xl font-bold text-sm text-center transition">
           <i class="fa-solid fa-crown mr-2"></i>Upgrade Plan
         </a>
         <p class="text-xs text-slate-600">Cancel anytime &bull; Instant access</p>
@@ -586,8 +462,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 
-<script
-  id="leadsPageConfig"
+<script id="leadsPageConfig"
   data-plan="<?=htmlspecialchars($plan)?>"
   data-lead-used="<?=$pro_lead_count?>"
   data-lead-limit="<?=$PRO_LEAD_LIMIT?>"
@@ -598,33 +473,33 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <script>
 function openHistoryDrawer() {
-  const drawer  = document.getElementById('historyDrawer');
-  const overlay = document.getElementById('historyDrawerOverlay');
-  const src     = document.getElementById('searchHistoryList');
-  const dest    = document.getElementById('historyDrawerList');
-  const emptyD  = document.getElementById('historyDrawerEmpty');
-  if (src && dest) {
-    dest.innerHTML = src.innerHTML;
-    const has = dest.querySelector('.hist-item') !== null;
-    if (emptyD) emptyD.style.display = has ? 'none' : '';
-    dest.querySelectorAll('.hist-item').forEach(btn => {
-      btn.addEventListener('click', function() {
-        document.getElementById('fieldCity').value     = this.dataset.city     || '';
-        document.getElementById('fieldIndustry').value = this.dataset.industry || '';
-        document.getElementById('fieldKeywords').value = this.dataset.keywords || '';
+  var drawer=document.getElementById('historyDrawer'),
+      overlay=document.getElementById('historyDrawerOverlay'),
+      src=document.getElementById('searchHistoryList'),
+      dest=document.getElementById('historyDrawerList'),
+      emptyD=document.getElementById('historyDrawerEmpty');
+  if(src&&dest){
+    dest.innerHTML=src.innerHTML;
+    var has=dest.querySelector('.hist-item')!==null;
+    if(emptyD) emptyD.style.display=has?'none':'';
+    dest.querySelectorAll('.hist-item').forEach(function(btn){
+      btn.addEventListener('click',function(){
+        document.getElementById('fieldCity').value=this.dataset.city||'';
+        document.getElementById('fieldIndustry').value=this.dataset.industry||'';
+        document.getElementById('fieldKeywords').value=this.dataset.keywords||'';
         closeHistoryDrawer();
-        setTimeout(() => document.getElementById('searchBox')
-          .scrollIntoView({ behavior:'smooth', block:'start' }), 160);
+        setTimeout(function(){document.getElementById('searchBox').scrollIntoView({behavior:'smooth',block:'start'});},160);
       });
     });
   }
-  drawer.classList.add('open');
-  overlay.classList.add('open');
-  document.body.style.overflow = 'hidden';
+  if(drawer) drawer.classList.add('open');
+  if(overlay) overlay.classList.add('open');
+  document.body.style.overflow='hidden';
 }
-function closeHistoryDrawer() {
-  document.getElementById('historyDrawer').classList.remove('open');
-  document.getElementById('historyDrawerOverlay').classList.remove('open');
-  document.body.style.overflow = '';
+function closeHistoryDrawer(){
+  var d=document.getElementById('historyDrawer'),o=document.getElementById('historyDrawerOverlay');
+  if(d) d.classList.remove('open');
+  if(o) o.classList.remove('open');
+  document.body.style.overflow='';
 }
 </script>
