@@ -7,6 +7,7 @@
  *   - Returns pro_lead_count on EVERY response (not just pro branch)
  *   - Returns searches_used on EVERY response (not just free branch) so both bars always update
  *   - History dedup: ON DUPLICATE KEY UPDATE so same city+industry+keywords just bumps date
+ *   - Auto-inserts served leads into unlocked_leads for Pro users so the counter increments
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -72,7 +73,7 @@ if (!preg_match('/^[\p{L}0-9 \-\',.]+$/u', $city) || !preg_match('/^[\p{L}0-9 \-
     exit;
 }
 
-$debug     = true; // TEMP: always expose debug info
+$debug     = false;
 $debug_log = [];
 
 try {
@@ -124,6 +125,18 @@ try {
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
 
+    // Ensure unlocked_leads table exists
+    $pdo->exec(
+        'CREATE TABLE IF NOT EXISTS `unlocked_leads` (
+           `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+           `user_id`    INT UNSIGNED NOT NULL,
+           `lead_id`    INT UNSIGNED NOT NULL,
+           `unlocked_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+           PRIMARY KEY (`id`),
+           UNIQUE KEY `uq_user_lead` (`user_id`, `lead_id`)
+         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
+    );
+
     // ── 6. Free-plan daily search limit ───────────────────────────────────────
     $searches_used      = 0;
     $searches_remaining = null;
@@ -170,7 +183,6 @@ try {
                 $searches_remaining = max(0, $daily_limit - $searches_used);
             }
         } catch (\Throwable $e) {
-            $debug_log[] = 'QUOTA ERROR: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine();
             log_error('find_leads_quota_check', $e, ['user_id' => $user['id']]);
         }
     }
@@ -185,7 +197,6 @@ try {
             $stmt->execute([$cacheKey, $cacheHours]);
             $cached = $stmt->fetch(PDO::FETCH_ASSOC);
         } catch (\Throwable $e) {
-            $debug_log[] = 'CACHE READ ERROR: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine();
             log_error('find_leads_cache_read', $e);
         }
     }
@@ -194,7 +205,6 @@ try {
         $all_leads  = json_decode($cached['leads_json'], true) ?? [];
         $cached_at  = $cached['created_at'];
         $from_cache = true;
-        $debug_log[] = 'Served from cache (' . count($all_leads) . ' leads)';
     } else {
         // ── 8. Google Places API ──────────────────────────────────────────────
         $apiKey = defined('GOOGLE_PLACES_API_KEY') ? GOOGLE_PLACES_API_KEY : '';
@@ -203,25 +213,22 @@ try {
             exit;
         }
 
-        $debug_log[] = 'Calling Google Places API...';
         $query  = urlencode($industry . ' in ' . $city);
         $ts_url = 'https://maps.googleapis.com/maps/api/place/textsearch/json?query=' . $query . '&key=' . urlencode($apiKey);
         $ctx    = stream_context_create(['http' => ['timeout' => 12, 'ignore_errors' => true]]);
         $resp   = @file_get_contents($ts_url, false, $ctx);
 
         if ($resp === false) {
-            $debug_log[] = 'Google Places HTTP request failed (file_get_contents returned false)';
-            echo json_encode(['success' => false, 'error' => 'Could not reach Google Places. Please try again.', '_debug' => $debug_log]);
+            echo json_encode(['success' => false, 'error' => 'Could not reach Google Places. Please try again.']);
             exit;
         }
 
         $places = json_decode($resp, true);
         $status = $places['status'] ?? 'UNKNOWN';
-        $debug_log[] = 'Google Places status: ' . $status . ', results: ' . count($places['results'] ?? []);
 
-        if ($status === 'REQUEST_DENIED') { echo json_encode(['success' => false, 'error' => 'Lead search is temporarily unavailable.', '_debug' => $debug_log]); exit; }
-        if ($status === 'OVER_QUERY_LIMIT') { echo json_encode(['success' => false, 'error' => 'Daily search quota reached. Please try again tomorrow.', '_debug' => $debug_log]); exit; }
-        if (!in_array($status, ['OK', 'ZERO_RESULTS'], true)) { echo json_encode(['success' => false, 'error' => 'Search failed (' . $status . '). Try a different city or industry.', '_debug' => $debug_log]); exit; }
+        if ($status === 'REQUEST_DENIED') { echo json_encode(['success' => false, 'error' => 'Lead search is temporarily unavailable.']); exit; }
+        if ($status === 'OVER_QUERY_LIMIT') { echo json_encode(['success' => false, 'error' => 'Daily search quota reached. Please try again tomorrow.']); exit; }
+        if (!in_array($status, ['OK', 'ZERO_RESULTS'], true)) { echo json_encode(['success' => false, 'error' => 'Search failed (' . $status . '). Try a different city or industry.']); exit; }
 
         $results    = $places['results'] ?? [];
         $all_leads  = [];
@@ -266,7 +273,6 @@ try {
         try {
             $pdo->prepare('INSERT INTO lead_cache (cache_key, leads_json, created_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE leads_json = VALUES(leads_json), created_at = NOW()')->execute([$cacheKey, json_encode($all_leads)]);
         } catch (\Throwable $e) {
-            $debug_log[] = 'CACHE WRITE ERROR: ' . $e->getMessage();
             log_error('find_leads_cache_write', $e);
         }
 
@@ -311,7 +317,6 @@ try {
             $dbId = $idStmt->fetchColumn();
             if ($dbId) $place_id_map[$pid] = (int)$dbId;
         } catch (\Throwable $e) {
-            $debug_log[] = 'UPSERT ERROR: ' . $e->getMessage();
             log_error('find_leads_upsert', $e, ['place_id' => $pid]);
         }
     }
@@ -329,16 +334,30 @@ try {
 
     $pro_lead_count = 0;
     $pro_lead_limit = 0;
+
     if ($plan === 'pro') {
+        $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
+
+        // Auto-unlock every lead served to this Pro user (INSERT IGNORE on unique key)
+        foreach ($all_leads as $lead) {
+            $lid = $lead['id'] ?? null;
+            if (!$lid || !is_int($lid)) continue;
+            try {
+                $pdo->prepare(
+                    'INSERT IGNORE INTO unlocked_leads (user_id, lead_id) VALUES (?, ?)'
+                )->execute([$user['id'], $lid]);
+            } catch (\Throwable $e) {
+                log_error('find_leads_unlock', $e, ['lead_id' => $lid]);
+            }
+        }
+
+        // Now count total unlocked leads for this user
         try {
-            $stmt = $pdo->prepare('SELECT COUNT(*) FROM utiligo_leads WHERE id IN (SELECT lead_id FROM unlocked_leads WHERE user_id = ?)');
+            $stmt = $pdo->prepare('SELECT COUNT(*) FROM unlocked_leads WHERE user_id = ?');
             $stmt->execute([$user['id']]);
             $pro_lead_count = (int)$stmt->fetchColumn();
-            $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
         } catch (\Throwable $e) {
-            $debug_log[] = 'PRO LEAD COUNT ERROR: ' . $e->getMessage();
             $pro_lead_count = 0;
-            $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
         }
     }
 
@@ -385,20 +404,14 @@ try {
              VALUES (?, ?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE result_count = VALUES(result_count), created_at = NOW()'
         )->execute([$user['id'], $city, $industry, $keywords, $result_count]);
-    } catch (\Throwable $e) { $debug_log[] = 'HISTORY WRITE ERROR: ' . $e->getMessage(); }
+    } catch (\Throwable $e) {}
 
-    $payload['_debug'] = $debug_log;
     echo json_encode($payload);
 
 } catch (\Throwable $e) {
     log_error('find_leads_fatal', $e, ['user_id' => $user['id'] ?? null, 'city' => $city ?? null, 'industry' => $industry ?? null]);
     echo json_encode([
         'success' => false,
-        'error'   => $e->getMessage(),
-        '_debug'  => array_merge($debug_log, [
-            'file' => $e->getFile(),
-            'line' => $e->getLine(),
-            'trace' => $e->getTraceAsString(),
-        ]),
+        'error'   => 'Something went wrong. Please try again.',
     ]);
 }

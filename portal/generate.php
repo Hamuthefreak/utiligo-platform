@@ -49,7 +49,15 @@ $template_keys       = array_keys($all_templates);
 $free_keys           = array_slice($template_keys, 0, $free_template_limit);
 
 $prefill = ['business_name'=>'','business_category'=>'','business_city'=>'','business_phone'=>'','business_email'=>''];
-if (!empty($_GET['lead_id'])) {
+
+// Prefer URL params passed directly from leads.js (name, category, city, phone)
+// Fall back to DB lookup via lead_id for backwards compatibility
+if (!empty($_GET['name']) || !empty($_GET['city'])) {
+    $prefill['business_name']     = trim($_GET['name']     ?? '');
+    $prefill['business_category'] = trim($_GET['category'] ?? '');
+    $prefill['business_city']     = trim($_GET['city']     ?? '');
+    $prefill['business_phone']    = trim($_GET['phone']    ?? '');
+} elseif (!empty($_GET['lead_id'])) {
     try {
         $stmt = $pdo->prepare('SELECT * FROM utiligo_leads WHERE id = ? LIMIT 1');
         $stmt->execute([(int)$_GET['lead_id']]);
@@ -57,6 +65,7 @@ if (!empty($_GET['lead_id'])) {
         if ($lead) {
             $prefill['business_name']     = $lead['business_name']     ?? '';
             $prefill['business_category'] = $lead['business_category'] ?? '';
+            $prefill['business_city']     = $lead['business_city']     ?? '';
             $prefill['business_phone']    = $lead['business_phone']    ?? '';
         }
     } catch (\Throwable $e) {}
