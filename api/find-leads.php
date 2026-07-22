@@ -1,14 +1,6 @@
 <?php
 /**
  * api/find-leads.php
- * Lead search — fixed:
- *   - Creates lead_cache table if it does not exist (prevents fatal on first run)
- *   - Upserts each lead into utiligo_leads so generate.php can find them by integer id
- *   - Returns pro_lead_count on EVERY response (not just pro branch)
- *   - Returns searches_used on EVERY response (not just free branch) so both bars always update
- *   - History dedup: ON DUPLICATE KEY UPDATE so same city+industry+keywords just bumps date
- *   - Auto-inserts served leads into unlocked_leads for Pro AND Entrepreneur users
- *   - business_email column added: fetched from Places Details API (gracefully empty)
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -30,7 +22,7 @@ $user   = current_user();
 $plan   = $user['plan'] ?? 'free';
 $is_pro = in_array($plan, ['pro', 'entrepreneur'], true);
 
-// ── 2. Per-minute burst rate limit ───────────────────────────────────────────
+// ── 2. Burst rate limit ───────────────────────────────────────────────────────
 if (!rate_limit_check('find_leads', RATE_LIMIT_FIND_LEADS)) {
     http_response_code(429);
     echo json_encode(['success' => false, 'error' => 'Too many requests. Please wait a moment.']);
@@ -60,7 +52,7 @@ if (!csrf_verify($body['csrf_token'] ?? null)) {
     exit;
 }
 
-// ── 5. Input validation ───────────────────────────────────────────────────────
+// ── 5. Validation ─────────────────────────────────────────────────────────────
 if ($city === '' || $industry === '') {
     echo json_encode(['success' => false, 'error' => 'City and industry are required.']);
     exit;
@@ -74,79 +66,69 @@ if (!preg_match('/^[\p{L}0-9 \-\',.]+$/u', $city) || !preg_match('/^[\p{L}0-9 \-
     exit;
 }
 
-$debug     = false;
-$debug_log = [];
-
 try {
     $pdo = get_platform_db();
 
-    // ── Ensure all required tables exist ─────────────────────────────────────
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS `utiligo_lead_search_history` (
-           `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
-           `user_id`      INT UNSIGNED NOT NULL,
-           `city`         VARCHAR(100) NOT NULL,
-           `industry`     VARCHAR(100) NOT NULL,
-           `keywords`     VARCHAR(255) NOT NULL DEFAULT \'\',
-           `result_count` INT UNSIGNED NOT NULL DEFAULT 0,
-           `created_at`   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-           PRIMARY KEY (`id`),
-           UNIQUE KEY `uq_user_search` (`user_id`,`city`,`industry`,`keywords`),
-           KEY `idx_user_id` (`user_id`)
-         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-    );
+    // ── Ensure tables exist ───────────────────────────────────────────────────
+    $pdo->exec('CREATE TABLE IF NOT EXISTS `utiligo_lead_search_history` (
+        `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `user_id`      INT UNSIGNED NOT NULL,
+        `city`         VARCHAR(100) NOT NULL,
+        `industry`     VARCHAR(100) NOT NULL,
+        `keywords`     VARCHAR(255) NOT NULL DEFAULT \'\',
+        `result_count` INT UNSIGNED NOT NULL DEFAULT 0,
+        `created_at`   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uq_user_search` (`user_id`,`city`,`industry`,`keywords`),
+        KEY `idx_user_id` (`user_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS `utiligo_leads` (
-           `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
-           `place_id`          VARCHAR(255) NOT NULL,
-           `business_name`     VARCHAR(255) NOT NULL DEFAULT \'\',
-           `business_address`  VARCHAR(500) NOT NULL DEFAULT \'\',
-           `business_phone`    VARCHAR(80)  NOT NULL DEFAULT \'\',
-           `business_email`    VARCHAR(255) NOT NULL DEFAULT \'\',
-           `business_category` VARCHAR(150) NOT NULL DEFAULT \'\',
-           `business_city`     VARCHAR(100) NOT NULL DEFAULT \'\',
-           `rating`            DECIMAL(3,1) NULL,
-           `total_ratings`     INT UNSIGNED NOT NULL DEFAULT 0,
-           `maps_url`          VARCHAR(500) NOT NULL DEFAULT \'\',
-           `opportunity_score` INT UNSIGNED NOT NULL DEFAULT 0,
-           `updated_at`        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-           PRIMARY KEY (`id`),
-           UNIQUE KEY `uq_place_id` (`place_id`)
-         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-    );
+    $pdo->exec('CREATE TABLE IF NOT EXISTS `utiligo_leads` (
+        `id`                INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `place_id`          VARCHAR(255) NOT NULL,
+        `business_name`     VARCHAR(255) NOT NULL DEFAULT \'\',
+        `business_address`  VARCHAR(500) NOT NULL DEFAULT \'\',
+        `business_phone`    VARCHAR(80)  NOT NULL DEFAULT \'\',
+        `business_email`    VARCHAR(255) NOT NULL DEFAULT \'\',
+        `business_category` VARCHAR(150) NOT NULL DEFAULT \'\',
+        `business_city`     VARCHAR(100) NOT NULL DEFAULT \'\',
+        `rating`            DECIMAL(3,1) NULL,
+        `total_ratings`     INT UNSIGNED NOT NULL DEFAULT 0,
+        `maps_url`          VARCHAR(500) NOT NULL DEFAULT \'\',
+        `opportunity_score` INT UNSIGNED NOT NULL DEFAULT 0,
+        `updated_at`        DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uq_place_id` (`place_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
-    // Add business_email column if upgrading from an older schema
-    try {
-        $pdo->exec("ALTER TABLE `utiligo_leads` ADD COLUMN `business_email` VARCHAR(255) NOT NULL DEFAULT '' AFTER `business_phone`");
-    } catch (\Throwable $e) {
-        // Column already exists — ignore
+    // Safely add columns that may be missing on older deployments
+    foreach ([
+        "ALTER TABLE `utiligo_leads` ADD COLUMN `business_email` VARCHAR(255) NOT NULL DEFAULT '' AFTER `business_phone`",
+        "ALTER TABLE `utiligo_leads` ADD COLUMN `business_city`  VARCHAR(100) NOT NULL DEFAULT '' AFTER `business_category`",
+        "ALTER TABLE `utiligo_leads` ADD COLUMN `updated_at`     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP AFTER `opportunity_score`",
+    ] as $alter) {
+        try { $pdo->exec($alter); } catch (\Throwable $e) { /* already exists */ }
     }
 
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS `lead_cache` (
-           `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
-           `cache_key`  VARCHAR(255) NOT NULL,
-           `leads_json` MEDIUMTEXT   NOT NULL,
-           `created_at` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-           PRIMARY KEY (`id`),
-           UNIQUE KEY `uq_cache_key` (`cache_key`)
-         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-    );
+    $pdo->exec('CREATE TABLE IF NOT EXISTS `lead_cache` (
+        `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `cache_key`  VARCHAR(255) NOT NULL,
+        `leads_json` MEDIUMTEXT   NOT NULL,
+        `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uq_cache_key` (`cache_key`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
-    // Ensure unlocked_leads table exists
-    $pdo->exec(
-        'CREATE TABLE IF NOT EXISTS `unlocked_leads` (
-           `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
-           `user_id`    INT UNSIGNED NOT NULL,
-           `lead_id`    INT UNSIGNED NOT NULL,
-           `unlocked_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-           PRIMARY KEY (`id`),
-           UNIQUE KEY `uq_user_lead` (`user_id`, `lead_id`)
-         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-    );
+    $pdo->exec('CREATE TABLE IF NOT EXISTS `unlocked_leads` (
+        `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
+        `user_id`     INT UNSIGNED NOT NULL,
+        `lead_id`     INT UNSIGNED NOT NULL,
+        `unlocked_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        PRIMARY KEY (`id`),
+        UNIQUE KEY `uq_user_lead` (`user_id`, `lead_id`)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
-    // ── 6. Free-plan daily search limit ───────────────────────────────────────
+    // ── 6. Free-plan daily quota ──────────────────────────────────────────────
     $searches_used      = 0;
     $searches_remaining = null;
     if (!$is_pro) {
@@ -155,18 +137,16 @@ try {
         $fingerprint = 'u' . $user['id'] . '_' . substr($ip_hash, 0, 16);
 
         try {
-            $pdo->exec(
-                'CREATE TABLE IF NOT EXISTS `lead_search_quota` (
-                   `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
-                   `fingerprint` VARCHAR(80)  NOT NULL,
-                   `user_id`     INT UNSIGNED NOT NULL,
-                   `count`       INT UNSIGNED NOT NULL DEFAULT 0,
-                   `window_start` DATETIME    NOT NULL,
-                   PRIMARY KEY (`id`),
-                   UNIQUE KEY `uq_fingerprint` (`fingerprint`),
-                   KEY `idx_user_id` (`user_id`)
-                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
-            );
+            $pdo->exec('CREATE TABLE IF NOT EXISTS `lead_search_quota` (
+                `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+                `fingerprint`  VARCHAR(80)  NOT NULL,
+                `user_id`      INT UNSIGNED NOT NULL,
+                `count`        INT UNSIGNED NOT NULL DEFAULT 0,
+                `window_start` DATETIME     NOT NULL,
+                PRIMARY KEY (`id`),
+                UNIQUE KEY `uq_fingerprint` (`fingerprint`),
+                KEY `idx_user_id` (`user_id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
             $cutoff = (new \DateTime())->modify('-24 hours')->format('Y-m-d H:i:s');
             $qStmt  = $pdo->prepare('SELECT id, count, window_start FROM lead_search_quota WHERE fingerprint = ? LIMIT 1');
@@ -188,7 +168,7 @@ try {
                     exit;
                 }
                 $pdo->prepare('UPDATE lead_search_quota SET count = count + 1 WHERE id = ?')->execute([$quota['id']]);
-                $searches_used = $searches_used + 1;
+                $searches_used += 1;
                 $searches_remaining = max(0, $daily_limit - $searches_used);
             }
         } catch (\Throwable $e) {
@@ -235,8 +215,8 @@ try {
         $places = json_decode($resp, true);
         $status = $places['status'] ?? 'UNKNOWN';
 
-        if ($status === 'REQUEST_DENIED') { echo json_encode(['success' => false, 'error' => 'Lead search is temporarily unavailable.']); exit; }
-        if ($status === 'OVER_QUERY_LIMIT') { echo json_encode(['success' => false, 'error' => 'Daily search quota reached. Please try again tomorrow.']); exit; }
+        if ($status === 'REQUEST_DENIED')   { echo json_encode(['success' => false, 'error' => 'Lead search is temporarily unavailable.']);                          exit; }
+        if ($status === 'OVER_QUERY_LIMIT') { echo json_encode(['success' => false, 'error' => 'Daily search quota reached. Please try again tomorrow.']);            exit; }
         if (!in_array($status, ['OK', 'ZERO_RESULTS'], true)) { echo json_encode(['success' => false, 'error' => 'Search failed (' . $status . '). Try a different city or industry.']); exit; }
 
         $results    = $places['results'] ?? [];
@@ -256,9 +236,6 @@ try {
             $email    = '';
 
             if ($place_id !== '' && $lc < $maxDetails) {
-                // Fetch phone + email from Details API (email not officially supported
-                // but some listings expose it via website scraping integrations;
-                // we request the field gracefully — if absent it stays empty)
                 $det_url = 'https://maps.googleapis.com/maps/api/place/details/json'
                          . '?place_id=' . urlencode($place_id)
                          . '&fields=formatted_phone_number,website'
@@ -267,10 +244,6 @@ try {
                 if ($det !== false) {
                     $d     = json_decode($det, true);
                     $phone = $d['result']['formatted_phone_number'] ?? '';
-                    // Note: Google Places does not return email directly.
-                    // We leave the field empty here so it can be filled
-                    // manually on the generate page, or in future via
-                    // a supplementary data source (e.g. Hunter.io).
                     $email = '';
                 }
                 $lc++;
@@ -278,7 +251,7 @@ try {
 
             $all_leads[] = [
                 'place_id'          => $place_id,
-                'id'                => $place_id,
+                'id'                => $place_id, // temporary string; replaced by int below
                 'business_name'     => $place['name'] ?? 'Unknown',
                 'business_address'  => $place['formatted_address'] ?? '',
                 'business_city'     => $city,
@@ -295,7 +268,7 @@ try {
 
         usort($all_leads, fn($a, $b) => $b['opportunity_score'] <=> $a['opportunity_score']);
 
-        // ── 9. Cache write ────────────────────────────────────────────────────
+        // Cache write
         try {
             $pdo->prepare('INSERT INTO lead_cache (cache_key, leads_json, created_at) VALUES (?, ?, NOW()) ON DUPLICATE KEY UPDATE leads_json = VALUES(leads_json), created_at = NOW()')->execute([$cacheKey, json_encode($all_leads)]);
         } catch (\Throwable $e) {
@@ -306,15 +279,21 @@ try {
         $from_cache = false;
     }
 
-    // ── 10. Upsert each lead into utiligo_leads ───────────────────────────────
-    $place_id_map = [];
+    // ── 10. Upsert ALL leads into utiligo_leads + resolve integer IDs ─────────
+    // FIX: This now runs for BOTH fresh AND cached results.
+    // Cached leads stored only the Google place_id string as `id`.
+    // We must upsert + then SELECT the real integer id before unlocking,
+    // otherwise unlocked_leads receives 0 (string cast) and the bar never moves.
+    $place_id_map = []; // place_id => integer DB id
+
     foreach ($all_leads as $lead) {
-        $pid = $lead['place_id'] ?? $lead['id'] ?? '';
+        $pid = $lead['place_id'] ?? '';
         if ($pid === '') continue;
         try {
             $pdo->prepare(
                 'INSERT INTO utiligo_leads
-                   (place_id, business_name, business_address, business_phone, business_email, business_category, business_city, rating, total_ratings, maps_url, opportunity_score)
+                   (place_id, business_name, business_address, business_phone, business_email,
+                    business_category, business_city, rating, total_ratings, maps_url, opportunity_score)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                    business_name     = VALUES(business_name),
@@ -332,27 +311,34 @@ try {
                 $lead['business_name'],
                 $lead['business_address'],
                 $lead['business_phone'],
-                $lead['business_email'] ?? '',
+                $lead['business_email']    ?? '',
                 $lead['business_category'],
-                $lead['business_city'] ?? '',
+                $lead['business_city']     ?? '',
                 $lead['rating'],
                 $lead['total_ratings'],
                 $lead['maps_url'],
                 $lead['opportunity_score'],
             ]);
+        } catch (\Throwable $e) {
+            log_error('find_leads_upsert', $e, ['place_id' => $pid]);
+        }
+
+        // Always SELECT the real integer id (works for both INSERT and ON DUPLICATE KEY)
+        try {
             $idStmt = $pdo->prepare('SELECT id FROM utiligo_leads WHERE place_id = ? LIMIT 1');
             $idStmt->execute([$pid]);
             $dbId = $idStmt->fetchColumn();
             if ($dbId) $place_id_map[$pid] = (int)$dbId;
         } catch (\Throwable $e) {
-            log_error('find_leads_upsert', $e, ['place_id' => $pid]);
+            log_error('find_leads_id_lookup', $e, ['place_id' => $pid]);
         }
     }
 
+    // Replace string place_id with real integer DB id on every lead
     foreach ($all_leads as &$lead) {
         $pid = $lead['place_id'] ?? '';
         if ($pid !== '' && isset($place_id_map[$pid])) {
-            $lead['id'] = $place_id_map[$pid];
+            $lead['id'] = $place_id_map[$pid]; // now a real int
         }
     }
     unset($lead);
@@ -361,22 +347,25 @@ try {
     $free_limit = defined('FREE_LEAD_LIMIT') ? (int)FREE_LEAD_LIMIT : 3;
 
     $pro_lead_count = 0;
+    // FIX: lead_limit is always a non-negative int sent to JS.
+    // ENT_LEAD_LIMIT is -1 (unlimited) — we normalise to 0 so JS
+    // reads `leadLimit === 0` as "no cap" rather than a negative number
+    // which breaks the pct calculation and makes the bar disappear.
     $pro_lead_limit = 0;
 
-    // Both pro AND entrepreneur auto-unlock leads and return the bar counter
     if ($is_pro) {
-        $pro_lead_limit = ($plan === 'entrepreneur')
-            ? (defined('ENT_LEAD_LIMIT') ? (int)ENT_LEAD_LIMIT : 0)   // 0 = unlimited shown as ∞
-            : (defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120);
+        if ($plan === 'entrepreneur') {
+            $pro_lead_limit = 0; // 0 = unlimited signal to JS
+        } else {
+            $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
+        }
 
-        // Auto-unlock every lead served to this user (INSERT IGNORE on unique key)
+        // Auto-unlock every lead served — INSERT IGNORE silently skips duplicates
         foreach ($all_leads as $lead) {
             $lid = $lead['id'] ?? null;
-            if (!$lid || !is_int($lid)) continue;
+            if (!$lid || !is_int($lid)) continue; // skip if id didn't resolve to int
             try {
-                $pdo->prepare(
-                    'INSERT IGNORE INTO unlocked_leads (user_id, lead_id) VALUES (?, ?)'
-                )->execute([$user['id'], $lid]);
+                $pdo->prepare('INSERT IGNORE INTO unlocked_leads (user_id, lead_id) VALUES (?, ?)')->execute([$user['id'], $lid]);
             } catch (\Throwable $e) {
                 log_error('find_leads_unlock', $e, ['lead_id' => $lid]);
             }
@@ -427,22 +416,18 @@ try {
         ];
     }
 
-    // ── 12. Save/update search history ────────────────────────────────────────
+    // ── 12. Save search history ───────────────────────────────────────────────
     try {
-        $result_count = count($all_leads);
         $pdo->prepare(
             'INSERT INTO utiligo_lead_search_history (user_id, city, industry, keywords, result_count, created_at)
              VALUES (?, ?, ?, ?, ?, NOW())
              ON DUPLICATE KEY UPDATE result_count = VALUES(result_count), created_at = NOW()'
-        )->execute([$user['id'], $city, $industry, $keywords, $result_count]);
+        )->execute([$user['id'], $city, $industry, $keywords, count($all_leads)]);
     } catch (\Throwable $e) {}
 
     echo json_encode($payload);
 
 } catch (\Throwable $e) {
     log_error('find_leads_fatal', $e, ['user_id' => $user['id'] ?? null, 'city' => $city ?? null, 'industry' => $industry ?? null]);
-    echo json_encode([
-        'success' => false,
-        'error'   => 'Something went wrong. Please try again.',
-    ]);
+    echo json_encode(['success' => false, 'error' => 'Something went wrong. Please try again.']);
 }
