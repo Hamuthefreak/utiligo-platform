@@ -470,7 +470,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-used="<?=$quota_used?>"
   data-quota-limit="<?=$FREE_SEARCH_LIMIT?>"
 ></script>
-<script src="/assets/js/leads.js?v=v1800"></script>
+<script src="/assets/js/leads.js?v=1900"></script>
 
 <script>
 function openHistoryDrawer() {

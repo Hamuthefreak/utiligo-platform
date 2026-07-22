@@ -5,6 +5,9 @@
  * logged-in user directly from the DB. Called on page load AND after
  * every search so the bar is always accurate regardless of cache.
  */
+// Ensure session is active before anything reads $_SESSION (e.g. auth checks).
+if (session_status() === PHP_SESSION_NONE) session_start();
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/auth.php';
