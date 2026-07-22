@@ -10,21 +10,27 @@ $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 
-$FREE_LEAD_LIMIT   = defined('FREE_LEAD_LIMIT')           ? (int)FREE_LEAD_LIMIT           : 3;
-$FREE_SEARCH_LIMIT = defined('FREE_SEARCH_DAILY_LIMIT')   ? (int)FREE_SEARCH_DAILY_LIMIT   : 2;
-$FREE_GEN_LIMIT    = defined('FREE_GENERATE_DAILY_LIMIT') ? (int)FREE_GENERATE_DAILY_LIMIT : 1;
-$FREE_TMPL_LIMIT   = defined('FREE_TEMPLATE_LIMIT')       ? (int)FREE_TEMPLATE_LIMIT       : 2;
-$PRO_LEAD_LIMIT    = defined('PRO_LEAD_LIMIT')            ? (int)PRO_LEAD_LIMIT            : 120;
-$PRO_SITE_LIMIT    = defined('PRO_SITE_LIMIT')            ? (int)PRO_SITE_LIMIT            : 200;
-$ENT_SITE_LIMIT    = defined('ENT_SITE_LIMIT')            ? (int)ENT_SITE_LIMIT            : 500;
-
-// Entrepreneur has no lead cap; 0 signals unlimited to JS
-$current_lead_limit = match($plan) {
+// ── Plan limits (from config.php constants) ───────────────────────────────────
+$FREE_LEAD_LIMIT   = (int)(defined('FREE_LEAD_LIMIT')           ? FREE_LEAD_LIMIT           : 3);
+$FREE_SEARCH_LIMIT = (int)(defined('FREE_SEARCH_DAILY_LIMIT')   ? FREE_SEARCH_DAILY_LIMIT   : 2);
+$FREE_GEN_LIMIT    = (int)(defined('FREE_GENERATE_DAILY_LIMIT') ? FREE_GENERATE_DAILY_LIMIT : 1);
+$FREE_TMPL_LIMIT   = (int)(defined('FREE_TEMPLATE_LIMIT')       ? FREE_TEMPLATE_LIMIT       : 2);
+$PRO_LEAD_LIMIT    = (int)(defined('PRO_LEAD_LIMIT')            ? PRO_LEAD_LIMIT            : 120);
+$PRO_SITE_LIMIT    = (int)(defined('PRO_SITE_LIMIT')            ? PRO_SITE_LIMIT            : 200);
+$ENT_SITE_LIMIT    = (int)(defined('ENT_SITE_LIMIT')            ? ENT_SITE_LIMIT            : 500);
+// ENT_LEAD_LIMIT = -1 means unlimited; we pass 0 to JS as the "unlimited" signal
+$lead_limit_js = match($plan) {
     'entrepreneur' => 0,
     'pro'          => $PRO_LEAD_LIMIT,
     default        => 0,
 };
+$site_limit_js = match($plan) {
+    'entrepreneur' => $ENT_SITE_LIMIT,
+    'pro'          => $PRO_SITE_LIMIT,
+    default        => 0,
+};
 
+// ── Free quota ────────────────────────────────────────────────────────────────
 $quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
@@ -41,57 +47,49 @@ if (!$is_paid) {
 $quota_remaining = max(0, $FREE_SEARCH_LIMIT - $quota_used);
 $quota_pct       = $FREE_SEARCH_LIMIT > 0 ? min(100, round(($quota_used/$FREE_SEARCH_LIMIT)*100)) : 0;
 
-// FIX: fetch pro_lead_count for BOTH pro AND entrepreneur (was only pro before)
-$pro_lead_count = 0;
-if ($is_paid) {
-    try {
-        $pdo  = get_platform_db();
-        $stmt = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id = ?');
-        $stmt->execute([$user['id']]);
-        $pro_lead_count = (int)$stmt->fetchColumn();
-    } catch (\Throwable $e) {}
-}
-
+// ── Initial bar values for paid plans (PHP-baked, JS will refresh live) ───────
+$pro_lead_count    = 0;
 $active_site_count = 0;
 if ($is_paid) {
     try {
-        $pdo  = get_platform_db();
-        $stmt = $pdo->prepare('SELECT COUNT(*) FROM utiligo_generated_sites WHERE user_id = ? AND link_active = 1');
-        $stmt->execute([$user['id']]);
-        $active_site_count = (int)$stmt->fetchColumn();
+        $pdo = get_platform_db();
+        $s   = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id = ?');
+        $s->execute([$user['id']]);
+        $pro_lead_count = (int)$s->fetchColumn();
+    } catch (\Throwable $e) {}
+    try {
+        $pdo = get_platform_db();
+        $s   = $pdo->prepare('SELECT COUNT(*) FROM utiligo_generated_sites WHERE user_id = ? AND link_active = 1');
+        $s->execute([$user['id']]);
+        $active_site_count = (int)$s->fetchColumn();
     } catch (\Throwable $e) {}
 }
 
+// ── Bar percentages (initial render) ─────────────────────────────────────────
+$ll_pct = ($plan === 'pro' && $PRO_LEAD_LIMIT > 0)
+    ? min(100, (int)round($pro_lead_count / $PRO_LEAD_LIMIT * 100)) : 0;
+$sl_pct_pro = ($PRO_SITE_LIMIT > 0)
+    ? min(100, (int)round($active_site_count / $PRO_SITE_LIMIT * 100)) : 0;
+$sl_pct_ent = ($ENT_SITE_LIMIT > 0)
+    ? min(100, (int)round($active_site_count / $ENT_SITE_LIMIT * 100)) : 0;
+
+// ── Slider defaults ───────────────────────────────────────────────────────────
 $slider_max     = match($plan) { 'entrepreneur' => 40, 'pro' => 30, default => 10 };
 $slider_default = match($plan) { 'entrepreneur' => 20, 'pro' => 10, default => 5 };
-
-// Bar % for pro lead bar (not used for entrepreneur which shows infinity)
-$ll_pct = ($plan === 'pro' && $PRO_LEAD_LIMIT > 0)
-    ? min(100, round(($pro_lead_count / $PRO_LEAD_LIMIT) * 100))
-    : 0;
 
 $pageTitle = 'Find Leads — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 <style>
 #leadsRail {
-  position: fixed;
-  top: 0; right: 0;
-  width: 256px;
-  height: 100vh;
-  display: none;
-  flex-direction: column;
+  position: fixed; top: 0; right: 0; width: 256px; height: 100vh;
+  display: none; flex-direction: column;
   background: rgba(15,23,42,.95);
   border-left: 1px solid rgba(255,255,255,.05);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
-  z-index: 20;
-  overflow: hidden;
+  backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+  z-index: 20; overflow: hidden;
 }
-@media (min-width: 1280px) {
-  #leadsRail { display: flex; }
-  .lg\:ml-64 { padding-right: 256px; }
-}
+@media (min-width: 1280px) { #leadsRail { display: flex; } .lg\:ml-64 { padding-right: 256px; } }
 .hist-item {
   display: flex; flex-direction: column; gap: 2px;
   width: 100%; padding: 10px 14px; border-radius: 12px;
@@ -115,8 +113,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   position:absolute; left:.75rem; top:50%; transform:translateY(-50%);
   color:#1e293b; font-size:.7rem; pointer-events:none;
 }
-.q-track { height:2px; background:rgba(255,255,255,.06); border-radius:2px; overflow:hidden; }
-.q-fill  { height:100%; border-radius:2px; transition:width .5s ease; }
+.q-track { height:4px; background:rgba(255,255,255,.06); border-radius:4px; overflow:hidden; }
+.q-fill  { height:100%; border-radius:4px; transition:width .6s cubic-bezier(.4,0,.2,1); }
 .leads-slider { -webkit-appearance:none; appearance:none; width:100%; height:2px; background:rgba(255,255,255,.1); border-radius:2px; outline:none; cursor:pointer; }
 .leads-slider::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:#fff; cursor:pointer; box-shadow:0 0 0 3px rgba(255,255,255,.08); transition:transform .1s; }
 .leads-slider::-webkit-slider-thumb:hover { transform:scale(1.15); }
@@ -141,6 +139,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 #historyDrawerOverlay.open { opacity:1; pointer-events:all; }
 </style>
 
+<!-- Rail (desktop) -->
 <aside id="leadsRail">
   <div class="px-5 py-5 border-b border-white/5 shrink-0">
     <div class="flex items-center gap-2">
@@ -163,6 +162,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </aside>
 <script>document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('leadsRail');if(r)document.body.appendChild(r);});</script>
 
+<!-- History drawer overlay + drawer -->
 <div id="historyDrawerOverlay" onclick="closeHistoryDrawer()"></div>
 <div id="historyDrawer">
   <div class="flex justify-center pt-3 pb-1 shrink-0"><div class="w-8 h-1 rounded-full bg-white/10"></div></div>
@@ -204,7 +204,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </button>
 
 
-<!-- PAGE CONTENT -->
+<!-- ═══════════════════════════════════════════════════
+     PAGE HEADER
+══════════════════════════════════════════════════════ -->
 <div class="mb-7">
   <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
@@ -220,6 +222,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 
+<!-- ═══════════════════════════════════════════════════
+     FREE PLAN STATS
+══════════════════════════════════════════════════════ -->
 <?php if (!$is_paid): ?>
 <div class="space-y-3 mb-7">
   <div class="glass rounded-2xl p-5">
@@ -234,7 +239,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <span id="quotaBadge" class="text-xs font-bold px-2.5 py-1 rounded-full <?= $quota_remaining===0 ? 'bg-red-500/10 text-red-400' : ($quota_remaining===1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400') ?>">
+        <span id="quotaBadge" class="text-xs font-bold px-2.5 py-1 rounded-full
+          <?= $quota_remaining===0 ? 'bg-red-500/10 text-red-400' : ($quota_remaining===1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400') ?>">
           <?= $quota_remaining===0 ? 'No searches left' : $quota_remaining.' search'.($quota_remaining!==1?'es':'').' left' ?>
         </span>
         <a href="/portal/billing.php?upgrade=1" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full transition">
@@ -248,6 +254,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <span><?php if($quota_resets_at):?>Resets at <span class="text-slate-500"><?=date('g:i A',$quota_resets_at)?></span><?php else:?>Resets 24h after first search<?php endif;?></span>
     </div>
   </div>
+
   <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
     <?php foreach([
       ['fa-users','Leads','per search',$FREE_LEAD_LIMIT],
@@ -262,6 +269,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
     <?php endforeach;?>
   </div>
+
   <div class="flex items-center gap-3 glass rounded-xl px-4 py-3">
     <i class="fa-solid fa-arrow-trend-up text-slate-400 text-sm shrink-0"></i>
     <p class="text-xs text-slate-400 flex-1">Upgrade to <strong class="text-white">Pro</strong> for <?=$PRO_LEAD_LIMIT?> lead unlocks, <?=$PRO_SITE_LIMIT?> active sites &amp; unlimited searches.</p>
@@ -269,11 +277,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<?php elseif ($plan === 'pro'):
-  $sl_pct = $PRO_SITE_LIMIT > 0 ? min(100, round(($active_site_count/$PRO_SITE_LIMIT)*100)) : 0;
-?>
+<?php else: ?>
+<!-- ═══════════════════════════════════════════════════
+     PAID PLAN STAT BARS  (pro + entrepreneur)
+     JS refreshes all four text/bar elements live via /api/bar-status.php
+══════════════════════════════════════════════════════ -->
 <div class="grid sm:grid-cols-2 gap-3 mb-7">
-  <!-- Lead unlock bar -->
+
+  <!-- ── LEAD UNLOCKS BAR ─────────────────────────────────────────────── -->
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <div class="flex items-center gap-2.5">
@@ -282,63 +293,49 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </div>
         <div>
           <p class="text-sm font-semibold text-white leading-none">Lead Unlocks</p>
-          <p class="text-xs text-slate-600 mt-0.5" id="leadLimitSubtitle"><?=$pro_lead_count?> of <?=$PRO_LEAD_LIMIT?> used</p>
+          <p class="text-xs text-slate-600 mt-0.5" id="leadBarSubtitle">
+            <?php if ($plan === 'entrepreneur'): ?>
+              <?=$pro_lead_count?> unlocked &mdash; unlimited
+            <?php else: ?>
+              <?=$pro_lead_count?> of <?=$PRO_LEAD_LIMIT?> used
+            <?php endif; ?>
+          </p>
         </div>
       </div>
+      <?php if ($plan === 'pro'): ?>
       <span id="leadUpgradeBtn" class="<?=$ll_pct<80?'hidden':''?>">
-        <a href="/portal/billing.php?upgrade=1&plan=entrepreneur" class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full transition">
+        <a href="/portal/billing.php?upgrade=1&plan=entrepreneur"
+           class="text-xs font-bold bg-white hover:bg-slate-200 text-black px-3 py-1.5 rounded-full transition">
           <i class="fa-solid fa-rocket mr-1"></i>Upgrade
         </a>
       </span>
+      <?php endif; ?>
     </div>
     <div class="q-track">
-      <div id="leadLimitBar" class="q-fill <?=$ll_pct>=100?'bg-red-400':($ll_pct>=80?'bg-amber-400':'bg-white/40')?>" style="width:<?=$ll_pct?>%"></div>
+      <div id="leadBar"
+           class="q-fill <?=$ll_pct>=100?'bg-red-400':($ll_pct>=80?'bg-amber-400':'bg-white/40')?>"
+           style="width:<?=$ll_pct?>%">
+      </div>
     </div>
     <div class="flex justify-between text-[11px] text-slate-600 mt-2">
-      <span id="leadLimitNote"><?=max(0,$PRO_LEAD_LIMIT-$pro_lead_count)?> remaining</span>
-      <span id="leadLimitCount"><?=$pro_lead_count?> / <?=$PRO_LEAD_LIMIT?></span>
+      <span id="leadBarNote">
+        <?php if ($plan === 'entrepreneur'): ?>
+          No cap &mdash; Entrepreneur plan
+        <?php else: ?>
+          <?=max(0,$PRO_LEAD_LIMIT-$pro_lead_count)?> remaining
+        <?php endif; ?>
+      </span>
+      <span id="leadBarCount">
+        <?php if ($plan === 'entrepreneur'): ?>
+          <?=$pro_lead_count?> / &infin;
+        <?php else: ?>
+          <?=$pro_lead_count?> / <?=$PRO_LEAD_LIMIT?>
+        <?php endif; ?>
+      </span>
     </div>
   </div>
-  <!-- Active sites bar -->
-  <div class="glass rounded-2xl p-5">
-    <div class="flex items-center gap-2.5 mb-3">
-      <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-        <i class="fa-solid fa-globe text-slate-400 text-xs"></i>
-      </div>
-      <div>
-        <p class="text-sm font-semibold text-white leading-none">Active Sites</p>
-        <p class="text-xs text-slate-600 mt-0.5"><?=$active_site_count?> of <?=$PRO_SITE_LIMIT?> used</p>
-      </div>
-    </div>
-    <div class="q-track"><div class="q-fill <?=$sl_pct>=100?'bg-red-400':($sl_pct>=80?'bg-amber-400':'bg-white/40')?>" style="width:<?=$sl_pct?>%"></div></div>
-    <p class="text-[11px] text-slate-600 mt-2"><?=max(0,$PRO_SITE_LIMIT-$active_site_count)?> remaining</p>
-  </div>
-</div>
 
-<?php else: // entrepreneur
-  $sl_pct = $ENT_SITE_LIMIT > 0 ? min(100, round(($active_site_count/$ENT_SITE_LIMIT)*100)) : 0;
-?>
-<div class="grid sm:grid-cols-2 gap-3 mb-7">
-  <!-- Entrepreneur: unlimited leads card with live counter -->
-  <div class="glass rounded-2xl p-5">
-    <div class="flex items-center gap-2.5 mb-3">
-      <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
-        <i class="fa-solid fa-users text-slate-400 text-xs"></i>
-      </div>
-      <div>
-        <p class="text-sm font-semibold text-white leading-none">Lead Unlocks</p>
-        <p class="text-xs text-slate-600 mt-0.5" id="leadLimitSubtitle"><?=$pro_lead_count?> unlocked &mdash; unlimited</p>
-      </div>
-    </div>
-    <div class="q-track">
-      <div id="leadLimitBar" class="q-fill bg-white/20" style="width:0%"></div>
-    </div>
-    <div class="flex justify-between text-[11px] text-slate-600 mt-2">
-      <span id="leadLimitNote">No cap &mdash; Entrepreneur plan</span>
-      <span id="leadLimitCount"><?=$pro_lead_count?> / &infin;</span>
-    </div>
-  </div>
-  <!-- Active sites bar -->
+  <!-- ── ACTIVE SITES BAR ─────────────────────────────────────────────── -->
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center gap-2.5 mb-3">
       <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
@@ -346,17 +343,44 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <div>
         <p class="text-sm font-semibold text-white leading-none">Active Sites</p>
-        <p class="text-xs text-slate-600 mt-0.5"><?=$active_site_count?> of <?=$ENT_SITE_LIMIT?> used</p>
+        <p class="text-xs text-slate-600 mt-0.5" id="siteBarSubtitle">
+          <?php if ($plan === 'entrepreneur'): ?>
+            <?=$active_site_count?> of <?=$ENT_SITE_LIMIT?> used
+          <?php else: ?>
+            <?=$active_site_count?> of <?=$PRO_SITE_LIMIT?> used
+          <?php endif; ?>
+        </p>
       </div>
     </div>
-    <div class="q-track"><div class="q-fill <?=$sl_pct>=90?'bg-red-400':($sl_pct>=70?'bg-amber-400':'bg-white/40')?>" style="width:<?=$sl_pct?>%"></div></div>
-    <p class="text-[11px] text-slate-600 mt-2"><?=max(0,$ENT_SITE_LIMIT-$active_site_count)?> remaining</p>
+    <?php
+      $sl_pct = ($plan === 'entrepreneur') ? $sl_pct_ent : $sl_pct_pro;
+      $sl_col = $sl_pct >= 100 ? 'bg-red-400' : ($sl_pct >= 80 ? 'bg-amber-400' : 'bg-white/40');
+    ?>
+    <div class="q-track">
+      <div id="siteBar" class="q-fill <?=$sl_col?>" style="width:<?=$sl_pct?>%"></div>
+    </div>
+    <div class="flex justify-between text-[11px] text-slate-600 mt-2">
+      <span id="siteBarNote">
+        <?php
+          $site_cap = ($plan === 'entrepreneur') ? $ENT_SITE_LIMIT : $PRO_SITE_LIMIT;
+          echo max(0, $site_cap - $active_site_count).' remaining';
+        ?>
+      </span>
+      <span id="siteBarCount">
+        <?php
+          echo $active_site_count.' / '.(($plan==='entrepreneur') ? $ENT_SITE_LIMIT : $PRO_SITE_LIMIT);
+        ?>
+      </span>
+    </div>
   </div>
+
 </div>
 <?php endif; ?>
 
 
-<!-- Search card -->
+<!-- ═══════════════════════════════════════════════════
+     SEARCH CARD
+══════════════════════════════════════════════════════ -->
 <div class="glass rounded-2xl mb-6" id="searchBox">
   <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/5">
     <div class="flex items-center gap-2">
@@ -459,18 +483,20 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 
 <!--
-  leadsPageConfig: source of truth for leads.js bar initialisation.
-  data-lead-limit = 0 means unlimited (entrepreneur).
-  data-lead-used  = actual DB count for both pro and entrepreneur.
+  leadsPageConfig: PHP bakes initial values here.
+  JS reads these on DOMContentLoaded for instant first render,
+  then immediately fetches /api/bar-status.php for the live DB values.
 -->
 <script id="leadsPageConfig"
-  data-plan="<?=htmlspecialchars($plan)?>"
-  data-lead-used="<?=$pro_lead_count?>"
-  data-lead-limit="<?=$current_lead_limit?>"
+  data-plan="<?=htmlspecialchars($plan,ENT_QUOTES)?>"
+  data-lead-count="<?=$pro_lead_count?>"
+  data-lead-limit="<?=$lead_limit_js?>"
+  data-site-count="<?=$active_site_count?>"
+  data-site-limit="<?=$site_limit_js?>"
   data-quota-used="<?=$quota_used?>"
   data-quota-limit="<?=$FREE_SEARCH_LIMIT?>"
 ></script>
-<script src="/assets/js/leads.js?v=1900"></script>
+<script src="/assets/js/leads.js?v=2000"></script>
 
 <script>
 function openHistoryDrawer() {

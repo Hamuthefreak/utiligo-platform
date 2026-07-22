@@ -1,55 +1,87 @@
+/**
+ * assets/js/leads.js  v2000
+ *
+ * Bar sync strategy (paid plans only):
+ *   1. On DOMContentLoaded: instantly render from PHP-baked data-* attrs.
+ *   2. On DOMContentLoaded: fetch /api/bar-status.php and re-render with
+ *      live DB values (covers stale PHP cache, just-unlocked leads, etc.)
+ *   3. After every successful /api/find-leads.php response: re-render
+ *      using pro_lead_count + lead_limit from the search response payload,
+ *      then fire a background /api/bar-status.php fetch for the site count.
+ *
+ * Both Lead Unlocks AND Active Sites bars are updated every time.
+ */
 document.addEventListener('DOMContentLoaded', function () {
-  const form         = document.getElementById('leadSearchForm');
-  const resultsWrap  = document.getElementById('leadsResultsWrap');
-  const leadsList    = document.getElementById('leadsList');
-  const lockedWrap   = document.getElementById('lockedWrap');
-  const lockedList   = document.getElementById('lockedList');
-  const loadingEl    = document.getElementById('leadsLoading');
-  const csrfToken    = document.body.dataset.csrf;
-  const statusChip   = document.getElementById('searchStatusChip');
-  const searchBtn    = document.getElementById('searchBtn');
-  const searchBtnLbl = document.getElementById('searchBtnLabel');
 
-  const cfg     = document.getElementById('leadsPageConfig');
-  const PLAN    = cfg ? cfg.dataset.plan : 'free';
-  const IS_PAID = PLAN === 'pro' || PLAN === 'entrepreneur';
+  // ── DOM refs ──────────────────────────────────────────────────────────────
+  var form         = document.getElementById('leadSearchForm');
+  var resultsWrap  = document.getElementById('leadsResultsWrap');
+  var leadsList    = document.getElementById('leadsList');
+  var lockedWrap   = document.getElementById('lockedWrap');
+  var lockedList   = document.getElementById('lockedList');
+  var loadingEl    = document.getElementById('leadsLoading');
+  var csrfToken    = document.body.dataset.csrf;
+  var statusChip   = document.getElementById('searchStatusChip');
+  var searchBtn    = document.getElementById('searchBtn');
+  var searchBtnLbl = document.getElementById('searchBtnLabel');
 
-  // Seed bar values from PHP-rendered data attrs
-  let leadUsed   = parseInt((cfg && cfg.dataset.leadUsed)  || '0', 10);
-  let leadLimit  = parseInt((cfg && cfg.dataset.leadLimit) || '0', 10);
-  let quotaUsed  = parseInt((cfg && cfg.dataset.quotaUsed)  || '0', 10);
-  let quotaLimit = parseInt((cfg && cfg.dataset.quotaLimit) || '0', 10);
+  // ── Config (PHP-baked) ────────────────────────────────────────────────────
+  var cfg        = document.getElementById('leadsPageConfig');
+  var PLAN       = cfg ? cfg.dataset.plan : 'free';
+  var IS_PAID    = PLAN === 'pro' || PLAN === 'entrepreneur';
+  var IS_ENT     = PLAN === 'entrepreneur';
+
+  // Live state — seeded from PHP, will be refreshed from /api/bar-status.php
+  var leadCount  = parseInt((cfg && cfg.dataset.leadCount)  || '0', 10);
+  var leadLimit  = parseInt((cfg && cfg.dataset.leadLimit)  || '0', 10);
+  var siteCount  = parseInt((cfg && cfg.dataset.siteCount)  || '0', 10);
+  var siteLimit  = parseInt((cfg && cfg.dataset.siteLimit)  || '0', 10);
+  var quotaUsed  = parseInt((cfg && cfg.dataset.quotaUsed)  || '0', 10);
+  var quotaLimit = parseInt((cfg && cfg.dataset.quotaLimit) || '0', 10);
 
   if (!form) return;
 
-  // ── seen-leads cache ────────────────────────────────────────────────────────
-  const SEEN_KEY = 'utiligo_seen_leads_v1';
+  // ── Bar DOM element refs ──────────────────────────────────────────────────
+  // Lead unlock bar
+  var elLeadBar      = document.getElementById('leadBar');
+  var elLeadSubtitle = document.getElementById('leadBarSubtitle');
+  var elLeadNote     = document.getElementById('leadBarNote');
+  var elLeadCount    = document.getElementById('leadBarCount');
+  var elLeadUpgrade  = document.getElementById('leadUpgradeBtn');
+  // Active sites bar
+  var elSiteBar      = document.getElementById('siteBar');
+  var elSiteSubtitle = document.getElementById('siteBarSubtitle');
+  var elSiteNote     = document.getElementById('siteBarNote');
+  var elSiteCount    = document.getElementById('siteBarCount');
+
+  // ── Seen-leads cache ──────────────────────────────────────────────────────
+  var SEEN_KEY = 'utiligo_seen_leads_v1';
   function getSeenIds() {
     try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
-    catch { return new Set(); }
+    catch (e) { return new Set(); }
   }
   function markSeen(ids) {
     try {
-      const s = getSeenIds();
-      ids.forEach(id => s.add(String(id)));
-      const arr = [...s];
+      var s = getSeenIds();
+      ids.forEach(function(id){ s.add(String(id)); });
+      var arr = Array.from(s);
       if (arr.length > 2000) arr.splice(0, arr.length - 2000);
       localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
-    } catch {}
+    } catch(e){}
   }
 
-  // ── Slider ──────────────────────────────────────────────────────────────────
-  const slider     = document.getElementById('leadCountSlider');
-  const sliderDisp = document.getElementById('leadCountDisplay');
-  const sliderHid  = document.getElementById('leadCountHidden');
+  // ── Slider ────────────────────────────────────────────────────────────────
+  var slider     = document.getElementById('leadCountSlider');
+  var sliderDisp = document.getElementById('leadCountDisplay');
+  var sliderHid  = document.getElementById('leadCountHidden');
   if (slider) slider.addEventListener('input', function () {
     if (sliderDisp) sliderDisp.textContent = slider.value;
     if (sliderHid)  sliderHid.value = slider.value;
   });
 
-  // ── Toggle ──────────────────────────────────────────────────────────────────
-  const seenCb   = document.getElementById('includeSeenLeads');
-  const togTrack = document.getElementById('togTrack');
+  // ── Toggle ────────────────────────────────────────────────────────────────
+  var seenCb   = document.getElementById('includeSeenLeads');
+  var togTrack = document.getElementById('togTrack');
   if (togTrack && seenCb) {
     togTrack.parentElement.addEventListener('click', function () {
       seenCb.checked = !seenCb.checked;
@@ -57,64 +89,83 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // ── Lead bar sync ───────────────────────────────────────────────────────────
-  // Called after every search (and on page load) with the fresh DB count.
-  // Works for both pro (capped bar) and entrepreneur (infinity display).
-  function syncLeadBar(count, limit) {
-    // Accept whatever we're given; fall back to module-level vars
-    if (typeof count === 'number' && count >= 0) leadUsed  = count;
-    // limit: 0 means unlimited (entrepreneur). Only update if explicitly provided and >= 0.
-    if (typeof limit === 'number' && limit >= 0) leadLimit = limit;
+  // ═════════════════════════════════════════════════════════════════════════
+  // syncBars(leadCnt, leadLim, siteCnt, siteLim)
+  //
+  // The SINGLE function that updates ALL bar DOM elements.
+  // Arguments are optional — pass only what you know; the rest stays
+  // at the current module-level value.
+  // Plan-specific rules:
+  //   pro          : lead bar fills toward leadLimit; upgrade btn shows at >=80%
+  //   entrepreneur : lead bar stays empty (unlimited); site bar uses ENT_SITE_LIMIT
+  //   free         : bars are not in the DOM — this is a no-op
+  // ═════════════════════════════════════════════════════════════════════════
+  function syncBars(leadCnt, leadLim, siteCnt, siteLim) {
+    // Accept whatever is supplied; fall back to current module-level vars
+    if (typeof leadCnt === 'number' && leadCnt >= 0) leadCount = leadCnt;
+    if (typeof leadLim === 'number' && leadLim >= 0) leadLimit = leadLim;
+    if (typeof siteCnt === 'number' && siteCnt >= 0) siteCount = siteCnt;
+    if (typeof siteLim === 'number' && siteLim >= 0) siteLimit = siteLim;
 
-    var bar      = document.getElementById('leadLimitBar');
-    var subtitle = document.getElementById('leadLimitSubtitle');
-    var noteEl   = document.getElementById('leadLimitNote');
-    var countEl  = document.getElementById('leadLimitCount');
-    var upgBtn   = document.getElementById('leadUpgradeBtn');
-
-    if (!bar) return; // bar not rendered (free plan) — nothing to do
-
-    if (PLAN === 'entrepreneur') {
-      // Unlimited — show live count with infinity symbol
-      if (subtitle) subtitle.textContent = leadUsed + ' leads unlocked \u2014 unlimited';
-      if (noteEl)   noteEl.textContent   = 'No cap \u2014 Entrepreneur plan';
-      if (countEl)  countEl.innerHTML    = leadUsed + ' / &infin;';
-      bar.style.width = '0%'; // bar stays empty — no cap to fill toward
-      return;
+    // ── Lead unlock bar ───────────────────────────────────────────────────
+    if (elLeadBar) {
+      if (IS_ENT) {
+        // Entrepreneur: unlimited — bar stays at 0%, counter increments
+        elLeadBar.style.width = '0%';
+        elLeadBar.className   = 'q-fill bg-white/20';
+        if (elLeadSubtitle) elLeadSubtitle.textContent = leadCount + ' unlocked \u2014 unlimited';
+        if (elLeadNote)     elLeadNote.textContent     = 'No cap \u2014 Entrepreneur plan';
+        if (elLeadCount)    elLeadCount.innerHTML      = leadCount + ' / &infin;';
+      } else {
+        // Pro: capped bar
+        if (leadLimit <= 0) {
+          // Limit not yet known — leave bar as-is
+        } else {
+          var lPct = Math.min(100, Math.round((leadCount / leadLimit) * 100));
+          elLeadBar.style.width = lPct + '%';
+          elLeadBar.className   = 'q-fill ' + (lPct >= 100 ? 'bg-red-400' : lPct >= 80 ? 'bg-amber-400' : 'bg-white/40');
+          if (elLeadSubtitle) elLeadSubtitle.textContent = leadCount + ' of ' + leadLimit + ' used';
+          if (elLeadNote)     elLeadNote.textContent     = Math.max(0, leadLimit - leadCount) + ' remaining';
+          if (elLeadCount)    elLeadCount.textContent    = leadCount + ' / ' + leadLimit;
+          if (elLeadUpgrade) {
+            if (lPct >= 80) elLeadUpgrade.classList.remove('hidden');
+            else            elLeadUpgrade.classList.add('hidden');
+          }
+        }
+      }
     }
 
-    // Pro — capped bar
-    if (leadLimit <= 0) return; // safety: no limit value yet
-    var pct = Math.min(100, Math.round((leadUsed / leadLimit) * 100));
-    bar.style.width = pct + '%';
-    bar.className   = 'q-fill ' + (pct >= 100 ? 'bg-red-400' : pct >= 80 ? 'bg-amber-400' : 'bg-white/40');
-    if (subtitle) subtitle.textContent = leadUsed + ' of ' + leadLimit + ' used';
-    if (noteEl)   noteEl.textContent   = Math.max(0, leadLimit - leadUsed) + ' remaining';
-    if (countEl)  countEl.textContent  = leadUsed + ' / ' + leadLimit;
-    if (upgBtn) {
-      if (pct >= 80) upgBtn.classList.remove('hidden');
-      else            upgBtn.classList.add('hidden');
+    // ── Active sites bar ──────────────────────────────────────────────────
+    if (elSiteBar && siteLimit > 0) {
+      var sPct = Math.min(100, Math.round((siteCount / siteLimit) * 100));
+      elSiteBar.style.width = sPct + '%';
+      elSiteBar.className   = 'q-fill ' + (sPct >= 100 ? 'bg-red-400' : sPct >= 80 ? 'bg-amber-400' : 'bg-white/40');
+      if (elSiteSubtitle) elSiteSubtitle.textContent = siteCount + ' of ' + siteLimit + ' used';
+      if (elSiteNote)     elSiteNote.textContent     = Math.max(0, siteLimit - siteCount) + ' remaining';
+      if (elSiteCount)    elSiteCount.textContent    = siteCount + ' / ' + siteLimit;
     }
   }
 
-  // ── Poll the lightweight lead-count endpoint on page load ───────────────────
-  // This guarantees the bar is accurate even if leads.php queried before
-  // any unlocks existed, or if the DB is slightly stale.
-  if (IS_PAID) {
-    fetch('/api/lead-count.php')
-      .then(function (r) { return r.json(); })
-      .then(function (data) {
-        if (data && data.success) {
-          syncLeadBar(data.count, data.limit);
+  // ── fetchBarStatus: hits /api/bar-status.php and calls syncBars ───────────
+  function fetchBarStatus() {
+    if (!IS_PAID) return;
+    fetch('/api/bar-status.php', { credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
+      .then(function(d){
+        if (d && d.success) {
+          syncBars(d.lead_count, d.lead_limit, d.site_count, d.site_limit);
         }
       })
-      .catch(function () {}); // silent — bar just stays at PHP-rendered value
+      .catch(function(){});
   }
 
-  // Kick off initial render from PHP-baked values (instant, before fetch resolves)
-  if (IS_PAID) syncLeadBar(leadUsed, leadLimit);
+  // ── Initial render: PHP-baked values instantly, then live fetch ───────────
+  if (IS_PAID) {
+    syncBars(leadCount, leadLimit, siteCount, siteLimit);
+    fetchBarStatus();
+  }
 
-  // ── Free quota bar ──────────────────────────────────────────────────────────
+  // ── Free quota bar ────────────────────────────────────────────────────────
   function updateQuotaBar(newUsed) {
     quotaUsed = newUsed;
     var badge = document.getElementById('quotaBadge');
@@ -134,9 +185,11 @@ document.addEventListener('DOMContentLoaded', function () {
     if (text) text.textContent = quotaUsed + ' of ' + quotaLimit + ' used';
   }
 
-  // ── Helpers ─────────────────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────
   function escHtml(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
   function scoreColor(s) {
     return s>=80 ? 'bg-white/10 text-white' : s>=60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400';
@@ -157,11 +210,11 @@ document.addEventListener('DOMContentLoaded', function () {
       var orig = btn.innerHTML;
       btn.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
       btn.style.color = '#94a3b8';
-      setTimeout(function(){btn.innerHTML=orig;btn.style.color='';},1600);
+      setTimeout(function(){ btn.innerHTML=orig; btn.style.color=''; }, 1600);
     }).catch(function(){});
   }
 
-  // ── Lead card ────────────────────────────────────────────────────────────────
+  // ── Lead card ─────────────────────────────────────────────────────────────
   function renderLeadRow(lead, seenBefore, idx) {
     var row     = document.createElement('div');
     var wasSeen = seenBefore.has(String(lead.id));
@@ -173,9 +226,9 @@ document.addEventListener('DOMContentLoaded', function () {
     var sc        = scoreColor(lead.opportunity_score);
     var hasRating = lead.rating && parseFloat(lead.rating) > 0;
     var stars     = hasRating
-      ? '\u2605'.repeat(Math.round(parseFloat(lead.rating))) + '\u2606'.repeat(5 - Math.round(parseFloat(lead.rating)))
+      ? '\u2605'.repeat(Math.round(parseFloat(lead.rating)))
+        + '\u2606'.repeat(5 - Math.round(parseFloat(lead.rating)))
       : '';
-
     var generateUrl = '/portal/generate.php?lead_id='+encodeURIComponent(lead.id)
       +'&name='+encodeURIComponent(lead.business_name||'')
       +'&category='+encodeURIComponent(lead.business_category||'')
@@ -230,7 +283,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return row;
   }
 
-  // ── Locked rows ─────────────────────────────────────────────────────────────
+  // ── Locked rows ───────────────────────────────────────────────────────────
   var FAKE_NAMES  = ['Montreal Plumbing Co.','Apex Roofing Services','Bella Vista Restaurant','ProClean Janitorial','City Electrical Works','Green Thumb Landscaping','Maple Auto Repair','Studio 514 Hair Salon'];
   var FAKE_CITIES = ['Montreal, QC','Laval, QC','Longueuil, QC','Brossard, QC'];
   var FAKE_SCORES = [72,81,68,90,77,85,63,79];
@@ -253,7 +306,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return row;
   }
 
-  // ── History sidebar ─────────────────────────────────────────────────────────
+  // ── History sidebar ───────────────────────────────────────────────────────
   function renderHistoryItem(entry) {
     var item = document.createElement('div');
     var ts   = fmtTimestamp(entry.created_at);
@@ -290,19 +343,22 @@ document.addEventListener('DOMContentLoaded', function () {
     var empty   = document.getElementById('searchHistoryEmpty');
     var countEl = document.getElementById('historyCount');
     if (!list) return;
-    fetch('/api/lead-search-history.php')
-      .then(function(r){return r.json();})
+    fetch('/api/lead-search-history.php', { credentials: 'same-origin' })
+      .then(function(r){ return r.json(); })
       .then(function(data){
         list.innerHTML = '';
         var has = data.history && data.history.length > 0;
         if (empty)   empty.style.display = has ? 'none' : '';
-        if (countEl) { if(has){countEl.textContent=data.history.length;countEl.classList.remove('hidden');}else{countEl.classList.add('hidden');} }
-        if (has) data.history.forEach(function(e){list.appendChild(renderHistoryItem(e));});
+        if (countEl) {
+          if (has) { countEl.textContent=data.history.length; countEl.classList.remove('hidden'); }
+          else     { countEl.classList.add('hidden'); }
+        }
+        if (has) data.history.forEach(function(e){ list.appendChild(renderHistoryItem(e)); });
       }).catch(function(){});
   }
   loadSearchHistory();
 
-  // ── Search state ────────────────────────────────────────────────────────────
+  // ── Search state ──────────────────────────────────────────────────────────
   function setSearching(on) {
     if (!searchBtn || !searchBtnLbl) return;
     searchBtn.disabled = on;
@@ -311,8 +367,8 @@ document.addEventListener('DOMContentLoaded', function () {
     searchBtn.classList.toggle('cursor-not-allowed', on);
   }
 
-  // ── Main search ─────────────────────────────────────────────────────────────
-  function runSearch(city, industry, keywords, leadCount, includeSeen, forceRefresh) {
+  // ── Main search ───────────────────────────────────────────────────────────
+  function runSearch(city, industry, keywords, leadCntReq, includeSeen, forceRefresh) {
     var t0 = Date.now();
     loadingEl.classList.remove('hidden');
     resultsWrap.classList.add('hidden');
@@ -323,18 +379,19 @@ document.addEventListener('DOMContentLoaded', function () {
 
     fetch('/api/find-leads.php', {
       method: 'POST',
+      credentials: 'same-origin',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
         city: city,
         industry: industry,
         keywords: keywords || null,
-        lead_count: leadCount || 10,
+        lead_count: leadCntReq || 10,
         include_seen: includeSeen,
         csrf_token: csrfToken,
         force_refresh: !!forceRefresh,
       }),
     })
-    .then(function(r){return r.json();})
+    .then(function(r){ return r.json(); })
     .then(function(data){
       var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
       loadingEl.classList.add('hidden');
@@ -356,25 +413,27 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // Update bars from API response
-      if (IS_PAID && typeof data.pro_lead_count === 'number') {
-        // Use API-returned limit if valid; otherwise keep current leadLimit
-        var newLimit = (typeof data.lead_limit === 'number' && data.lead_limit >= 0)
-          ? data.lead_limit : leadLimit;
-        syncLeadBar(data.pro_lead_count, newLimit);
+      // ── Update bars from search response, then re-fetch for active sites ──
+      if (IS_PAID) {
+        // Use lead count + limit from the search response immediately
+        var newLeadCnt = (typeof data.pro_lead_count === 'number') ? data.pro_lead_count : leadCount;
+        var newLeadLim = (typeof data.lead_limit     === 'number' && data.lead_limit >= 0) ? data.lead_limit : leadLimit;
+        // Sync lead bar now; then fetch full status for site count too
+        syncBars(newLeadCnt, newLeadLim, siteCount, siteLimit);
+        fetchBarStatus(); // also refreshes site count + confirms lead count
       }
       if (!IS_PAID && typeof data.searches_used === 'number') {
         updateQuotaBar(data.searches_used);
       }
 
       var seenBefore = getSeenIds();
-      if (data.leads && data.leads.length) markSeen(data.leads.map(function(l){return String(l.id);}));
+      if (data.leads && data.leads.length) markSeen(data.leads.map(function(l){ return String(l.id); }));
 
       // Results header
       var header = document.createElement('div');
       header.className = 'flex items-center justify-between text-xs text-slate-500 mb-3 px-0.5 flex-wrap gap-2';
       var n       = (data.leads && data.leads.length) || 0;
-      var seenCnt = (data.leads||[]).filter(function(l){return seenBefore.has(String(l.id));}).length;
+      var seenCnt = (data.leads||[]).filter(function(l){ return seenBefore.has(String(l.id)); }).length;
       header.innerHTML =
         '<span><strong class="text-white">'+n+'</strong> leads'
           +' &middot; <span class="text-slate-400">'+escHtml(city)+', '+escHtml(industry)+'</span>'
@@ -389,7 +448,9 @@ document.addEventListener('DOMContentLoaded', function () {
 
       if (data.from_cache) {
         var rb = leadsList.querySelector('#refreshBtn');
-        if (rb) rb.addEventListener('click', function(){runSearch(city,industry,keywords,leadCount,includeSeen,true);});
+        if (rb) rb.addEventListener('click', function(){
+          runSearch(city,industry,keywords,leadCntReq,includeSeen,true);
+        });
       }
 
       if (statusChip) { statusChip.classList.remove('hidden'); statusChip.textContent = n+' results \u00b7 '+elapsed+'s'; }
@@ -402,7 +463,7 @@ document.addEventListener('DOMContentLoaded', function () {
       } else {
         var toShow = data.leads;
         if (!includeSeen) {
-          toShow = data.leads.filter(function(l){return !seenBefore.has(String(l.id));});
+          toShow = data.leads.filter(function(l){ return !seenBefore.has(String(l.id)); });
           if (!toShow.length) {
             var as = document.createElement('p');
             as.className = 'text-slate-500 text-center py-10 text-sm';
@@ -414,7 +475,7 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       if (data.is_free_tier && data.locked_leads && data.locked_leads.length) {
-        data.locked_leads.forEach(function(l,i){lockedList.appendChild(renderLockedRow(l,i));});
+        data.locked_leads.forEach(function(l,i){ lockedList.appendChild(renderLockedRow(l,i)); });
         lockedWrap.classList.remove('hidden');
       } else {
         lockedWrap.classList.add('hidden');
@@ -431,32 +492,34 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
+  // ── Form submit ───────────────────────────────────────────────────────────
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var city      = form.querySelector('[name="city"]').value.trim();
     var industry  = form.querySelector('[name="industry"]').value.trim();
     var keywords  = form.querySelector('[name="keywords"]') ? form.querySelector('[name="keywords"]').value.trim() : '';
-    var leadCount = sliderHid ? parseInt(sliderHid.value, 10) || 10 : 10;
+    var leadCnt   = sliderHid ? parseInt(sliderHid.value, 10) || 10 : 10;
     var incSeen   = seenCb ? seenCb.checked : false;
     if (!city || !industry) return;
-    runSearch(city, industry, keywords, leadCount, incSeen, false);
+    runSearch(city, industry, keywords, leadCnt, incSeen, false);
   });
 
-  // Auto-run from URL params
+  // ── Auto-run from URL params ───────────────────────────────────────────────
   var params = new URLSearchParams(window.location.search);
   if (params.get('autorun') === '1') {
     var city     = params.get('city')     || '';
     var industry = params.get('industry') || '';
     var keywords = params.get('keywords') || '';
     var count    = parseInt(params.get('count'), 10) || 10;
-    var cityEl     = document.getElementById('fieldCity');
-    var industryEl = document.getElementById('fieldIndustry');
-    var keywordsEl = document.getElementById('fieldKeywords');
     if (city && industry) {
+      var cityEl     = document.getElementById('fieldCity');
+      var industryEl = document.getElementById('fieldIndustry');
+      var keywordsEl = document.getElementById('fieldKeywords');
       if (cityEl)     cityEl.value     = city;
       if (industryEl) industryEl.value = industry;
       if (keywordsEl) keywordsEl.value = keywords;
       runSearch(city, industry, keywords, count, false, false);
     }
   }
+
 });
