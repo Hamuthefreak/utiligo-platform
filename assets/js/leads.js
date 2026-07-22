@@ -15,7 +15,6 @@ document.addEventListener('DOMContentLoaded', function () {
   const IS_PAID = PLAN === 'pro' || PLAN === 'entrepreneur';
 
   // Initialise bar counters from PHP-rendered data-* attrs
-  // so the bar is correct on page load, not just after a search
   let leadUsed   = parseInt(cfg?.dataset.leadUsed  ?? '0', 10);
   let leadLimit  = parseInt(cfg?.dataset.leadLimit ?? '0', 10);
   let quotaUsed  = parseInt(cfg?.dataset.quotaUsed  ?? '0', 10);
@@ -58,10 +57,7 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   }
 
-  // ─ Lead-unlock bar (Pro) ────────────────────────────────────────────────────
-  // Called after each search with the freshest server-side count.
-  // Also called once on page load via syncLeadCounter(leadUsed, leadLimit)
-  // so the bar is never stuck at 0.
+  // ─ Lead-unlock bar (Pro + Entrepreneur) ────────────────────────────────────
   function syncLeadCounter(serverCount, serverLimit) {
     if (typeof serverCount === 'number' && serverCount >= 0) leadUsed  = serverCount;
     if (typeof serverLimit === 'number' && serverLimit  > 0) leadLimit = serverLimit;
@@ -72,7 +68,18 @@ document.addEventListener('DOMContentLoaded', function () {
     const countEl  = document.getElementById('leadLimitCount');
     const upgBtn   = document.getElementById('leadUpgradeBtn');
 
-    if (!bar || leadLimit <= 0) return;
+    if (!bar) return;
+
+    // Entrepreneur = unlimited (leadLimit 0 means no cap)
+    if (PLAN === 'entrepreneur') {
+      if (subtitle) subtitle.textContent = leadUsed + ' leads unlocked (unlimited)';
+      if (noteEl)   noteEl.textContent   = 'No cap — Entrepreneur plan';
+      if (countEl)  countEl.textContent  = leadUsed + ' / ∞';
+      bar.style.width = '0%';
+      return;
+    }
+
+    if (leadLimit <= 0) return;
     const pct = Math.min(100, Math.round((leadUsed / leadLimit) * 100));
 
     bar.style.width = pct + '%';
@@ -88,8 +95,8 @@ document.addEventListener('DOMContentLoaded', function () {
     }
   }
 
-  // Kick off an initial sync from PHP data so bar renders correctly on page load
-  if (PLAN === 'pro' && leadLimit > 0) syncLeadCounter(leadUsed, leadLimit);
+  // Kick off initial sync so bar is correct on page load
+  if (IS_PAID) syncLeadCounter(leadUsed, leadLimit);
 
   // ─ Free quota bar ───────────────────────────────────────────────────────────
   function updateLiveQuotaCounter(newUsed) {
@@ -132,7 +139,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return d.toLocaleDateString('en-CA', { month:'short', day:'numeric' }) + ' at ' + time;
   }
 
-  function copyPhone(text, btn) {
+  function copyText(text, btn) {
     navigator.clipboard.writeText(text).then(() => {
       const orig = btn.innerHTML;
       btn.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i>';
@@ -160,16 +167,28 @@ document.addEventListener('DOMContentLoaded', function () {
       + '&name='     + encodeURIComponent(lead.business_name     || '')
       + '&category=' + encodeURIComponent(lead.business_category || '')
       + '&city='     + encodeURIComponent(lead.business_city     || '')
-      + '&phone='    + encodeURIComponent(lead.business_phone    || '');
+      + '&phone='    + encodeURIComponent(lead.business_phone    || '')
+      + '&email='    + encodeURIComponent(lead.business_email    || '');
 
+    // Phone pill — shown when available
     const phoneLine = lead.business_phone
       ? `<span class="inline-flex items-center gap-1.5 text-xs bg-white/5 text-slate-300 px-3 py-1.5 rounded-lg font-medium">
            <i class="fa-solid fa-phone text-[10px] text-slate-600"></i>${escHtml(lead.business_phone)}
-           <button type="button" class="copy-phone ml-1 text-slate-600 hover:text-slate-300 transition" data-phone="${escHtml(lead.business_phone)}" title="Copy">
+           <button type="button" class="copy-btn ml-1 text-slate-600 hover:text-slate-300 transition" data-copy="${escHtml(lead.business_phone)}" title="Copy phone">
              <i class="fa-regular fa-copy text-[10px]"></i>
            </button>
          </span>`
       : `<span class="text-xs text-slate-700 px-2 py-1.5"><i class="fa-solid fa-phone mr-1.5"></i>No phone</span>`;
+
+    // Email pill — shown when available, hidden when empty (business may not have one)
+    const emailLine = (lead.business_email && lead.business_email.trim() !== '')
+      ? `<span class="inline-flex items-center gap-1.5 text-xs bg-white/5 text-slate-300 px-3 py-1.5 rounded-lg font-medium">
+           <i class="fa-solid fa-envelope text-[10px] text-slate-600"></i>${escHtml(lead.business_email)}
+           <button type="button" class="copy-btn ml-1 text-slate-600 hover:text-slate-300 transition" data-copy="${escHtml(lead.business_email)}" title="Copy email">
+             <i class="fa-regular fa-copy text-[10px]"></i>
+           </button>
+         </span>`
+      : '';
 
     const mapsLine = lead.maps_url
       ? `<a href="${escHtml(lead.maps_url)}" target="_blank" rel="noopener"
@@ -183,7 +202,7 @@ document.addEventListener('DOMContentLoaded', function () {
         <div class="flex-1 min-w-0">
           <div class="flex items-center gap-2 flex-wrap mb-1.5">
             <h3 class="font-bold text-white text-sm leading-tight">${escHtml(lead.business_name)}</h3>
-            <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${sc}">${scoreLabel(lead.opportunity_score)} · ${lead.opportunity_score}</span>
+            <span class="text-[10px] px-1.5 py-0.5 rounded font-bold ${sc}">${scoreLabel(lead.opportunity_score)} &middot; ${lead.opportunity_score}</span>
             ${lead.no_website ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-500 font-semibold">No Website</span>' : ''}
             ${wasSeen        ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/4 text-slate-600 font-semibold">Seen</span>' : ''}
           </div>
@@ -198,10 +217,11 @@ document.addEventListener('DOMContentLoaded', function () {
           <i class="fa-solid fa-bolt text-[10px]"></i> Build Site
         </a>
       </div>
-      <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/5">${phoneLine}${mapsLine}</div>`;
+      <div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/5">${phoneLine}${emailLine}${mapsLine}</div>`;
 
-    row.querySelectorAll('.copy-phone').forEach(btn =>
-      btn.addEventListener('click', e => { e.stopPropagation(); copyPhone(btn.dataset.phone, btn); })
+    // Copy buttons (phone + email)
+    row.querySelectorAll('.copy-btn').forEach(btn =>
+      btn.addEventListener('click', e => { e.stopPropagation(); copyText(btn.dataset.copy, btn); })
     );
     return row;
   }
@@ -243,7 +263,7 @@ document.addEventListener('DOMContentLoaded', function () {
           ${entry.result_count > 0 ? `<span class="text-[10px] font-bold text-slate-600 tabular-nums">${entry.result_count}</span>` : ''}
         </div>
         <span class="text-[11px] text-slate-500 truncate w-full">
-          ${escHtml(entry.industry)}${entry.keywords ? ' · ' + escHtml(entry.keywords) : ''}
+          ${escHtml(entry.industry)}${entry.keywords ? ' &middot; ' + escHtml(entry.keywords) : ''}
         </span>
         <span class="text-[10px] text-slate-700 mt-0.5">${ts}</span>
       </button>`;
@@ -326,8 +346,8 @@ document.addEventListener('DOMContentLoaded', function () {
       }
 
       // ── Update bars from server response ──────────────────────────────────
-      // pro_lead_count is always returned by the API (0 for free users)
-      if (PLAN === 'pro' && typeof data.pro_lead_count === 'number') {
+      // Fire for both pro and entrepreneur — syncLeadCounter handles each case
+      if (IS_PAID && typeof data.pro_lead_count === 'number') {
         syncLeadCounter(data.pro_lead_count, data.lead_limit || leadLimit);
       }
       if (!IS_PAID && typeof data.searches_used === 'number') {
@@ -339,15 +359,15 @@ document.addEventListener('DOMContentLoaded', function () {
 
       // Results header
       const header = document.createElement('div');
-      header.className = 'flex items-center justify-between text-xs text-slate-500 mb-3 px-0.5';
+      header.className = 'flex items-center justify-between text-xs text-slate-500 mb-3 px-0.5 flex-wrap gap-2';
       const n       = data.leads?.length || 0;
       const seenCnt = (data.leads||[]).filter(l => seenBefore.has(String(l.id))).length;
 
       header.innerHTML = `
         <span>
           <strong class="text-white">${n}</strong> leads
-          · <span class="text-slate-400">${escHtml(city)}, ${escHtml(industry)}</span>
-          · <span class="text-slate-600">${elapsed}s</span>
+          &middot; <span class="text-slate-400">${escHtml(city)}, ${escHtml(industry)}</span>
+          &middot; <span class="text-slate-600">${elapsed}s</span>
           ${data.from_cache ? '<span class="text-slate-700 ml-1">(cached)</span>' : ''}
         </span>
         <span class="flex items-center gap-2">

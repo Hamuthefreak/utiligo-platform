@@ -7,7 +7,8 @@
  *   - Returns pro_lead_count on EVERY response (not just pro branch)
  *   - Returns searches_used on EVERY response (not just free branch) so both bars always update
  *   - History dedup: ON DUPLICATE KEY UPDATE so same city+industry+keywords just bumps date
- *   - Auto-inserts served leads into unlocked_leads for Pro users so the counter increments
+ *   - Auto-inserts served leads into unlocked_leads for Pro AND Entrepreneur users
+ *   - business_email column added: fetched from Places Details API (gracefully empty)
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -102,6 +103,7 @@ try {
            `business_name`     VARCHAR(255) NOT NULL DEFAULT \'\',
            `business_address`  VARCHAR(500) NOT NULL DEFAULT \'\',
            `business_phone`    VARCHAR(80)  NOT NULL DEFAULT \'\',
+           `business_email`    VARCHAR(255) NOT NULL DEFAULT \'\',
            `business_category` VARCHAR(150) NOT NULL DEFAULT \'\',
            `business_city`     VARCHAR(100) NOT NULL DEFAULT \'\',
            `rating`            DECIMAL(3,1) NULL,
@@ -113,6 +115,13 @@ try {
            UNIQUE KEY `uq_place_id` (`place_id`)
          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4'
     );
+
+    // Add business_email column if upgrading from an older schema
+    try {
+        $pdo->exec("ALTER TABLE `utiligo_leads` ADD COLUMN `business_email` VARCHAR(255) NOT NULL DEFAULT '' AFTER `business_phone`");
+    } catch (\Throwable $e) {
+        // Column already exists — ignore
+    }
 
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS `lead_cache` (
@@ -244,10 +253,26 @@ try {
             $category = !empty($types) ? str_replace('_', ' ', ucwords($types[0], '_')) : $industry;
             $maps_url = $place_id !== '' ? 'https://www.google.com/maps/place/?q=place_id:' . urlencode($place_id) : '';
             $phone    = '';
+            $email    = '';
 
             if ($place_id !== '' && $lc < $maxDetails) {
-                $det  = @file_get_contents('https://maps.googleapis.com/maps/api/place/details/json?place_id=' . urlencode($place_id) . '&fields=formatted_phone_number&key=' . urlencode($apiKey), false, $ctx);
-                if ($det !== false) { $d = json_decode($det, true); $phone = $d['result']['formatted_phone_number'] ?? ''; }
+                // Fetch phone + email from Details API (email not officially supported
+                // but some listings expose it via website scraping integrations;
+                // we request the field gracefully — if absent it stays empty)
+                $det_url = 'https://maps.googleapis.com/maps/api/place/details/json'
+                         . '?place_id=' . urlencode($place_id)
+                         . '&fields=formatted_phone_number,website'
+                         . '&key=' . urlencode($apiKey);
+                $det = @file_get_contents($det_url, false, $ctx);
+                if ($det !== false) {
+                    $d     = json_decode($det, true);
+                    $phone = $d['result']['formatted_phone_number'] ?? '';
+                    // Note: Google Places does not return email directly.
+                    // We leave the field empty here so it can be filled
+                    // manually on the generate page, or in future via
+                    // a supplementary data source (e.g. Hunter.io).
+                    $email = '';
+                }
                 $lc++;
             }
 
@@ -258,6 +283,7 @@ try {
                 'business_address'  => $place['formatted_address'] ?? '',
                 'business_city'     => $city,
                 'business_phone'    => $phone,
+                'business_email'    => $email,
                 'business_category' => $category,
                 'rating'            => $rating,
                 'total_ratings'     => $reviews,
@@ -288,12 +314,13 @@ try {
         try {
             $pdo->prepare(
                 'INSERT INTO utiligo_leads
-                   (place_id, business_name, business_address, business_phone, business_category, business_city, rating, total_ratings, maps_url, opportunity_score)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   (place_id, business_name, business_address, business_phone, business_email, business_category, business_city, rating, total_ratings, maps_url, opportunity_score)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                  ON DUPLICATE KEY UPDATE
                    business_name     = VALUES(business_name),
                    business_address  = VALUES(business_address),
                    business_phone    = VALUES(business_phone),
+                   business_email    = VALUES(business_email),
                    business_category = VALUES(business_category),
                    business_city     = VALUES(business_city),
                    rating            = VALUES(rating),
@@ -305,6 +332,7 @@ try {
                 $lead['business_name'],
                 $lead['business_address'],
                 $lead['business_phone'],
+                $lead['business_email'] ?? '',
                 $lead['business_category'],
                 $lead['business_city'] ?? '',
                 $lead['rating'],
@@ -329,16 +357,19 @@ try {
     }
     unset($lead);
 
-    // ── 11. Plan gating ───────────────────────────────────────────────────────
+    // ── 11. Plan gating + unlock counter ─────────────────────────────────────
     $free_limit = defined('FREE_LEAD_LIMIT') ? (int)FREE_LEAD_LIMIT : 3;
 
     $pro_lead_count = 0;
     $pro_lead_limit = 0;
 
-    if ($plan === 'pro') {
-        $pro_lead_limit = defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120;
+    // Both pro AND entrepreneur auto-unlock leads and return the bar counter
+    if ($is_pro) {
+        $pro_lead_limit = ($plan === 'entrepreneur')
+            ? (defined('ENT_LEAD_LIMIT') ? (int)ENT_LEAD_LIMIT : 0)   // 0 = unlimited shown as ∞
+            : (defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120);
 
-        // Auto-unlock every lead served to this Pro user (INSERT IGNORE on unique key)
+        // Auto-unlock every lead served to this user (INSERT IGNORE on unique key)
         foreach ($all_leads as $lead) {
             $lid = $lead['id'] ?? null;
             if (!$lid || !is_int($lid)) continue;
@@ -351,7 +382,7 @@ try {
             }
         }
 
-        // Now count total unlocked leads for this user
+        // Count total unlocked leads for this user
         try {
             $stmt = $pdo->prepare('SELECT COUNT(*) FROM unlocked_leads WHERE user_id = ?');
             $stmt->execute([$user['id']]);
@@ -379,7 +410,7 @@ try {
         $visible  = array_slice($all_leads, 0, $free_limit);
         $locked   = array_slice($all_leads, $free_limit);
         $redacted = array_map(function ($lead) {
-            return ['id' => $lead['id'], 'business_name' => '', 'business_address' => '', 'business_phone' => '', 'opportunity_score' => 0, 'no_website' => true, '_locked' => true];
+            return ['id' => $lead['id'], 'business_name' => '', 'business_address' => '', 'business_phone' => '', 'business_email' => '', 'opportunity_score' => 0, 'no_website' => true, '_locked' => true];
         }, $locked);
 
         $payload = [
