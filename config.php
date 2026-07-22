@@ -165,3 +165,12 @@ if (session_status() === PHP_SESSION_NONE) {
     ]);
     session_start();
 }
+
+// =====================================================================
+//  AUTO MIGRATION RUNNER
+//  Applies any pending *.sql files from /migrations automatically.
+//  Safe on every request — only does real work when new files exist.
+//  To add a DB change: create migrations/007_description.sql and deploy.
+// =====================================================================
+require_once __DIR__ . '/includes/run_migrations.php';
+require_once __DIR__ . '/includes/bootstrap_migrations.php';
