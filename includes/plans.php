@@ -2,45 +2,57 @@
 /**
  * includes/plans.php
  * 3-plan system: free | pro | entrepreneur
- * Self-healing: defines all required constants as fallbacks
- * in case an older config.php is deployed on the server.
+ *
+ * SINGLE SOURCE OF TRUTH for plan limits.
+ * Edit constants in config.php — the changes flow here and everywhere.
+ *
+ * Defensive fallbacks below only fire if an older config.php is deployed.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/auth.php';
 
 // ---- Defensive constant fallbacks (survive old config.php deployments) ----
-if (!defined('FREE_LEAD_LIMIT'))           define('FREE_LEAD_LIMIT',           3);
-if (!defined('FREE_SITE_LIMIT'))           define('FREE_SITE_LIMIT',           1);
-if (!defined('FREE_SEARCH_DAILY_LIMIT'))   define('FREE_SEARCH_DAILY_LIMIT',   2);
-if (!defined('FREE_GENERATE_DAILY_LIMIT')) define('FREE_GENERATE_DAILY_LIMIT', 1);
-if (!defined('FREE_TEMPLATE_LIMIT'))       define('FREE_TEMPLATE_LIMIT',       2);
-if (!defined('PRO_LEAD_LIMIT'))            define('PRO_LEAD_LIMIT',           120);
-if (!defined('PRO_SITE_LIMIT'))            define('PRO_SITE_LIMIT',           200);
-if (!defined('ENT_LEAD_LIMIT'))            define('ENT_LEAD_LIMIT',            -1);
-if (!defined('ENT_SITE_LIMIT'))            define('ENT_SITE_LIMIT',           500);
-if (!defined('PRO_PLAN_PRICE'))            define('PRO_PLAN_PRICE',         21.99);
-if (!defined('ENTREPRENEUR_PLAN_PRICE'))   define('ENTREPRENEUR_PLAN_PRICE', 49.99);
+// These only define a constant if config.php did NOT already define it.
+if (!defined('FREE_LEAD_LIMIT'))            define('FREE_LEAD_LIMIT',            3);
+if (!defined('FREE_SITE_LIMIT'))            define('FREE_SITE_LIMIT',            1);
+if (!defined('FREE_SEARCH_DAILY_LIMIT'))    define('FREE_SEARCH_DAILY_LIMIT',    2);
+if (!defined('FREE_GENERATE_DAILY_LIMIT'))  define('FREE_GENERATE_DAILY_LIMIT',  1);
+if (!defined('FREE_TEMPLATE_LIMIT'))        define('FREE_TEMPLATE_LIMIT',        2);
+if (!defined('PRO_LEAD_LIMIT'))             define('PRO_LEAD_LIMIT',           120);
+if (!defined('PRO_SITE_LIMIT'))             define('PRO_SITE_LIMIT',           200);
+if (!defined('PRO_GENERATE_DAILY_LIMIT'))   define('PRO_GENERATE_DAILY_LIMIT',  -1);
+if (!defined('PRO_TEMPLATE_LIMIT'))         define('PRO_TEMPLATE_LIMIT',        -1);
+if (!defined('ENT_LEAD_LIMIT'))             define('ENT_LEAD_LIMIT',            -1);
+if (!defined('ENT_SITE_LIMIT'))             define('ENT_SITE_LIMIT',           500);
+if (!defined('ENT_GENERATE_DAILY_LIMIT'))   define('ENT_GENERATE_DAILY_LIMIT',  -1);
+if (!defined('ENT_TEMPLATE_LIMIT'))         define('ENT_TEMPLATE_LIMIT',        -1);
+if (!defined('PRO_PLAN_PRICE'))             define('PRO_PLAN_PRICE',          21.99);
+if (!defined('ENTREPRENEUR_PLAN_PRICE'))    define('ENTREPRENEUR_PLAN_PRICE', 49.99);
 
-// ---- Plan definitions (single source of truth) ----
+// ---- Plan definitions — all values come from config.php constants above ----
 function plan_config(): array {
     return [
         'free' => [
-            'label'        => 'Free',
-            'price'        => 0,
-            'lead_limit'   => FREE_LEAD_LIMIT,
-            'site_limit'   => FREE_SITE_LIMIT,
-            'search_daily' => FREE_SEARCH_DAILY_LIMIT,
-            'features'     => [
+            'label'          => 'Free',
+            'price'          => 0,
+            'lead_limit'     => FREE_LEAD_LIMIT,
+            'site_limit'     => FREE_SITE_LIMIT,
+            'search_daily'   => FREE_SEARCH_DAILY_LIMIT,
+            'generate_daily' => FREE_GENERATE_DAILY_LIMIT,
+            'template_limit' => FREE_TEMPLATE_LIMIT,
+            'features'       => [
                 'basic_dashboard',
             ],
         ],
         'pro' => [
-            'label'        => 'Pro',
-            'price'        => PRO_PLAN_PRICE,
-            'lead_limit'   => PRO_LEAD_LIMIT,   // 120
-            'site_limit'   => PRO_SITE_LIMIT,   // 200
-            'search_daily' => -1,
-            'features'     => [
+            'label'          => 'Pro',
+            'price'          => PRO_PLAN_PRICE,
+            'lead_limit'     => PRO_LEAD_LIMIT,
+            'site_limit'     => PRO_SITE_LIMIT,
+            'search_daily'   => -1,
+            'generate_daily' => PRO_GENERATE_DAILY_LIMIT,
+            'template_limit' => PRO_TEMPLATE_LIMIT,
+            'features'       => [
                 'basic_dashboard',
                 'website_generation',
                 'zip_export',
@@ -49,12 +61,14 @@ function plan_config(): array {
             ],
         ],
         'entrepreneur' => [
-            'label'        => 'Entrepreneur',
-            'price'        => ENTREPRENEUR_PLAN_PRICE,
-            'lead_limit'   => ENT_LEAD_LIMIT,   // -1 = unlimited
-            'site_limit'   => ENT_SITE_LIMIT,   // 500
-            'search_daily' => -1,
-            'features'     => [
+            'label'          => 'Entrepreneur',
+            'price'          => ENTREPRENEUR_PLAN_PRICE,
+            'lead_limit'     => ENT_LEAD_LIMIT,
+            'site_limit'     => ENT_SITE_LIMIT,
+            'search_daily'   => -1,
+            'generate_daily' => ENT_GENERATE_DAILY_LIMIT,
+            'template_limit' => ENT_TEMPLATE_LIMIT,
+            'features'       => [
                 'basic_dashboard',
                 'website_generation',
                 'zip_export',
@@ -90,6 +104,11 @@ function plan_lead_limit(string $plan): int {
 /** Returns the active-site limit for the plan. -1 = unlimited. */
 function plan_site_limit(string $plan): int {
     return (int) get_plan_config($plan)['site_limit'];
+}
+
+/** Returns the daily search limit for the plan. -1 = unlimited. */
+function plan_search_daily_limit(string $plan): int {
+    return (int) get_plan_config($plan)['search_daily'];
 }
 
 function free_lead_limit(): int {

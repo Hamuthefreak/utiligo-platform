@@ -1,20 +1,12 @@
 <?php
 /**
- * api/find-leads.php  v5
+ * api/find-leads.php  v5.1
  *
- * CHANGES FROM v4.2
+ * CHANGES FROM v5
  * =================
- * 1. Pro lead-limit enforcement: search is blocked server-side when
- *    pro user has hit PRO_LEAD_LIMIT (entrepreneur = unlimited, always passes).
- * 2. Cache-strip fix: id field is stripped before writing to lead_cache so
- *    cached results never carry stale id=0. IDs are always re-resolved from
- *    the DB after cache reads too.
- * 3. Seen mechanic bulletproof: PHP stamps each lead with its real DB id
- *    AFTER the SELECT step, guaranteeing id>0 for every successfully stored
- *    lead. JS already ignores id=0 in seen tracking.
- * 4. Free quota tied purely to uid (not IP) for logged-in users — prevents
- *    free reset on IP change.
- * 5. _debug block retained but trimmed in production (no existing_cols etc).
+ * 1. Pro lead-limit check now uses plan_lead_limit($plan) helper instead of
+ *    the raw PRO_LEAD_LIMIT constant — limits now flow from config.php only.
+ * 2. All other logic identical to v5.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -165,10 +157,10 @@ foreach ($_required_cols as $_col => $_ddl) {
 }
 $_existing_cols = get_columns($pdo, 'utiligo_leads');
 
-// ── 6. Pro lead-limit check (NEW v5) ─────────────────────────────────────
+// ── 6. Pro lead-limit check (v5.1: uses plan_lead_limit() helper) ─────────
 // Block the search early if a pro user has already hit their cap.
-// Entrepreneur plan is unlimited (lead_limit = 0 means no cap).
-$pro_lead_limit = $is_ent ? 0 : (int)PRO_LEAD_LIMIT;
+// Entrepreneur plan: plan_lead_limit() returns -1 = unlimited, always passes.
+$pro_lead_limit = plan_lead_limit($plan); // -1 for unlimited (entrepreneur)
 if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
     try {
         $lc_check = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id=?');
@@ -176,11 +168,11 @@ if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
         $current_lead_count = (int)$lc_check->fetchColumn();
         if ($current_lead_count >= $pro_lead_limit) {
             echo json_encode([
-                'success'     => false,
-                'error'       => 'You have reached your ' . $pro_lead_limit . ' lead limit on the Pro plan. Upgrade to Entrepreneur for unlimited leads.',
+                'success'       => false,
+                'error'         => 'You have reached your ' . $pro_lead_limit . ' lead limit on the Pro plan. Upgrade to Entrepreneur for unlimited leads.',
                 'limit_reached' => true,
-                'lead_count'  => $current_lead_count,
-                'lead_limit'  => $pro_lead_limit,
+                'lead_count'    => $current_lead_count,
+                'lead_limit'    => $pro_lead_limit,
             ]);
             exit;
         }
@@ -375,7 +367,7 @@ try {
 
 // ── 13. Payload ───────────────────────────────────────────────────────────
 $_debug_block = [
-    'v'                 => 5,
+    'v'                 => '5.1',
     'plan'              => $plan,
     'is_paid'           => $is_paid,
     'from_cache'        => $from_cache,

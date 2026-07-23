@@ -1,15 +1,19 @@
 <?php
 /**
- * api/bar-status.php  v2 (rebuild)
+ * api/bar-status.php  v3
  *
  * Single source of truth for the leads-page stat bars.
  * Returns live DB counts for lead unlocks AND active sites,
  * plus plan limits, so JS can update both bars in one fetch.
  *
+ * Limits come from plan_lead_limit() / plan_site_limit() in includes/plans.php,
+ * which in turn read from config.php constants.
+ * To change any limit: edit config.php only — no other file needs touching.
+ *
  * Plans:
  *   free         => no bars (returns counts=0, limits=0)
- *   pro          => lead cap = PRO_LEAD_LIMIT (120), site cap = PRO_SITE_LIMIT (200)
- *   entrepreneur => lead cap = unlimited (limit=0), site cap = ENT_SITE_LIMIT (500)
+ *   pro          => lead cap = PRO_LEAD_LIMIT, site cap = PRO_SITE_LIMIT
+ *   entrepreneur => lead cap = ENT_LEAD_LIMIT (-1=unlimited), site cap = ENT_SITE_LIMIT
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -36,8 +40,10 @@ if (!$is_paid) {
     exit;
 }
 
-$lead_limit = ($plan === 'entrepreneur') ? 0 : (int)PRO_LEAD_LIMIT;
-$site_limit = ($plan === 'entrepreneur') ? (int)ENT_SITE_LIMIT : (int)PRO_SITE_LIMIT;
+// Use helpers — limits come from config.php via plans.php.
+// plan_lead_limit() returns -1 for unlimited (entrepreneur); JS treats <=0 as unlimited.
+$lead_limit = plan_lead_limit($plan);
+$site_limit = plan_site_limit($plan);
 $lead_count = 0;
 $site_count = 0;
 $errors     = [];
