@@ -3,23 +3,23 @@
  * includes/plans.php
  * 3-plan system: free | pro | entrepreneur
  *
- * SINGLE SOURCE OF TRUTH for plan limits.
- * Edit constants in config.php — the changes flow here and everywhere.
+ * Limits come from includes/plan_limits.php (loaded via config.php).
+ * Edit plan_limits.php — changes flow here automatically.
  *
- * Defensive fallbacks below only fire if an older config.php is deployed.
+ * Fallbacks below only fire if the server somehow skips plan_limits.php
+ * (e.g. a broken partial deploy). They mirror plan_limits.php exactly.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/auth.php';
 
-// ---- Defensive constant fallbacks (survive old config.php deployments) ----
-// These only define a constant if config.php did NOT already define it.
+// ---- Last-resort fallbacks (values must match plan_limits.php) ----
 if (!defined('FREE_LEAD_LIMIT'))            define('FREE_LEAD_LIMIT',            3);
 if (!defined('FREE_SITE_LIMIT'))            define('FREE_SITE_LIMIT',            1);
 if (!defined('FREE_SEARCH_DAILY_LIMIT'))    define('FREE_SEARCH_DAILY_LIMIT',    2);
 if (!defined('FREE_GENERATE_DAILY_LIMIT'))  define('FREE_GENERATE_DAILY_LIMIT',  1);
 if (!defined('FREE_TEMPLATE_LIMIT'))        define('FREE_TEMPLATE_LIMIT',        2);
-if (!defined('PRO_LEAD_LIMIT'))             define('PRO_LEAD_LIMIT',           120);
-if (!defined('PRO_SITE_LIMIT'))             define('PRO_SITE_LIMIT',           200);
+if (!defined('PRO_LEAD_LIMIT'))             define('PRO_LEAD_LIMIT',           700);  // keep in sync with plan_limits.php
+if (!defined('PRO_SITE_LIMIT'))             define('PRO_SITE_LIMIT',            50);  // keep in sync with plan_limits.php
 if (!defined('PRO_GENERATE_DAILY_LIMIT'))   define('PRO_GENERATE_DAILY_LIMIT',  -1);
 if (!defined('PRO_TEMPLATE_LIMIT'))         define('PRO_TEMPLATE_LIMIT',        -1);
 if (!defined('ENT_LEAD_LIMIT'))             define('ENT_LEAD_LIMIT',            -1);
@@ -29,7 +29,7 @@ if (!defined('ENT_TEMPLATE_LIMIT'))         define('ENT_TEMPLATE_LIMIT',        
 if (!defined('PRO_PLAN_PRICE'))             define('PRO_PLAN_PRICE',          21.99);
 if (!defined('ENTREPRENEUR_PLAN_PRICE'))    define('ENTREPRENEUR_PLAN_PRICE', 49.99);
 
-// ---- Plan definitions — all values come from config.php constants above ----
+// ---- Plan definitions — all values come from constants above ----
 function plan_config(): array {
     return [
         'free' => [
