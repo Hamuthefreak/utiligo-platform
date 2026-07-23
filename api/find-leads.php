@@ -1,14 +1,19 @@
 <?php
 /**
- * api/find-leads.php  v5.2
+ * api/find-leads.php  v5.3
  *
- * CHANGES FROM v5.1
+ * CHANGES FROM v5.2
  * =================
- * Bug-fix: Google Places Text Search only returns up to 20 results per page.
- * Previously only one page was fetched, so $all_leads was always capped at ≤20
- * regardless of the slider value.  This version paginates up to 3 pages
- * (60 raw results) so $req_count values up to 40 are correctly satisfied.
- * No other logic changed.
+ * Bug-fix: unlock counter was inflating because ALL fetched leads were being
+ * unlocked in the DB even though only $req_count were returned to the user.
+ * Example: Google returns 13 no-website businesses, slider = 10 → 13 were
+ * unlocked but only 10 shown, so the bar jumped +13 instead of +10.
+ *
+ * Fix: $leads_to_return = array_slice($all_leads, 0, $req_count) is computed
+ * BEFORE the unlock loop.  Only the place_ids present in $leads_to_return
+ * are unlocked, keeping the counter in perfect sync with what the user sees.
+ *
+ * Everything else (pagination, cache, quota, history) is unchanged from v5.2.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -175,6 +180,9 @@ if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
             ]);
             exit;
         }
+        // Cap $req_count so we never unlock more than the remaining allowance
+        $remaining = $pro_lead_limit - $current_lead_count;
+        if ($req_count > $remaining) $req_count = $remaining;
     } catch (\Throwable $e) { log_error('find_leads_limit_check', $e); }
 }
 
@@ -213,7 +221,6 @@ if (!$is_paid) {
 }
 
 // ── 8. Cache ──────────────────────────────────────────────────────────────
-// Cache key includes req_count so a "5 lead" cache hit won't satisfy a "30 lead" request.
 $cache_key  = strtolower(preg_replace('/\s+/',' ',$city.'|'.$industry.'|'.$req_count));
 $cache_hrs  = (int)LEAD_SEARCH_CACHE_HOURS;
 $from_cache = false; $cached_at = date('Y-m-d H:i:s'); $all_leads = [];
@@ -239,16 +246,15 @@ if (!$from_cache) {
     if (empty($api_key)||$api_key==='YOUR_GOOGLE_PLACES_API_KEY') { echo json_encode(['success'=>false,'error'=>'Lead search not configured.']); exit; }
     $ctx = stream_context_create(['http'=>['timeout'=>12,'ignore_errors'=>true]]);
 
-    $max_det  = (int)MAX_PLACES_DETAILS_LOOKUPS;
-    $det_cnt  = 0;
-    $next_token = null;
+    $max_det     = (int)MAX_PLACES_DETAILS_LOOKUPS;
+    $det_cnt     = 0;
+    $next_token  = null;
     $pages_fetched = 0;
-    $max_pages = 3; // Google allows up to 3 pages × 20 = 60 results
+    $max_pages   = 3; // Google allows up to 3 pages x 20 = 60 results
 
     do {
         if ($next_token) {
-            // Google requires a short delay before using nextPageToken
-            sleep(2);
+            sleep(2); // Google requires a short delay before using nextPageToken
             $url = 'https://maps.googleapis.com/maps/api/place/textsearch/json'
                  . '?pagetoken=' . urlencode($next_token)
                  . '&key=' . urlencode($api_key);
@@ -306,12 +312,10 @@ if (!$from_cache) {
         $next_token = $places['next_page_token'] ?? null;
         $pages_fetched++;
 
-        // Stop early if we already have enough no-website leads
     } while ($next_token && $pages_fetched < $max_pages && count($all_leads) < $req_count);
 
     usort($all_leads, fn($a,$b) => $b['opportunity_score'] <=> $a['opportunity_score']);
 
-    // Write cache WITHOUT id field
     $cache_payload = array_map(function($l){ $c=$l; unset($c['id']); return $c; }, $all_leads);
     try {
         $pdo->prepare('INSERT INTO lead_cache (cache_key,leads_json,created_at) VALUES(?,?,NOW()) ON DUPLICATE KEY UPDATE leads_json=VALUES(leads_json),created_at=NOW()')
@@ -320,7 +324,7 @@ if (!$from_cache) {
     $cached_at = date('Y-m-d H:i:s');
 }
 
-// ── 10. INSERT IGNORE + SELECT id ─────────────────────────────────────────
+// ── 10. INSERT IGNORE + SELECT id (ALL fetched leads — needed for DB integrity) ─
 $place_id_map   = [];
 $_ins_prep_err  = null;
 $_sel_prep_err  = null;
@@ -357,6 +361,7 @@ $_sel = null;
 try { $_sel = $pdo->prepare('SELECT id FROM `utiligo_leads` WHERE place_id=? LIMIT 1'); }
 catch (\Throwable $e) { log_error('sel_prepare',$e); $_sel_prep_err=substr($e->getMessage(),0,250); }
 
+// Upsert ALL leads into utiligo_leads (master catalogue — safe, idempotent)
 foreach ($all_leads as $lead) {
     $pid = trim((string)($lead['place_id']??''));
     if ($pid==='') continue;
@@ -378,64 +383,80 @@ foreach ($all_leads as $lead) {
         }
     }
 }
+// Stamp each lead with its real DB id
 foreach ($all_leads as &$_l) {
     $_l['id'] = $place_id_map[trim((string)($_l['place_id']??''))] ?? 0;
 }
 unset($_l);
 
-// ── 11. Unlock + count ────────────────────────────────────────────────────
+// ── 11. Slice FIRST, then unlock ONLY what the user actually receives ─────
+//
+// This is the critical fix: previously the unlock loop ran over ALL fetched
+// leads, so if Google returned 13 but the slider was 10, the counter jumped
+// by 13.  Now we slice to $req_count first and only unlock those exact leads.
+$leads_to_return = array_values(array_slice($all_leads, 0, $req_count));
+
 $pro_lead_count    = 0;
 $_unlock_attempted = 0;
 $_unlock_errors    = [];
 
 if ($is_paid) {
-    if (!empty($place_id_map)) {
-        $_ul = null;
-        try { $_ul = $pdo->prepare('INSERT IGNORE INTO unlocked_leads (user_id,lead_id) VALUES(?,?)'); }
-        catch (\Throwable $e){ log_error('unlock_prepare',$e); $_unlock_errors[]='prepare:'.substr($e->getMessage(),0,120); }
-        if ($_ul) {
-            foreach ($place_id_map as $_pid=>$db_id) {
-                $_unlock_attempted++;
-                try { $_ul->execute([$uid,$db_id]); }
-                catch (\Throwable $e){ log_error('unlock_exec',$e,['uid'=>$uid,'lead_id'=>$db_id]); $_unlock_errors[]='lead_id='.$db_id.':'.substr($e->getMessage(),0,80); }
+    $_ul = null;
+    try { $_ul = $pdo->prepare('INSERT IGNORE INTO unlocked_leads (user_id,lead_id) VALUES(?,?)'); }
+    catch (\Throwable $e){ log_error('unlock_prepare',$e); $_unlock_errors[]='prepare:'.substr($e->getMessage(),0,120); }
+
+    if ($_ul) {
+        foreach ($leads_to_return as $ret_lead) {
+            $db_id = (int)($ret_lead['id'] ?? 0);
+            if ($db_id <= 0) continue; // skip leads with unresolved DB ids
+            $_unlock_attempted++;
+            try { $_ul->execute([$uid, $db_id]); }
+            catch (\Throwable $e){
+                log_error('unlock_exec',$e,['uid'=>$uid,'lead_id'=>$db_id]);
+                $_unlock_errors[]='lead_id='.$db_id.':'.substr($e->getMessage(),0,80);
             }
         }
     }
+
     try {
         $_cnt = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id=?');
         $_cnt->execute([$uid]);
         $pro_lead_count = (int)$_cnt->fetchColumn();
-    } catch (\Throwable $e){ log_error('count',$e,['uid'=>$uid]); $_unlock_errors[]='count:'.substr($e->getMessage(),0,80); }
+    } catch (\Throwable $e){
+        log_error('count',$e,['uid'=>$uid]);
+        $_unlock_errors[]='count:'.substr($e->getMessage(),0,80);
+    }
 }
 
 // ── 12. History ───────────────────────────────────────────────────────────
 try {
     $pdo->prepare('INSERT INTO utiligo_lead_search_history (user_id,city,industry,keywords,result_count,created_at) VALUES(?,?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE result_count=VALUES(result_count),created_at=NOW()')
-        ->execute([$uid,$city,$industry,$keywords,count($all_leads)]);
+        ->execute([$uid, $city, $industry, $keywords, count($leads_to_return)]);
 } catch(\Throwable $e){}
 
 // ── 13. Payload ───────────────────────────────────────────────────────────
 $_debug_block = [
-    'v'                 => '5.2',
+    'v'                 => '5.3',
     'plan'              => $plan,
     'is_paid'           => $is_paid,
     'from_cache'        => $from_cache,
     'total_leads_raw'   => count($all_leads),
     'req_count'         => $req_count,
+    'returned_count'    => count($leads_to_return),
+    'unlock_attempted'  => $_unlock_attempted,
+    'unlock_errors'     => $_unlock_errors,
+    'pro_lead_count'    => $pro_lead_count,
     'map_size'          => count($place_id_map),
     'ins_exec_errors'   => $_ins_exec_errs,
     'sel_exec_errors'   => $_sel_exec_errs,
     'alter_errors'      => $_alter_errors,
-    'unlock_attempted'  => $_unlock_attempted,
-    'unlock_errors'     => $_unlock_errors,
-    'pro_lead_count'    => $pro_lead_count,
 ];
 
 $free_limit = (int)FREE_LEAD_LIMIT;
 if ($is_paid) {
     echo json_encode([
         'success'            => true,
-        'leads'              => array_values(array_slice($all_leads, 0, $req_count)),
+        'leads'              => $leads_to_return,
         'locked_leads'       => [],
         'is_free_tier'       => false,
         'from_cache'         => $from_cache,
@@ -447,10 +468,15 @@ if ($is_paid) {
         '_debug'             => $_debug_block,
     ]);
 } else {
+    $free_leads   = array_values(array_slice($all_leads, 0, $free_limit));
+    $locked_leads = array_values(array_map(
+        fn($l) => ['id'=>$l['id']??0,'business_name'=>'','business_address'=>'','business_phone'=>'','business_email'=>'','opportunity_score'=>0,'no_website'=>true,'_locked'=>true],
+        array_slice($all_leads, $free_limit)
+    ));
     echo json_encode([
         'success'            => true,
-        'leads'              => array_values(array_slice($all_leads, 0, $free_limit)),
-        'locked_leads'       => array_values(array_map(fn($l)=>['id'=>$l['id']??0,'business_name'=>'','business_address'=>'','business_phone'=>'','business_email'=>'','opportunity_score'=>0,'no_website'=>true,'_locked'=>true],array_slice($all_leads,$free_limit))),
+        'leads'              => $free_leads,
+        'locked_leads'       => $locked_leads,
         'is_free_tier'       => true,
         'from_cache'         => $from_cache,
         'cached_at'          => $cached_at,
