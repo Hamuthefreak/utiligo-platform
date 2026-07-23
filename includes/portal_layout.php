@@ -78,7 +78,6 @@ function _nav_active(string $href, string $current): string {
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mt-5 mb-2">Account</p>
     <a href="/portal/billing.php"  class="nav-link <?= _nav_active('/portal/billing.php',  $_path) ?>"><i class="fa-solid fa-credit-card"></i> Billing</a>
     <a href="/portal/settings.php" class="nav-link <?= _nav_active('/portal/settings.php', $_path) ?>"><i class="fa-solid fa-gear"></i> Settings</a>
-    <a href="/portal/errors.php"   class="nav-link <?= _nav_active('/portal/errors.php',   $_path) ?>"><i class="fa-solid fa-triangle-exclamation"></i> Error Log</a>
     <?php if (($_user['admin_flag'] ?? 0) && (defined('DEBUG_MODE') && DEBUG_MODE)): ?>
     <a href="/portal/debug.php" class="nav-link <?= _nav_active('/portal/debug.php', $_path) ?>"><i class="fa-solid fa-bug"></i> Debug Panel</a>
     <?php endif; ?>
@@ -149,7 +148,7 @@ function _nav_active(string $href, string $current): string {
 </header>
 
 <main class="lg:ml-64 min-h-screen">
-  <div class="max-w-5xl mx-auto px-6 py-8">
+  <div class="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
 
 <script>
 function openSidebar()  { document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.remove('hidden'); }
