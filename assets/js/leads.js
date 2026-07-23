@@ -1,15 +1,19 @@
 /**
- * assets/js/leads.js  v2100
+ * assets/js/leads.js  v2200
  *
- * FIXES vs v2000:
- *  1. Seen leads are NEVER filtered out — they are always shown, just dimmed.
- *     The "Include seen" toggle now means "dim seen leads" vs "show clean only".
- *     Default is show-all (toggle ON). Filtering caused every result to vanish
- *     on any repeat search because IDs accumulated in localStorage.
- *  2. seenBefore snapshot is captured BEFORE markSeen() so current results
- *     are never flagged as "seen" on their very first render.
- *  3. Bar sync unchanged — still: PHP-baked instant + background bar-status
- *     fetch + post-search sync from find-leads response.
+ * ROOT-CAUSE FIX for "every result already seen":
+ *
+ *  PROBLEM: When find-leads.php can't resolve a lead's integer DB id
+ *  (e.g. upsert failed, or place_id_map lookup missed), it falls back
+ *  to id=0. Once "0" lands in localStorage, EVERY future lead with
+ *  id=0 is immediately flagged as seen — which is all of them.
+ *
+ *  FIXES:
+ *  1. SEEN_KEY bumped to v2 → old polluted localStorage is ignored
+ *     automatically on every existing user's browser.
+ *  2. markSeen() skips any id that is falsy or the string "0".
+ *  3. wasSeen check also guards: id=0 is NEVER considered seen.
+ *  4. Toggle still defaults ON (show-all / dim seen).
  */
 document.addEventListener('DOMContentLoaded', function () {
 
@@ -52,17 +56,22 @@ document.addEventListener('DOMContentLoaded', function () {
   var elSiteCount    = document.getElementById('siteBarCount');
 
   // ── Seen-leads localStorage ───────────────────────────────────────────────
-  // IMPORTANT: seenBefore snapshot must be taken BEFORE markSeen() so the
-  // current batch of results is never tagged as "seen" on first render.
-  var SEEN_KEY = 'utiligo_seen_leads_v1';
+  // KEY BUMPED TO v2 — old v1 data (possibly containing id=0) is ignored.
+  var SEEN_KEY = 'utiligo_seen_leads_v2';
+
   function getSeenIds() {
     try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
     catch (e) { return new Set(); }
   }
+
   function markSeen(ids) {
     try {
       var s = getSeenIds();
-      ids.forEach(function (id) { s.add(String(id)); });
+      ids.forEach(function (id) {
+        var sid = String(id);
+        // NEVER store falsy ids or "0" — these mean the DB lookup failed
+        if (sid && sid !== '0') s.add(sid);
+      });
       var arr = Array.from(s);
       if (arr.length > 2000) arr.splice(0, arr.length - 2000);
       localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
@@ -78,13 +87,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (sliderHid)  sliderHid.value        = slider.value;
   });
 
-  // ── "Hide seen" toggle — default ON (show all) ───────────────────────────
-  // togTrack.on  = show all leads (including seen, just dimmed)
-  // togTrack.off = hide seen leads entirely
-  // Default: ON so users always see results on first load.
+  // ── Toggle: default ON (show all, dim seen) ───────────────────────────────
   var seenCb   = document.getElementById('includeSeenLeads');
   var togTrack = document.getElementById('togTrack');
-  // Default the checkbox + track to checked/on
   if (seenCb)   seenCb.checked = true;
   if (togTrack) togTrack.classList.add('on');
   if (togTrack && seenCb) {
@@ -95,7 +100,7 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
-  //  syncBars — single source of truth for BOTH stat bars
+  //  syncBars — single source of truth for both stat bars
   // ═══════════════════════════════════════════════════════════════════════════
   function syncBars(leadCnt, leadLim, siteCnt, siteLim) {
     if (typeof leadCnt === 'number' && leadCnt >= 0) leadCount = leadCnt;
@@ -103,7 +108,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (typeof siteCnt === 'number' && siteCnt >= 0) siteCount = siteCnt;
     if (typeof siteLim === 'number' && siteLim >= 0) siteLimit = siteLim;
 
-    // Lead unlock bar
     if (elLeadBar) {
       if (IS_ENT) {
         elLeadBar.style.width = '0%';
@@ -118,13 +122,10 @@ document.addEventListener('DOMContentLoaded', function () {
         if (elLeadSubtitle) elLeadSubtitle.textContent = leadCount + ' of ' + leadLimit + ' used';
         if (elLeadNote)     elLeadNote.textContent     = Math.max(0, leadLimit - leadCount) + ' remaining';
         if (elLeadCount)    elLeadCount.textContent    = leadCount + ' / ' + leadLimit;
-        if (elLeadUpgrade) {
-          elLeadUpgrade.classList.toggle('hidden', lPct < 80);
-        }
+        if (elLeadUpgrade)  elLeadUpgrade.classList.toggle('hidden', lPct < 80);
       }
     }
 
-    // Active sites bar
     if (elSiteBar && siteLimit > 0) {
       var sPct = Math.min(100, Math.round((siteCount / siteLimit) * 100));
       elSiteBar.style.width = sPct + '%';
@@ -188,7 +189,7 @@ document.addEventListener('DOMContentLoaded', function () {
   function copyText(text, btn) {
     navigator.clipboard.writeText(text).then(function () {
       var orig = btn.innerHTML;
-      btn.innerHTML  = '<i class="fa-solid fa-check text-[10px]"></i>';
+      btn.innerHTML   = '<i class="fa-solid fa-check text-[10px]"></i>';
       btn.style.color = '#94a3b8';
       setTimeout(function () { btn.innerHTML = orig; btn.style.color = ''; }, 1600);
     }).catch(function () {});
@@ -196,9 +197,10 @@ document.addEventListener('DOMContentLoaded', function () {
 
   // ── Lead card ─────────────────────────────────────────────────────────────
   function renderLeadRow(lead, seenBefore, idx) {
-    var wasSeen = seenBefore.has(String(lead.id));
-    var row = document.createElement('div');
-    // NEVER hide seen leads — always render them, just dim if wasSeen
+    var sid     = String(lead.id);
+    // id=0 means DB lookup failed — NEVER treat as seen
+    var wasSeen = sid && sid !== '0' && seenBefore.has(sid);
+    var row     = document.createElement('div');
     row.className = 'lead-in glass rounded-2xl p-4 transition-all hover:border-white/[.15]'
                   + (wasSeen ? ' opacity-50' : '');
     row.style.animationDelay = (idx * 45) + 'ms';
@@ -287,7 +289,7 @@ document.addEventListener('DOMContentLoaded', function () {
     return row;
   }
 
-  // ── Search history sidebar ────────────────────────────────────────────────
+  // ── History sidebar ───────────────────────────────────────────────────────
   function renderHistoryItem(entry) {
     var item = document.createElement('div');
     var ts   = fmtTimestamp(entry.created_at);
@@ -396,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function () {
         return;
       }
 
-      // ── Update bars immediately from search payload, then bg-refresh ──────
+      // Update bars from search payload, then background-refresh
       if (IS_PAID) {
         var newLeadCnt = (typeof data.pro_lead_count === 'number') ? data.pro_lead_count : leadCount;
         var newLeadLim = (typeof data.lead_limit === 'number' && data.lead_limit >= 0) ? data.lead_limit : leadLimit;
@@ -407,17 +409,20 @@ document.addEventListener('DOMContentLoaded', function () {
         updateQuotaBar(data.searches_used);
       }
 
-      // ── FIX: capture seenBefore BEFORE marking so current results aren't ──
-      //         flagged as "seen" on this very render.
+      // ── CRITICAL ORDER: snapshot BEFORE mark ─────────────────────────────
       var seenBefore = getSeenIds();
       if (data.leads && data.leads.length) {
-        markSeen(data.leads.map(function (l) { return String(l.id); }));
+        markSeen(data.leads.map(function (l) { return l.id; }));
       }
 
       // Results header
       var n       = (data.leads && data.leads.length) || 0;
-      var seenCnt = (data.leads || []).filter(function (l) { return seenBefore.has(String(l.id)); }).length;
-      var header  = document.createElement('div');
+      var seenCnt = (data.leads || []).filter(function (l) {
+        var sid = String(l.id);
+        return sid && sid !== '0' && seenBefore.has(sid);
+      }).length;
+
+      var header = document.createElement('div');
       header.className = 'flex items-center justify-between text-xs text-slate-500 mb-3 px-0.5 flex-wrap gap-2';
       header.innerHTML =
         '<span><strong class="text-white">' + n + '</strong> leads'
@@ -450,19 +455,19 @@ document.addEventListener('DOMContentLoaded', function () {
         leadsList.appendChild(em);
       } else {
         var toShow = data.leads;
-
-        // includeSeen=false: HIDE seen leads (user explicitly toggled off)
-        // includeSeen=true (default): show ALL leads, dim the seen ones
+        // Only hide seen leads if user explicitly toggled off
         if (!includeSeen) {
-          toShow = data.leads.filter(function (l) { return !seenBefore.has(String(l.id)); });
+          toShow = data.leads.filter(function (l) {
+            var sid = String(l.id);
+            return !(sid && sid !== '0' && seenBefore.has(sid));
+          });
           if (!toShow.length) {
             var as = document.createElement('p');
-            as.className  = 'text-slate-500 text-center py-10 text-sm';
-            as.innerHTML  = '<i class="fa-solid fa-eye-slash mr-2"></i>All results already seen. Toggle <em>Include seen</em> to show them.';
+            as.className = 'text-slate-500 text-center py-10 text-sm';
+            as.innerHTML = '<i class="fa-solid fa-eye-slash mr-2"></i>All results already seen. Toggle <em>Include seen</em> to show them.';
             leadsList.appendChild(as);
           }
         }
-
         toShow.forEach(function (lead, i) {
           leadsList.appendChild(renderLeadRow(lead, seenBefore, i));
         });
