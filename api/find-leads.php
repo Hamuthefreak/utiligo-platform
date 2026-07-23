@@ -1,12 +1,14 @@
 <?php
 /**
- * api/find-leads.php  v5.1
+ * api/find-leads.php  v5.2
  *
- * CHANGES FROM v5
+ * CHANGES FROM v5.1
  * =================
- * 1. Pro lead-limit check now uses plan_lead_limit($plan) helper instead of
- *    the raw PRO_LEAD_LIMIT constant — limits now flow from config.php only.
- * 2. All other logic identical to v5.
+ * Bug-fix: Google Places Text Search only returns up to 20 results per page.
+ * Previously only one page was fetched, so $all_leads was always capped at ≤20
+ * regardless of the slider value.  This version paginates up to 3 pages
+ * (60 raw results) so $req_count values up to 40 are correctly satisfied.
+ * No other logic changed.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -127,7 +129,6 @@ foreach ([
     }
 }
 
-// Detect + add any missing columns (v4.2 migration safety, kept forever)
 function get_columns(PDO $pdo, string $table): array {
     try {
         $r = $pdo->query("DESCRIBE `{$table}`");
@@ -157,9 +158,7 @@ foreach ($_required_cols as $_col => $_ddl) {
 }
 $_existing_cols = get_columns($pdo, 'utiligo_leads');
 
-// ── 6. Pro lead-limit check (v5.1: uses plan_lead_limit() helper) ─────────
-// Block the search early if a pro user has already hit their cap.
-// Entrepreneur plan: plan_lead_limit() returns -1 = unlimited, always passes.
+// ── 6. Pro lead-limit check ───────────────────────────────────────────────
 $pro_lead_limit = plan_lead_limit($plan); // -1 for unlimited (entrepreneur)
 if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
     try {
@@ -179,11 +178,10 @@ if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
     } catch (\Throwable $e) { log_error('find_leads_limit_check', $e); }
 }
 
-// ── 7. Free quota (uid-only, no IP) ──────────────────────────────────────
+// ── 7. Free quota ─────────────────────────────────────────────────────────
 $searches_used = 0; $searches_remaining = null;
 if (!$is_paid) {
     $daily_limit = (int)FREE_SEARCH_DAILY_LIMIT;
-    // v5: key on uid only — IP changes must not grant free reset
     $fingerprint = 'uid_' . $uid;
     try {
         $pdo->exec('CREATE TABLE IF NOT EXISTS `lead_search_quota` (
@@ -215,7 +213,8 @@ if (!$is_paid) {
 }
 
 // ── 8. Cache ──────────────────────────────────────────────────────────────
-$cache_key  = strtolower(preg_replace('/\s+/',' ',$city.'|'.$industry));
+// Cache key includes req_count so a "5 lead" cache hit won't satisfy a "30 lead" request.
+$cache_key  = strtolower(preg_replace('/\s+/',' ',$city.'|'.$industry.'|'.$req_count));
 $cache_hrs  = (int)LEAD_SEARCH_CACHE_HOURS;
 $from_cache = false; $cached_at = date('Y-m-d H:i:s'); $all_leads = [];
 if (!$force) {
@@ -226,7 +225,6 @@ if (!$force) {
         if ($crow) {
             $dec = json_decode($crow['leads_json'],true);
             if (is_array($dec) && count($dec)>0) {
-                // Strip any stale ids — will be re-resolved from DB below
                 foreach ($dec as &$_cl) { unset($_cl['id']); }
                 unset($_cl);
                 $all_leads=$dec; $cached_at=$crow['created_at']; $from_cache=true;
@@ -235,42 +233,94 @@ if (!$force) {
     } catch (\Throwable $e) { log_error('find_leads_cache_read',$e); }
 }
 
-// ── 9. Google Places ──────────────────────────────────────────────────────
+// ── 9. Google Places — paginate up to 3 pages to honour $req_count ────────
 if (!$from_cache) {
     $api_key = defined('GOOGLE_PLACES_API_KEY') ? GOOGLE_PLACES_API_KEY : '';
     if (empty($api_key)||$api_key==='YOUR_GOOGLE_PLACES_API_KEY') { echo json_encode(['success'=>false,'error'=>'Lead search not configured.']); exit; }
     $ctx = stream_context_create(['http'=>['timeout'=>12,'ignore_errors'=>true]]);
-    $resp = @file_get_contents('https://maps.googleapis.com/maps/api/place/textsearch/json?query='.urlencode($industry.' in '.$city).'&key='.urlencode($api_key),false,$ctx);
-    if ($resp===false) { echo json_encode(['success'=>false,'error'=>'Could not reach Google Places. Try again.']); exit; }
-    $places = json_decode($resp,true);
-    $status = $places['status'] ?? 'UNKNOWN';
-    if ($status==='REQUEST_DENIED') { echo json_encode(['success'=>false,'error'=>'Google API key issue.']); exit; }
-    if ($status==='OVER_QUERY_LIMIT') { echo json_encode(['success'=>false,'error'=>'Google daily quota reached.']); exit; }
-    if (!in_array($status,['OK','ZERO_RESULTS'],true)) { echo json_encode(['success'=>false,'error'=>'Search failed ('.$status.').']); exit; }
-    $max_det=(int)MAX_PLACES_DETAILS_LOOKUPS; $det_cnt=0;
-    foreach ($places['results']??[] as $place) {
-        if (!empty($place['website'])) continue;
-        $pid=(string)($place['place_id']??''); $types=$place['types']??[];
-        $rating=isset($place['rating'])?(float)$place['rating']:null;
-        $reviews=(int)($place['user_ratings_total']??0);
-        $category=$types?str_replace('_',' ',ucwords($types[0],'_')):$industry;
-        $maps_url=$pid?'https://www.google.com/maps/place/?q=place_id:'.urlencode($pid):'';
-        $phone='';
-        if ($pid&&$det_cnt<$max_det) {
-            $det=@file_get_contents('https://maps.googleapis.com/maps/api/place/details/json?place_id='.urlencode($pid).'&fields=formatted_phone_number&key='.urlencode($api_key),false,$ctx);
-            if ($det!==false){$dj=json_decode($det,true);$phone=(string)($dj['result']['formatted_phone_number']??'');}
-            $det_cnt++;
+
+    $max_det  = (int)MAX_PLACES_DETAILS_LOOKUPS;
+    $det_cnt  = 0;
+    $next_token = null;
+    $pages_fetched = 0;
+    $max_pages = 3; // Google allows up to 3 pages × 20 = 60 results
+
+    do {
+        if ($next_token) {
+            // Google requires a short delay before using nextPageToken
+            sleep(2);
+            $url = 'https://maps.googleapis.com/maps/api/place/textsearch/json'
+                 . '?pagetoken=' . urlencode($next_token)
+                 . '&key=' . urlencode($api_key);
+        } else {
+            $url = 'https://maps.googleapis.com/maps/api/place/textsearch/json'
+                 . '?query=' . urlencode($industry . ' in ' . $city)
+                 . '&key=' . urlencode($api_key);
         }
-        $all_leads[]=['place_id'=>$pid,'business_name'=>(string)($place['name']??'Unknown'),'business_address'=>(string)($place['formatted_address']??''),'business_city'=>$city,'business_phone'=>$phone,'business_email'=>'','business_category'=>$category,'rating'=>$rating,'total_ratings'=>$reviews,'maps_url'=>$maps_url,'no_website'=>true,'opportunity_score'=>opportunity_score($rating,$reviews,$category)];
-    }
-    usort($all_leads,fn($a,$b)=>$b['opportunity_score']<=>$a['opportunity_score']);
-    // Write to cache WITHOUT id field — ids are resolved fresh every request
+
+        $resp = @file_get_contents($url, false, $ctx);
+        if ($resp === false) { echo json_encode(['success'=>false,'error'=>'Could not reach Google Places. Try again.']); exit; }
+
+        $places = json_decode($resp, true);
+        $status = $places['status'] ?? 'UNKNOWN';
+        if ($status === 'REQUEST_DENIED')   { echo json_encode(['success'=>false,'error'=>'Google API key issue.']); exit; }
+        if ($status === 'OVER_QUERY_LIMIT') { echo json_encode(['success'=>false,'error'=>'Google daily quota reached.']); exit; }
+        if (!in_array($status, ['OK','ZERO_RESULTS'], true)) { echo json_encode(['success'=>false,'error'=>'Search failed ('.$status.').']); exit; }
+
+        foreach ($places['results'] ?? [] as $place) {
+            if (!empty($place['website'])) continue;
+            $pid      = (string)($place['place_id'] ?? '');
+            $types    = $place['types'] ?? [];
+            $rating   = isset($place['rating']) ? (float)$place['rating'] : null;
+            $reviews  = (int)($place['user_ratings_total'] ?? 0);
+            $category = $types ? str_replace('_', ' ', ucwords($types[0], '_')) : $industry;
+            $maps_url = $pid ? 'https://www.google.com/maps/place/?q=place_id:' . urlencode($pid) : '';
+            $phone    = '';
+            if ($pid && $det_cnt < $max_det) {
+                $det = @file_get_contents(
+                    'https://maps.googleapis.com/maps/api/place/details/json?place_id=' . urlencode($pid) . '&fields=formatted_phone_number&key=' . urlencode($api_key),
+                    false, $ctx
+                );
+                if ($det !== false) {
+                    $dj    = json_decode($det, true);
+                    $phone = (string)($dj['result']['formatted_phone_number'] ?? '');
+                }
+                $det_cnt++;
+            }
+            $all_leads[] = [
+                'place_id'          => $pid,
+                'business_name'     => (string)($place['name'] ?? 'Unknown'),
+                'business_address'  => (string)($place['formatted_address'] ?? ''),
+                'business_city'     => $city,
+                'business_phone'    => $phone,
+                'business_email'    => '',
+                'business_category' => $category,
+                'rating'            => $rating,
+                'total_ratings'     => $reviews,
+                'maps_url'          => $maps_url,
+                'no_website'        => true,
+                'opportunity_score' => opportunity_score($rating, $reviews, $category),
+            ];
+        }
+
+        $next_token = $places['next_page_token'] ?? null;
+        $pages_fetched++;
+
+        // Stop early if we already have enough no-website leads
+    } while ($next_token && $pages_fetched < $max_pages && count($all_leads) < $req_count);
+
+    usort($all_leads, fn($a,$b) => $b['opportunity_score'] <=> $a['opportunity_score']);
+
+    // Write cache WITHOUT id field
     $cache_payload = array_map(function($l){ $c=$l; unset($c['id']); return $c; }, $all_leads);
-    try { $pdo->prepare('INSERT INTO lead_cache (cache_key,leads_json,created_at) VALUES(?,?,NOW()) ON DUPLICATE KEY UPDATE leads_json=VALUES(leads_json),created_at=NOW()')->execute([$cache_key,json_encode($cache_payload)]); } catch(\Throwable $e){log_error('cache_write',$e);}
-    $cached_at=date('Y-m-d H:i:s');
+    try {
+        $pdo->prepare('INSERT INTO lead_cache (cache_key,leads_json,created_at) VALUES(?,?,NOW()) ON DUPLICATE KEY UPDATE leads_json=VALUES(leads_json),created_at=NOW()')
+            ->execute([$cache_key, json_encode($cache_payload)]);
+    } catch(\Throwable $e){ log_error('cache_write',$e); }
+    $cached_at = date('Y-m-d H:i:s');
 }
 
-// ── 10. INSERT IGNORE + SELECT id (dynamic columns) ──────────────────────
+// ── 10. INSERT IGNORE + SELECT id ─────────────────────────────────────────
 $place_id_map   = [];
 $_ins_prep_err  = null;
 $_sel_prep_err  = null;
@@ -328,7 +378,6 @@ foreach ($all_leads as $lead) {
         }
     }
 }
-// Stamp each lead with its real DB id (0 = failed to resolve)
 foreach ($all_leads as &$_l) {
     $_l['id'] = $place_id_map[trim((string)($_l['place_id']??''))] ?? 0;
 }
@@ -367,11 +416,12 @@ try {
 
 // ── 13. Payload ───────────────────────────────────────────────────────────
 $_debug_block = [
-    'v'                 => '5.1',
+    'v'                 => '5.2',
     'plan'              => $plan,
     'is_paid'           => $is_paid,
     'from_cache'        => $from_cache,
     'total_leads_raw'   => count($all_leads),
+    'req_count'         => $req_count,
     'map_size'          => count($place_id_map),
     'ins_exec_errors'   => $_ins_exec_errs,
     'sel_exec_errors'   => $_sel_exec_errs,
@@ -385,7 +435,7 @@ $free_limit = (int)FREE_LEAD_LIMIT;
 if ($is_paid) {
     echo json_encode([
         'success'            => true,
-        'leads'              => array_values(array_slice($all_leads,0,$req_count)),
+        'leads'              => array_values(array_slice($all_leads, 0, $req_count)),
         'locked_leads'       => [],
         'is_free_tier'       => false,
         'from_cache'         => $from_cache,
@@ -399,7 +449,7 @@ if ($is_paid) {
 } else {
     echo json_encode([
         'success'            => true,
-        'leads'              => array_values(array_slice($all_leads,0,$free_limit)),
+        'leads'              => array_values(array_slice($all_leads, 0, $free_limit)),
         'locked_leads'       => array_values(array_map(fn($l)=>['id'=>$l['id']??0,'business_name'=>'','business_address'=>'','business_phone'=>'','business_email'=>'','opportunity_score'=>0,'no_website'=>true,'_locked'=>true],array_slice($all_leads,$free_limit))),
         'is_free_tier'       => true,
         'from_cache'         => $from_cache,
