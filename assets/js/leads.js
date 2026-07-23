@@ -1,25 +1,23 @@
 /**
- * assets/js/leads.js  v4 (full rebuild)
+ * assets/js/leads.js  v5
  *
- * ARCHITECTURE
- * ============
- * - Seen tracking   : localStorage key v2 (v1 auto-ignored)
- *                     id=0 is NEVER stored or treated as seen
- * - Toggle          : defaults ON (show all, dim previously-seen)
- *                     when OFF, seen leads are hidden
- * - seenBefore      : snapshot taken BEFORE markSeen() so fresh
- *                     leads never carry a Seen badge on first view
- * - syncBars        : single function, called after every search
- *                     AND by fetchBarStatus() background poll
- * - renderLeadCard  : pure function, no side effects
- * - runSearch       : all fetch/render logic, fully self-contained
+ * CHANGES FROM v4
+ * ===============
+ * - Seen mechanic bulletproof:
+ *   · seenBefore snapshot taken BEFORE markSeen — fresh leads never show Seen badge on first view
+ *   · markSeen / wasSeen both guard id=0 and empty strings — stale cache ids can never pollute seen set
+ *   · seen set capped at 2000, trims oldest on overflow
  *
- * DEBUG
- * =====
- * Every search response is logged to console._leadsDebug for easy
- * inspection in DevTools: open Network tab, click the find-leads
- * request and check the _debug field, OR open Console and type
- * console._leadsDebug to see the last response.
+ * - Limit lockout:
+ *   · When server returns limit_reached:true, search button is permanently disabled
+ *     with an upgrade CTA until page reload (matches server-side block)
+ *   · Bar hits 100% red and subtitle says "Limit reached"
+ *
+ * - Error handling:
+ *   · rate_limited and limit_reached both show distinct amber messages
+ *   · Generic catch shows actionable error card
+ *
+ * DEBUG: every search response → console._leadsDebug
  */
 
 /* global document, fetch, URLSearchParams, localStorage, navigator */
@@ -45,10 +43,10 @@ var seenCb       = document.getElementById('includeSeenLeads');
 var togTrack     = document.getElementById('togTrack');
 var csrfToken    = document.body.dataset.csrf || '';
 
-if (!form) return; // not on leads page
+if (!form) return;
 
 // ============================================================
-//  1. PLAN CONFIG (baked by PHP into #leadsPageConfig)
+//  1. PLAN CONFIG
 // ============================================================
 var cfg = document.getElementById('leadsPageConfig');
 var PLAN    = cfg ? (cfg.dataset.plan    || 'free') : 'free';
@@ -62,11 +60,13 @@ var siteLimit  = parseInt((cfg && cfg.dataset.siteLimit)  || '0', 10);
 var quotaUsed  = parseInt((cfg && cfg.dataset.quotaUsed)  || '0', 10);
 var quotaLimit = parseInt((cfg && cfg.dataset.quotaLimit) || '0', 10);
 
+// Track if limit has been hit this session
+var _limitLocked = false;
+
 // ============================================================
-//  2. SEEN-LEADS  (localStorage, keyed v2)
+//  2. SEEN-LEADS (localStorage v2)
 // ============================================================
 var SEEN_KEY = 'utiligo_seen_leads_v2';
-// v1 is never read — old polluted data is automatically ignored
 
 function getSeenIds() {
     try { return new Set(JSON.parse(localStorage.getItem(SEEN_KEY) || '[]')); }
@@ -78,20 +78,20 @@ function markSeen(ids) {
         var s = getSeenIds();
         ids.forEach(function (id) {
             var sid = String(id);
-            // NEVER store 0 or empty — means DB id lookup failed
-            if (sid && sid !== '0') s.add(sid);
+            // NEVER store 0, '0', or empty — id=0 means DB resolution failed
+            if (sid && sid !== '0' && sid !== '') s.add(sid);
         });
         var arr = Array.from(s);
-        // Cap at 2000 entries; trim oldest
         if (arr.length > 2000) arr = arr.slice(arr.length - 2000);
         localStorage.setItem(SEEN_KEY, JSON.stringify(arr));
-    } catch (e) { /* storage full or private mode */ }
+    } catch (e) {}
 }
 
 function wasSeen(id, seenSet) {
     var sid = String(id);
-    // id=0 means DB lookup failed — NEVER treat as seen
-    return sid && sid !== '0' && seenSet.has(sid);
+    // id=0 = DB resolution failed — NEVER treat as seen
+    if (!sid || sid === '0' || sid === '') return false;
+    return seenSet.has(sid);
 }
 
 // ============================================================
@@ -105,7 +105,7 @@ if (slider) {
 }
 
 // ============================================================
-//  4. SEEN TOGGLE  (defaults ON = show all, dim seen)
+//  4. SEEN TOGGLE
 // ============================================================
 if (seenCb)   seenCb.checked = true;
 if (togTrack) togTrack.classList.add('on');
@@ -135,7 +135,6 @@ function syncBars(lc, ll, sc, sl) {
     if (typeof sc === 'number' && sc >= 0) siteCount = sc;
     if (typeof sl === 'number' && sl >= 0) siteLimit = sl;
 
-    // Lead bar
     if (elLeadBar) {
         if (IS_ENT) {
             elLeadBar.style.width = '0%';
@@ -145,16 +144,18 @@ function syncBars(lc, ll, sc, sl) {
             if (elLeadCount) elLeadCount.innerHTML   = leadCount + ' / &infin;';
         } else if (leadLimit > 0) {
             var lp = Math.min(100, Math.round(leadCount / leadLimit * 100));
+            var atLimit = lp >= 100;
             elLeadBar.style.width = lp + '%';
-            elLeadBar.className   = 'q-fill ' + (lp >= 100 ? 'bg-red-400' : lp >= 80 ? 'bg-amber-400' : 'bg-white/40');
-            if (elLeadSub)      elLeadSub.textContent   = leadCount + ' of ' + leadLimit + ' used';
-            if (elLeadNote)     elLeadNote.textContent  = Math.max(0, leadLimit - leadCount) + ' remaining';
-            if (elLeadCount)    elLeadCount.textContent = leadCount + ' / ' + leadLimit;
-            if (elLeadUpgrade)  elLeadUpgrade.classList.toggle('hidden', lp < 80);
+            elLeadBar.className   = 'q-fill ' + (atLimit ? 'bg-red-400' : lp >= 80 ? 'bg-amber-400' : 'bg-white/40');
+            if (elLeadSub)   elLeadSub.textContent   = atLimit ? 'Limit reached' : leadCount + ' of ' + leadLimit + ' used';
+            if (elLeadNote)  elLeadNote.textContent  = atLimit ? 'Upgrade to get more' : Math.max(0, leadLimit - leadCount) + ' remaining';
+            if (elLeadCount) elLeadCount.textContent = leadCount + ' / ' + leadLimit;
+            if (elLeadUpgrade) elLeadUpgrade.classList.toggle('hidden', lp < 80);
+            // Lock search button if limit reached
+            if (atLimit) _lockSearchLimit();
         }
     }
 
-    // Site bar
     if (elSiteBar && siteLimit > 0) {
         var sp = Math.min(100, Math.round(siteCount / siteLimit * 100));
         elSiteBar.style.width = sp + '%';
@@ -162,6 +163,27 @@ function syncBars(lc, ll, sc, sl) {
         if (elSiteSub)   elSiteSub.textContent   = siteCount + ' of ' + siteLimit + ' used';
         if (elSiteNote)  elSiteNote.textContent  = Math.max(0, siteLimit - siteCount) + ' remaining';
         if (elSiteCount) elSiteCount.textContent = siteCount + ' / ' + siteLimit;
+    }
+}
+
+function _lockSearchLimit() {
+    if (_limitLocked) return;
+    _limitLocked = true;
+    if (searchBtn) {
+        searchBtn.disabled = true;
+        searchBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+    if (searchBtnLbl) {
+        searchBtnLbl.innerHTML = '<i class="fa-solid fa-lock mr-1"></i>Limit Reached';
+    }
+    // Show upgrade notice below button
+    var existing = document.getElementById('_limitNotice');
+    if (!existing && searchBtn) {
+        var notice = document.createElement('p');
+        notice.id = '_limitNotice';
+        notice.className = 'text-xs text-amber-400 mt-2 text-center';
+        notice.innerHTML = 'Pro lead limit reached. <a href="/portal/billing.php?upgrade=1&plan=entrepreneur" class="underline font-semibold">Upgrade to Entrepreneur</a> for unlimited.';
+        searchBtn.parentNode.insertBefore(notice, searchBtn.nextSibling);
     }
 }
 
@@ -175,7 +197,6 @@ function fetchBarStatus() {
         .catch(function () {});
 }
 
-// Initial bar render from page-baked values, then live refresh
 if (IS_PAID) {
     syncBars(leadCount, leadLimit, siteCount, siteLimit);
     fetchBarStatus();
@@ -201,12 +222,10 @@ function updateQuotaBar(newUsed) {
 }
 
 // ============================================================
-//  7. SMALL HELPERS
+//  7. HELPERS
 // ============================================================
 function esc(s) {
-    return String(s)
-        .replace(/&/g,'&amp;').replace(/</g,'&lt;')
-        .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 function scoreClass(s) {
     return s >= 80 ? 'bg-white/10 text-white' : s >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400';
@@ -231,6 +250,7 @@ function copyText(text, btn) {
 }
 function setSearchBusy(on) {
     if (!searchBtn || !searchBtnLbl) return;
+    if (_limitLocked) return; // never re-enable if limit is locked
     searchBtn.disabled = on;
     searchBtnLbl.textContent = on ? 'Searching\u2026' : 'Find Leads';
     searchBtn.classList.toggle('opacity-50', on);
@@ -398,9 +418,9 @@ loadHistory();
 //  11. MAIN SEARCH FUNCTION
 // ============================================================
 function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh) {
+    if (_limitLocked) return; // belt-and-suspenders: block if already locked
     var t0 = Date.now();
 
-    // Reset UI
     loadingEl.classList.remove('hidden');
     resultsWrap.classList.add('hidden');
     leadsList.innerHTML  = '';
@@ -425,52 +445,56 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
     .then(function (r) { return r.json(); })
     .then(function (data) {
         var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-
-        // Expose for DevTools inspection
         try { console._leadsDebug = data; } catch(e) {}
 
         loadingEl.classList.add('hidden');
         resultsWrap.classList.remove('hidden');
         setSearchBusy(false);
 
-        // ── Error response ────────────────────────────────────────────
         if (!data.success) {
+            // Limit reached — lock button permanently
+            if (data.limit_reached) {
+                _lockSearchLimit();
+                if (IS_PAID) syncBars(data.lead_count, data.lead_limit, siteCount, siteLimit);
+            }
             leadsList.innerHTML =
                 '<div class="glass rounded-2xl p-5 text-sm text-center '
-                + (data.rate_limited ? 'text-amber-400' : 'text-red-400') + '">'
-                + '<i class="fa-solid fa-'+(data.rate_limited?'clock':'triangle-exclamation')+' mr-2"></i>'
+                + (data.rate_limited || data.limit_reached ? 'text-amber-400' : 'text-red-400') + '">'
+                + '<i class="fa-solid fa-'+(data.rate_limited ? 'clock' : data.limit_reached ? 'lock' : 'triangle-exclamation')+' mr-2"></i>'
                 + esc(data.error || 'Search failed.')
                 + (data.resets_at
                     ? '<span class="block text-xs text-slate-500 mt-1">Resets at <strong>'
                         + new Date(data.resets_at * 1000).toLocaleTimeString('en-CA',{hour:'numeric',minute:'2-digit',hour12:true})
                         + '</strong></span>'
                     : '')
+                + (data.limit_reached
+                    ? '<div class="mt-3"><a href="/portal/billing.php?upgrade=1&plan=entrepreneur" class="inline-flex items-center gap-2 bg-white text-black px-4 py-2 rounded-xl text-xs font-bold hover:bg-slate-200 transition"><i class="fa-solid fa-rocket"></i> Upgrade to Entrepreneur</a></div>'
+                    : '')
                 + '</div>';
             lockedWrap.classList.add('hidden');
             return;
         }
 
-        // ── Update bars ─────────────────────────────────────────────
+        // Update bars
         if (IS_PAID) {
             var newLC = typeof data.pro_lead_count === 'number' ? data.pro_lead_count : leadCount;
             var newLL = typeof data.lead_limit     === 'number' ? data.lead_limit     : leadLimit;
             syncBars(newLC, newLL, siteCount, siteLimit);
-            // Background refresh to confirm
             setTimeout(fetchBarStatus, 800);
         }
         if (!IS_PAID && typeof data.searches_used === 'number') {
             updateQuotaBar(data.searches_used);
         }
 
-        // ── SEEN SNAPSHOT (MUST happen before markSeen) ───────────────
-        // seenBefore reflects what was already seen BEFORE this search.
-        // Leads returned NOW will NOT have the Seen badge on this first view.
+        // ── SEEN SNAPSHOT — MUST happen before markSeen ──────────────
+        // seenBefore = ids that were already seen BEFORE this search.
+        // This guarantees fresh leads from THIS search never show the Seen badge.
         var seenBefore = getSeenIds();
         if (data.leads && data.leads.length) {
             markSeen(data.leads.map(function (l) { return l.id; }));
         }
 
-        // ── Results header ───────────────────────────────────────────
+        // Results header
         var n        = (data.leads && data.leads.length) || 0;
         var seenCnt  = (data.leads || []).filter(function (l) { return wasSeen(l.id, seenBefore); }).length;
         var hdr      = document.createElement('div');
@@ -500,15 +524,12 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
             statusChip.textContent = n + ' results \u00b7 ' + elapsed + 's';
         }
 
-        // ── Render leads ───────────────────────────────────────────────
         if (!data.leads || !data.leads.length) {
             var em = document.createElement('p');
             em.className   = 'text-slate-500 text-center py-10 text-sm';
             em.textContent = 'No leads found. Try a different city or industry.';
             leadsList.appendChild(em);
         } else {
-            // When toggle=ON  → show all (seen ones are dimmed)
-            // When toggle=OFF → hide seen leads
             var toShow = data.leads;
             if (!includeSeen) {
                 toShow = data.leads.filter(function (l) { return !wasSeen(l.id, seenBefore); });
@@ -524,7 +545,6 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
             });
         }
 
-        // ── Locked rows (free tier) ──────────────────────────────────
         if (data.is_free_tier && data.locked_leads && data.locked_leads.length) {
             data.locked_leads.forEach(function (_, i) { lockedList.appendChild(renderLockedCard(i)); });
             lockedWrap.classList.remove('hidden');
@@ -553,6 +573,7 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
 // ============================================================
 form.addEventListener('submit', function (e) {
     e.preventDefault();
+    if (_limitLocked) return;
     var city     = (form.querySelector('[name="city"]')     || {}).value || '';
     var industry = (form.querySelector('[name="industry"]') || {}).value || '';
     var keywords = (form.querySelector('[name="keywords"]') || {}).value || '';
@@ -560,13 +581,13 @@ form.addEventListener('submit', function (e) {
     industry = industry.trim();
     keywords = keywords.trim();
     if (!city || !industry) return;
-    var cnt    = sliderHid ? parseInt(sliderHid.value, 10) || 10 : 10;
+    var cnt     = sliderHid ? parseInt(sliderHid.value, 10) || 10 : 10;
     var incSeen = seenCb ? seenCb.checked : true;
     runSearch(city, industry, keywords, cnt, incSeen, false);
 });
 
 // ============================================================
-//  13. AUTO-RUN FROM URL PARAMS  (?autorun=1&city=...)
+//  13. AUTO-RUN FROM URL PARAMS
 // ============================================================
 (function () {
     var p = new URLSearchParams(window.location.search);

@@ -1,25 +1,20 @@
 <?php
 /**
- * api/find-leads.php  v4.2
+ * api/find-leads.php  v5
  *
- * ROOT-CAUSE FIX
- * ==============
- * The utiligo_leads table exists on the live DB but was created by old code
- * that lacked business_category and business_city columns.
- * The ALTER TABLE … ADD COLUMN … AFTER syntax was silently failing on
- * InfinityFree MySQL, so every INSERT IGNORE threw:
- *   SQLSTATE[42S22]: Column not found: 1054 Unknown column 'business_category'
- * → map_size stayed 0, nothing ever unlocked.
- *
- * FIX
- * ===
- * 1. After CREATE TABLE IF NOT EXISTS, run DESCRIBE utiligo_leads and build
- *    a set of columns that actually exist on the live table.
- * 2. Run ADD COLUMN (without AFTER) for any missing column — wrapped in its
- *    own try/catch so an already-existing column error is silently swallowed.
- * 3. Re-run DESCRIBE to refresh the column set.
- * 4. Build the INSERT IGNORE dynamically using only confirmed-existing columns.
- * 5. SELECT id still uses place_id which is always present.
+ * CHANGES FROM v4.2
+ * =================
+ * 1. Pro lead-limit enforcement: search is blocked server-side when
+ *    pro user has hit PRO_LEAD_LIMIT (entrepreneur = unlimited, always passes).
+ * 2. Cache-strip fix: id field is stripped before writing to lead_cache so
+ *    cached results never carry stale id=0. IDs are always re-resolved from
+ *    the DB after cache reads too.
+ * 3. Seen mechanic bulletproof: PHP stamps each lead with its real DB id
+ *    AFTER the SELECT step, guaranteeing id>0 for every successfully stored
+ *    lead. JS already ignores id=0 in seen tracking.
+ * 4. Free quota tied purely to uid (not IP) for logged-in users — prevents
+ *    free reset on IP change.
+ * 5. _debug block retained but trimmed in production (no existing_cols etc).
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -40,6 +35,7 @@ if (!is_logged_in()) {
 $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
+$is_ent  = $plan === 'entrepreneur';
 $uid     = (int)$user['id'];
 
 // ── 2. Rate limit ─────────────────────────────────────────────────────────
@@ -81,8 +77,6 @@ try {
 
 // ── 5. Table bootstrap ────────────────────────────────────────────────────
 $_tbl_errors = [];
-
-// 5a. CREATE TABLE IF NOT EXISTS for all tables
 foreach ([
     'utiligo_leads' => "
         CREATE TABLE IF NOT EXISTS `utiligo_leads` (
@@ -101,7 +95,6 @@ foreach ([
             PRIMARY KEY (`id`),
             UNIQUE KEY `uq_place_id` (`place_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
-
     'lead_cache' => "
         CREATE TABLE IF NOT EXISTS `lead_cache` (
             `id`         INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -111,7 +104,6 @@ foreach ([
             PRIMARY KEY (`id`),
             UNIQUE KEY `uq_cache_key` (`cache_key`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
-
     'unlocked_leads' => "
         CREATE TABLE IF NOT EXISTS `unlocked_leads` (
             `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -122,7 +114,6 @@ foreach ([
             UNIQUE KEY `uq_user_lead` (`user_id`,`lead_id`),
             KEY `idx_user_id` (`user_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4",
-
     'utiligo_lead_search_history' => "
         CREATE TABLE IF NOT EXISTS `utiligo_lead_search_history` (
             `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -144,7 +135,7 @@ foreach ([
     }
 }
 
-// 5b. Detect which columns actually exist in utiligo_leads right now
+// Detect + add any missing columns (v4.2 migration safety, kept forever)
 function get_columns(PDO $pdo, string $table): array {
     try {
         $r = $pdo->query("DESCRIBE `{$table}`");
@@ -152,8 +143,6 @@ function get_columns(PDO $pdo, string $table): array {
     } catch (\Throwable $e) { return []; }
 }
 $_existing_cols = get_columns($pdo, 'utiligo_leads');
-
-// 5c. ADD any missing columns (no AFTER — works on all MySQL versions)
 $_required_cols = [
     'business_email'    => "ALTER TABLE `utiligo_leads` ADD COLUMN `business_email`    VARCHAR(255) NOT NULL DEFAULT ''",
     'business_city'     => "ALTER TABLE `utiligo_leads` ADD COLUMN `business_city`     VARCHAR(100) NOT NULL DEFAULT ''",
@@ -169,22 +158,41 @@ foreach ($_required_cols as $_col => $_ddl) {
     if (!in_array($_col, $_existing_cols, true)) {
         try { $pdo->exec($_ddl); }
         catch (\Throwable $e) {
-            // 1060 = column already exists — safe to ignore
-            if (strpos($e->getMessage(), '1060') === false) {
+            if (strpos($e->getMessage(), '1060') === false)
                 $_alter_errors[$_col] = substr($e->getMessage(), 0, 200);
-            }
         }
     }
 }
-
-// 5d. Refresh column list after ALTERs
 $_existing_cols = get_columns($pdo, 'utiligo_leads');
 
-// ── 6. Free quota ─────────────────────────────────────────────────────────
+// ── 6. Pro lead-limit check (NEW v5) ─────────────────────────────────────
+// Block the search early if a pro user has already hit their cap.
+// Entrepreneur plan is unlimited (lead_limit = 0 means no cap).
+$pro_lead_limit = $is_ent ? 0 : (int)PRO_LEAD_LIMIT;
+if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
+    try {
+        $lc_check = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id=?');
+        $lc_check->execute([$uid]);
+        $current_lead_count = (int)$lc_check->fetchColumn();
+        if ($current_lead_count >= $pro_lead_limit) {
+            echo json_encode([
+                'success'     => false,
+                'error'       => 'You have reached your ' . $pro_lead_limit . ' lead limit on the Pro plan. Upgrade to Entrepreneur for unlimited leads.',
+                'limit_reached' => true,
+                'lead_count'  => $current_lead_count,
+                'lead_limit'  => $pro_lead_limit,
+            ]);
+            exit;
+        }
+    } catch (\Throwable $e) { log_error('find_leads_limit_check', $e); }
+}
+
+// ── 7. Free quota (uid-only, no IP) ──────────────────────────────────────
 $searches_used = 0; $searches_remaining = null;
 if (!$is_paid) {
     $daily_limit = (int)FREE_SEARCH_DAILY_LIMIT;
-    $fingerprint = 'u'.$uid.'_'.substr(hash('sha256', $_SERVER['REMOTE_ADDR'] ?? ''), 0, 16);
+    // v5: key on uid only — IP changes must not grant free reset
+    $fingerprint = 'uid_' . $uid;
     try {
         $pdo->exec('CREATE TABLE IF NOT EXISTS `lead_search_quota` (
             `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,`fingerprint` VARCHAR(80) NOT NULL,
@@ -214,7 +222,7 @@ if (!$is_paid) {
     } catch (\Throwable $e) { log_error('find_leads_quota',$e,['uid'=>$uid]); }
 }
 
-// ── 7. Cache ──────────────────────────────────────────────────────────────
+// ── 8. Cache ──────────────────────────────────────────────────────────────
 $cache_key  = strtolower(preg_replace('/\s+/',' ',$city.'|'.$industry));
 $cache_hrs  = (int)LEAD_SEARCH_CACHE_HOURS;
 $from_cache = false; $cached_at = date('Y-m-d H:i:s'); $all_leads = [];
@@ -225,12 +233,17 @@ if (!$force) {
         $crow = $cs->fetch(PDO::FETCH_ASSOC);
         if ($crow) {
             $dec = json_decode($crow['leads_json'],true);
-            if (is_array($dec) && count($dec)>0) { $all_leads=$dec; $cached_at=$crow['created_at']; $from_cache=true; }
+            if (is_array($dec) && count($dec)>0) {
+                // Strip any stale ids — will be re-resolved from DB below
+                foreach ($dec as &$_cl) { unset($_cl['id']); }
+                unset($_cl);
+                $all_leads=$dec; $cached_at=$crow['created_at']; $from_cache=true;
+            }
         }
     } catch (\Throwable $e) { log_error('find_leads_cache_read',$e); }
 }
 
-// ── 8. Google Places ──────────────────────────────────────────────────────
+// ── 9. Google Places ──────────────────────────────────────────────────────
 if (!$from_cache) {
     $api_key = defined('GOOGLE_PLACES_API_KEY') ? GOOGLE_PLACES_API_KEY : '';
     if (empty($api_key)||$api_key==='YOUR_GOOGLE_PLACES_API_KEY') { echo json_encode(['success'=>false,'error'=>'Lead search not configured.']); exit; }
@@ -259,22 +272,19 @@ if (!$from_cache) {
         $all_leads[]=['place_id'=>$pid,'business_name'=>(string)($place['name']??'Unknown'),'business_address'=>(string)($place['formatted_address']??''),'business_city'=>$city,'business_phone'=>$phone,'business_email'=>'','business_category'=>$category,'rating'=>$rating,'total_ratings'=>$reviews,'maps_url'=>$maps_url,'no_website'=>true,'opportunity_score'=>opportunity_score($rating,$reviews,$category)];
     }
     usort($all_leads,fn($a,$b)=>$b['opportunity_score']<=>$a['opportunity_score']);
-    try { $pdo->prepare('INSERT INTO lead_cache (cache_key,leads_json,created_at) VALUES(?,?,NOW()) ON DUPLICATE KEY UPDATE leads_json=VALUES(leads_json),created_at=NOW()')->execute([$cache_key,json_encode($all_leads)]); } catch(\Throwable $e){log_error('cache_write',$e);}
+    // Write to cache WITHOUT id field — ids are resolved fresh every request
+    $cache_payload = array_map(function($l){ $c=$l; unset($c['id']); return $c; }, $all_leads);
+    try { $pdo->prepare('INSERT INTO lead_cache (cache_key,leads_json,created_at) VALUES(?,?,NOW()) ON DUPLICATE KEY UPDATE leads_json=VALUES(leads_json),created_at=NOW()')->execute([$cache_key,json_encode($cache_payload)]); } catch(\Throwable $e){log_error('cache_write',$e);}
     $cached_at=date('Y-m-d H:i:s');
 }
 
-// ── 9. INSERT IGNORE + SELECT id (dynamic columns) ───────────────────────
-//
-// We only INSERT columns that DESCRIBE confirmed exist on the live table.
-// This survives old tables missing business_category / business_city etc.
-//
+// ── 10. INSERT IGNORE + SELECT id (dynamic columns) ──────────────────────
 $place_id_map   = [];
 $_ins_prep_err  = null;
 $_sel_prep_err  = null;
 $_ins_exec_errs = [];
 $_sel_exec_errs = [];
 
-// Map: column_name => value-getter closure
 $_col_getters = [
     'place_id'          => fn($l) => trim((string)($l['place_id']??'')),
     'business_name'     => fn($l) => (string)($l['business_name']??''),
@@ -288,65 +298,54 @@ $_col_getters = [
     'maps_url'          => fn($l) => (string)($l['maps_url']??''),
     'opportunity_score' => fn($l) => (int)($l['opportunity_score']??0),
 ];
-
-// Keep only columns that exist AND that we have a getter for (place_id always required)
-$_use_cols = array_filter(
+$_use_cols = array_values(array_filter(
     array_keys($_col_getters),
     fn($c) => in_array($c, $_existing_cols, true)
-);
-$_use_cols = array_values($_use_cols);
+));
 
 $_ins = null;
-if (count($_use_cols) >= 2) { // need at least place_id + one data col
-    $_col_list   = implode(',', array_map(fn($c)=>"`{$c}`", $_use_cols));
+if (count($_use_cols) >= 2) {
+    $_col_list     = implode(',', array_map(fn($c)=>"`{$c}`", $_use_cols));
     $_placeholders = implode(',', array_fill(0, count($_use_cols), '?'));
-    $_ins_sql    = "INSERT IGNORE INTO `utiligo_leads` ({$_col_list}) VALUES ({$_placeholders})";
+    $_ins_sql      = "INSERT IGNORE INTO `utiligo_leads` ({$_col_list}) VALUES ({$_placeholders})";
     try { $_ins = $pdo->prepare($_ins_sql); }
     catch (\Throwable $e) { log_error('ins_prepare',$e); $_ins_prep_err=substr($e->getMessage(),0,250); }
 }
-
 $_sel = null;
-$_sel_sql = 'SELECT id FROM `utiligo_leads` WHERE place_id=? LIMIT 1';
-try { $_sel = $pdo->prepare($_sel_sql); }
+try { $_sel = $pdo->prepare('SELECT id FROM `utiligo_leads` WHERE place_id=? LIMIT 1'); }
 catch (\Throwable $e) { log_error('sel_prepare',$e); $_sel_prep_err=substr($e->getMessage(),0,250); }
 
 foreach ($all_leads as $lead) {
     $pid = trim((string)($lead['place_id']??''));
     if ($pid==='') continue;
-
     if ($_ins) {
-        try {
-            $vals = array_map(fn($c)=>$_col_getters[$c]($lead), $_use_cols);
-            $_ins->execute($vals);
-        } catch (\Throwable $e) {
+        try { $_ins->execute(array_map(fn($c)=>$_col_getters[$c]($lead), $_use_cols)); }
+        catch (\Throwable $e) {
             log_error('ins_exec',$e,['pid'=>$pid]);
             if (count($_ins_exec_errs)<5) $_ins_exec_errs[]=substr($e->getMessage(),0,200);
         }
     }
-
     if ($_sel) {
         try {
             $_sel->execute([$pid]);
-            $db_id = $_sel->fetchColumn();
-            if ($db_id!==false && (int)$db_id>0) $place_id_map[$pid]=(int)$db_id;
+            $db_id=$_sel->fetchColumn();
+            if ($db_id!==false&&(int)$db_id>0) $place_id_map[$pid]=(int)$db_id;
         } catch (\Throwable $e) {
             log_error('sel_exec',$e,['pid'=>$pid]);
             if (count($_sel_exec_errs)<5) $_sel_exec_errs[]=substr($e->getMessage(),0,200);
         }
     }
 }
-
+// Stamp each lead with its real DB id (0 = failed to resolve)
 foreach ($all_leads as &$_l) {
-    $pid = trim((string)($_l['place_id']??''));
-    $_l['id'] = $place_id_map[$pid] ?? 0;
+    $_l['id'] = $place_id_map[trim((string)($_l['place_id']??''))] ?? 0;
 }
 unset($_l);
 
-// ── 10. Unlock + count ────────────────────────────────────────────────────
-$pro_lead_count   = 0;
-$pro_lead_limit   = ($plan==='entrepreneur') ? 0 : (int)PRO_LEAD_LIMIT;
+// ── 11. Unlock + count ────────────────────────────────────────────────────
+$pro_lead_count    = 0;
 $_unlock_attempted = 0;
-$_unlock_errors   = [];
+$_unlock_errors    = [];
 
 if ($is_paid) {
     if (!empty($place_id_map)) {
@@ -368,31 +367,23 @@ if ($is_paid) {
     } catch (\Throwable $e){ log_error('count',$e,['uid'=>$uid]); $_unlock_errors[]='count:'.substr($e->getMessage(),0,80); }
 }
 
-// ── 11. History ───────────────────────────────────────────────────────────
+// ── 12. History ───────────────────────────────────────────────────────────
 try {
     $pdo->prepare('INSERT INTO utiligo_lead_search_history (user_id,city,industry,keywords,result_count,created_at) VALUES(?,?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE result_count=VALUES(result_count),created_at=NOW()')
         ->execute([$uid,$city,$industry,$keywords,count($all_leads)]);
 } catch(\Throwable $e){}
 
-// ── 12. Payload ───────────────────────────────────────────────────────────
-$_sample_pids = array_slice(array_column($all_leads,'place_id'),0,3);
-
+// ── 13. Payload ───────────────────────────────────────────────────────────
 $_debug_block = [
+    'v'                 => 5,
     'plan'              => $plan,
     'is_paid'           => $is_paid,
-    'uid'               => $uid,
     'from_cache'        => $from_cache,
     'total_leads_raw'   => count($all_leads),
-    'sample_place_ids'  => $_sample_pids,
-    'existing_cols'     => $_existing_cols,   // columns actually on the live table
-    'use_cols'          => $_use_cols,         // columns used in INSERT
-    'alter_errors'      => $_alter_errors,     // any ADD COLUMN failures
-    'table_errors'      => $_tbl_errors,
-    'ins_prepare_error' => $_ins_prep_err,
-    'sel_prepare_error' => $_sel_prep_err,
+    'map_size'          => count($place_id_map),
     'ins_exec_errors'   => $_ins_exec_errs,
     'sel_exec_errors'   => $_sel_exec_errs,
-    'map_size'          => count($place_id_map),
+    'alter_errors'      => $_alter_errors,
     'unlock_attempted'  => $_unlock_attempted,
     'unlock_errors'     => $_unlock_errors,
     'pro_lead_count'    => $pro_lead_count,
