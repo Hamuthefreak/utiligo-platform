@@ -61,6 +61,18 @@ $is_active    = ($user['subscription_status'] ?? '') === 'active';
 $is_cancelled = ($user['subscription_status'] ?? '') === 'cancelled';
 $pcfg         = get_plan_config($plan);
 
+// ---- Plan limit variables (all from plan_limits.php via config.php) ----
+$_pro_leads     = (int) PRO_LEAD_LIMIT;
+$_pro_sites     = (int) PRO_SITE_LIMIT;
+$_ent_sites     = (int) ENT_SITE_LIMIT;
+$_free_leads    = (int) FREE_LEAD_LIMIT;
+$_free_sites    = (int) FREE_SITE_LIMIT;
+$_free_searches = (int) FREE_SEARCH_DAILY_LIMIT;
+$_pro_price     = (float) PRO_PLAN_PRICE;
+$_ent_price     = (float) ENTREPRENEUR_PLAN_PRICE;
+$_pro_price_fmt = number_format($_pro_price, 2);
+$_ent_price_fmt = number_format($_ent_price, 2);
+
 $pageTitle = 'Billing — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
@@ -97,11 +109,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           ?>
         </p>
         <p class="text-slate-400 text-sm"><?php
-          if ($is_ent  && $is_active)    echo '$49.99 / month &mdash; Active';
+          if ($is_ent  && $is_active)        echo '$'.$_ent_price_fmt.' / month &mdash; Active';
           elseif ($is_ent  && $is_cancelled) echo 'Cancelled &mdash; Active until end of period';
-          elseif ($is_pro  && $is_active)    echo '$21.99 / month &mdash; Active';
+          elseif ($is_pro  && $is_active)    echo '$'.$_pro_price_fmt.' / month &mdash; Active';
           elseif ($is_pro  && $is_cancelled) echo 'Cancelled &mdash; Active until end of period';
-          else echo 'Limited to 3 leads &bull; 1 site/day &bull; 2 templates';
+          else echo 'Limited to '.$_free_leads.' leads &bull; '.$_free_sites.' site/day &bull; 2 templates';
         ?></p>
       </div>
     </div>
@@ -149,7 +161,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <div class="glass rounded-2xl p-5 border border-white/10 mb-6 flex items-center justify-between flex-wrap gap-4">
   <div>
     <p class="font-bold text-sm text-white"><i class="fa-solid fa-rocket mr-2"></i>Upgrade to Entrepreneur</p>
-    <p class="text-xs text-slate-400 mt-0.5">Unlimited leads &bull; 500 active sites &bull; Custom domains &bull; Team seats</p>
+    <p class="text-xs text-slate-400 mt-0.5">Unlimited leads &bull; <?= $_ent_sites ?> active sites &bull; Custom domains &bull; Team seats</p>
   </div>
   <a href="?plan=entrepreneur&upgrade=1" class="text-xs bg-white hover:bg-slate-200 text-black px-5 py-2 rounded-xl font-bold transition whitespace-nowrap">Upgrade &rarr;</a>
 </div>
@@ -163,11 +175,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <div class="flex gap-2 mb-5">
   <a href="?upgrade=1&plan=pro"
      class="px-5 py-2 rounded-full text-sm font-bold transition <?= $showPlan==='pro' ? 'bg-white text-black' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
-    Pro &mdash; $21.99/mo
+    Pro &mdash; $<?= $_pro_price_fmt ?>/mo
   </a>
   <a href="?upgrade=1&plan=entrepreneur"
      class="px-5 py-2 rounded-full text-sm font-bold transition <?= $showPlan==='entrepreneur' ? 'bg-white text-black' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
-    Entrepreneur &mdash; $49.99/mo
+    Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
   </a>
 </div>
 
@@ -181,12 +193,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <i class="fa-solid fa-rocket text-white"></i>
           <span class="text-xs font-bold text-white uppercase tracking-widest">Entrepreneur Plan</span>
         </div>
-        <p class="text-2xl font-black">$49.99 <span class="text-sm text-slate-400 font-normal">/ month</span></p>
+        <p class="text-2xl font-black">$<?= $_ent_price_fmt ?> <span class="text-sm text-slate-400 font-normal">/ month</span></p>
         <p class="text-slate-400 text-sm mt-1">Built for agencies running multiple clients at scale.</p>
       </div>
       <div class="space-y-2 text-sm">
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-infinity text-white w-4"></i>Unlimited leads</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>500 active websites</div>
+        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i><?= $_ent_sites ?> active websites</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>All templates + ZIP export</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Custom domains</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Client reports</div>
@@ -226,7 +238,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <button type="submit"
               class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all shadow-lg">
-        <i class="fa-solid fa-lock mr-2"></i>Subscribe to Entrepreneur &mdash; $49.99/mo
+        <i class="fa-solid fa-lock mr-2"></i>Subscribe to Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
       </button>
       <div class="flex items-center justify-center gap-2 text-xs text-slate-500">
         <i class="fa-solid fa-lock"></i>
@@ -252,12 +264,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <i class="fa-solid fa-crown text-white"></i>
           <span class="text-xs font-bold text-white uppercase tracking-widest">Pro Plan</span>
         </div>
-        <p class="text-2xl font-black">$21.99 <span class="text-sm text-slate-400 font-normal">/ month</span></p>
+        <p class="text-2xl font-black">$<?= $_pro_price_fmt ?> <span class="text-sm text-slate-400 font-normal">/ month</span></p>
         <p class="text-slate-400 text-sm mt-1">Everything you need to run a full client-getting operation.</p>
       </div>
       <div class="space-y-2 text-sm">
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>120 leads unlocked / period</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>200 active websites</div>
+        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i><?= $_pro_leads ?> leads unlocked / period</div>
+        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i><?= $_pro_sites ?> active websites</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Full phone numbers</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>All templates + ZIP export</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Revenue dashboard</div>
@@ -298,7 +310,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <button type="submit"
               class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all shadow-lg">
-        <i class="fa-solid fa-lock mr-2"></i>Subscribe to Pro &mdash; $21.99/mo
+        <i class="fa-solid fa-lock mr-2"></i>Subscribe to Pro &mdash; $<?= $_pro_price_fmt ?>/mo
       </button>
       <div class="flex items-center justify-center gap-2 text-xs text-slate-500">
         <i class="fa-solid fa-lock"></i>

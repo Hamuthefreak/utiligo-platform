@@ -2,6 +2,9 @@
 /**
  * config.php — Central configuration for the Utiligo platform.
  * =====================================================================
+ * PLAN LIMITS: Edit includes/plan_limits.php instead of this file.
+ * That file is the single place for all plan limit numbers.
+ *
  * Secrets (CRON_SECRET, SITE_EDITOR_SECRET) are loaded from environment
  * variables so they are never hardcoded in source control.
  * Set them on your server:
@@ -47,28 +50,11 @@ define('STRIPE_WEBHOOK_SECRET',  getenv('STRIPE_WEBHOOK_SECRET')  ?: 'YOUR_STRIP
 // ---- Payment testing mode ----
 define('TEST_PAYMENT_MODE', (bool)(getenv('TEST_PAYMENT_MODE') ?: true));
 
-// ---- Pricing ----
-define('PRO_PLAN_PRICE',          21.99);
-define('ENTREPRENEUR_PLAN_PRICE', 49.99);
-
 // =====================================================================
-//  PLAN LIMITS
+//  PLAN LIMITS — defined in includes/plan_limits.php
+//  Loaded below. Edit that file, not this one.
 // =====================================================================
-define('FREE_LEAD_LIMIT',           3);
-define('FREE_SEARCH_DAILY_LIMIT',   2);
-define('FREE_SITE_LIMIT',           1);
-define('FREE_GENERATE_DAILY_LIMIT', 1);
-define('FREE_TEMPLATE_LIMIT',       2);
-
-define('PRO_LEAD_LIMIT',            120);
-define('PRO_SITE_LIMIT',            200);
-define('PRO_GENERATE_DAILY_LIMIT',  -1);
-define('PRO_TEMPLATE_LIMIT',        -1);
-
-define('ENT_LEAD_LIMIT',            -1);
-define('ENT_SITE_LIMIT',           500);
-define('ENT_GENERATE_DAILY_LIMIT',  -1);
-define('ENT_TEMPLATE_LIMIT',        -1);
+require_once __DIR__ . '/includes/plan_limits.php';
 
 // ---- Search cache ----
 define('LEAD_SEARCH_CACHE_HOURS', 24);
@@ -88,7 +74,6 @@ define('PASSWORD_RESET_EXPIRY_MINUTES', 60);
 define('APP_BASE_URL', getenv('APP_BASE_URL') ?: 'https://utiligo.ca');
 
 // Secrets loaded from environment — NEVER hardcode these.
-// Set UTILIGO_CRON_SECRET and UTILIGO_EDITOR_SECRET as env vars on your server.
 define('CRON_SECRET',        getenv('UTILIGO_CRON_SECRET')   ?: bin2hex(random_bytes(16)));
 define('SITE_EDITOR_SECRET', getenv('UTILIGO_EDITOR_SECRET') ?: bin2hex(random_bytes(16)));
 
@@ -123,7 +108,7 @@ define('ENABLE_ECOMMERCE',      false);
 define('ENABLE_BLOG',           false);
 define('ENABLE_CUSTOM_DOMAINS', false);
 
-// ---- Defensive fallbacks ----
+// ---- Defensive fallbacks (survive partial deployments) ----
 $_cfg_defaults = [
     'MAX_PLACES_DETAILS_LOOKUPS'  => 20,
     'LEAD_SEARCH_CACHE_HOURS'     => 24,
@@ -144,6 +129,7 @@ $_cfg_defaults = [
     'RATE_LIMIT_SAVE_SITE_PAGE'   => 60,
     'RATE_LIMIT_MANAGE_SITE'      => 30,
     'ENTREPRENEUR_PLAN_PRICE'     => 49.99,
+    'PRO_PLAN_PRICE'              => 21.99,
     'LOGIN_MAX_ATTEMPTS'          => 5,
     'LOGIN_LOCKOUT_MINUTES'       => 15,
     'RESEND_VERIFY_MAX'           => 3,
@@ -168,9 +154,6 @@ if (session_status() === PHP_SESSION_NONE) {
 
 // =====================================================================
 //  AUTO MIGRATION RUNNER
-//  Applies any pending *.sql files from /migrations automatically.
-//  Safe on every request — only does real work when new files exist.
-//  To add a DB change: create migrations/007_description.sql and deploy.
 // =====================================================================
 require_once __DIR__ . '/includes/run_migrations.php';
 require_once __DIR__ . '/includes/bootstrap_migrations.php';
