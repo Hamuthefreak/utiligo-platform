@@ -10,7 +10,7 @@ $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 
-// ── Plan limits (from config.php constants) ───────────────────────────────────
+// ── Plan limits (from config.php constants) ──────────────────────────────────
 $FREE_LEAD_LIMIT   = (int)(defined('FREE_LEAD_LIMIT')           ? FREE_LEAD_LIMIT           : 3);
 $FREE_SEARCH_LIMIT = (int)(defined('FREE_SEARCH_DAILY_LIMIT')   ? FREE_SEARCH_DAILY_LIMIT   : 2);
 $FREE_GEN_LIMIT    = (int)(defined('FREE_GENERATE_DAILY_LIMIT') ? FREE_GENERATE_DAILY_LIMIT : 1);
@@ -18,7 +18,7 @@ $FREE_TMPL_LIMIT   = (int)(defined('FREE_TEMPLATE_LIMIT')       ? FREE_TEMPLATE_
 $PRO_LEAD_LIMIT    = (int)(defined('PRO_LEAD_LIMIT')            ? PRO_LEAD_LIMIT            : 120);
 $PRO_SITE_LIMIT    = (int)(defined('PRO_SITE_LIMIT')            ? PRO_SITE_LIMIT            : 200);
 $ENT_SITE_LIMIT    = (int)(defined('ENT_SITE_LIMIT')            ? ENT_SITE_LIMIT            : 500);
-// ENT_LEAD_LIMIT = -1 means unlimited; we pass 0 to JS as the "unlimited" signal
+
 $lead_limit_js = match($plan) {
     'entrepreneur' => 0,
     'pro'          => $PRO_LEAD_LIMIT,
@@ -30,7 +30,7 @@ $site_limit_js = match($plan) {
     default        => 0,
 };
 
-// ── Free quota ────────────────────────────────────────────────────────────────
+// ── Free quota ───────────────────────────────────────────────────────────────
 $quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
@@ -47,7 +47,7 @@ if (!$is_paid) {
 $quota_remaining = max(0, $FREE_SEARCH_LIMIT - $quota_used);
 $quota_pct       = $FREE_SEARCH_LIMIT > 0 ? min(100, round(($quota_used/$FREE_SEARCH_LIMIT)*100)) : 0;
 
-// ── Initial bar values for paid plans (PHP-baked, JS will refresh live) ───────
+// ── Initial bar values for paid plans (PHP-baked, JS refreshes live) ─────────
 $pro_lead_count    = 0;
 $active_site_count = 0;
 if ($is_paid) {
@@ -66,7 +66,7 @@ if ($is_paid) {
 }
 
 // ── Bar percentages (initial render) ─────────────────────────────────────────
-$ll_pct = ($plan === 'pro' && $PRO_LEAD_LIMIT > 0)
+$ll_pct     = ($plan === 'pro' && $PRO_LEAD_LIMIT > 0)
     ? min(100, (int)round($pro_lead_count / $PRO_LEAD_LIMIT * 100)) : 0;
 $sl_pct_pro = ($PRO_SITE_LIMIT > 0)
     ? min(100, (int)round($active_site_count / $PRO_SITE_LIMIT * 100)) : 0;
@@ -162,7 +162,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </aside>
 <script>document.addEventListener('DOMContentLoaded',function(){var r=document.getElementById('leadsRail');if(r)document.body.appendChild(r);});</script>
 
-<!-- History drawer overlay + drawer -->
+<!-- History drawer -->
 <div id="historyDrawerOverlay" onclick="closeHistoryDrawer()"></div>
 <div id="historyDrawer">
   <div class="flex justify-center pt-3 pb-1 shrink-0"><div class="w-8 h-1 rounded-full bg-white/10"></div></div>
@@ -204,9 +204,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </button>
 
 
-<!-- ═══════════════════════════════════════════════════
-     PAGE HEADER
-══════════════════════════════════════════════════════ -->
+<!-- PAGE HEADER -->
 <div class="mb-7">
   <div class="flex items-center justify-between flex-wrap gap-3">
     <div>
@@ -222,9 +220,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 
-<!-- ═══════════════════════════════════════════════════
-     FREE PLAN STATS
-══════════════════════════════════════════════════════ -->
+<!-- FREE PLAN STATS -->
 <?php if (!$is_paid): ?>
 <div class="space-y-3 mb-7">
   <div class="glass rounded-2xl p-5">
@@ -278,13 +274,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php else: ?>
-<!-- ═══════════════════════════════════════════════════
-     PAID PLAN STAT BARS  (pro + entrepreneur)
-     JS refreshes all four text/bar elements live via /api/bar-status.php
-══════════════════════════════════════════════════════ -->
+<!-- PAID PLAN STAT BARS -->
 <div class="grid sm:grid-cols-2 gap-3 mb-7">
 
-  <!-- ── LEAD UNLOCKS BAR ─────────────────────────────────────────────── -->
+  <!-- Lead Unlocks -->
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center justify-between mb-3 flex-wrap gap-2">
       <div class="flex items-center gap-2.5">
@@ -314,8 +307,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <div class="q-track">
       <div id="leadBar"
            class="q-fill <?=$ll_pct>=100?'bg-red-400':($ll_pct>=80?'bg-amber-400':'bg-white/40')?>"
-           style="width:<?=$ll_pct?>%">
-      </div>
+           style="width:<?=$ll_pct?>%"></div>
     </div>
     <div class="flex justify-between text-[11px] text-slate-600 mt-2">
       <span id="leadBarNote">
@@ -335,7 +327,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
 
-  <!-- ── ACTIVE SITES BAR ─────────────────────────────────────────────── -->
+  <!-- Active Sites -->
   <div class="glass rounded-2xl p-5">
     <div class="flex items-center gap-2.5 mb-3">
       <div class="w-8 h-8 rounded-xl bg-white/5 flex items-center justify-center shrink-0">
@@ -367,9 +359,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         ?>
       </span>
       <span id="siteBarCount">
-        <?php
-          echo $active_site_count.' / '.(($plan==='entrepreneur') ? $ENT_SITE_LIMIT : $PRO_SITE_LIMIT);
-        ?>
+        <?=  $active_site_count.' / '.(($plan==='entrepreneur') ? $ENT_SITE_LIMIT : $PRO_SITE_LIMIT) ?>
       </span>
     </div>
   </div>
@@ -378,9 +368,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 
-<!-- ═══════════════════════════════════════════════════
-     SEARCH CARD
-══════════════════════════════════════════════════════ -->
+<!-- SEARCH CARD -->
 <div class="glass rounded-2xl mb-6" id="searchBox">
   <div class="flex items-center justify-between px-5 pt-4 pb-3 border-b border-white/5">
     <div class="flex items-center gap-2">
@@ -482,11 +470,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 
-<!--
-  leadsPageConfig: PHP bakes initial values here.
-  JS reads these on DOMContentLoaded for instant first render,
-  then immediately fetches /api/bar-status.php for the live DB values.
--->
+<!-- PHP-baked config for JS -->
 <script id="leadsPageConfig"
   data-plan="<?=htmlspecialchars($plan,ENT_QUOTES)?>"
   data-lead-count="<?=$pro_lead_count?>"
@@ -496,7 +480,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-quota-used="<?=$quota_used?>"
   data-quota-limit="<?=$FREE_SEARCH_LIMIT?>"
 ></script>
-<script src="/assets/js/leads.js?v=2000"></script>
+<script src="/assets/js/leads.js?v=2100"></script>
 
 <script>
 function openHistoryDrawer() {
@@ -507,9 +491,9 @@ function openHistoryDrawer() {
       emptyD=document.getElementById('historyDrawerEmpty');
   if(src&&dest){
     dest.innerHTML=src.innerHTML;
-    var has=dest.querySelector('.hist-item')!==null;
+    var has=dest.querySelector('button')!==null;
     if(emptyD) emptyD.style.display=has?'none':'';
-    dest.querySelectorAll('.hist-item').forEach(function(btn){
+    dest.querySelectorAll('button[data-city]').forEach(function(btn){
       btn.addEventListener('click',function(){
         document.getElementById('fieldCity').value=this.dataset.city||'';
         document.getElementById('fieldIndustry').value=this.dataset.industry||'';
