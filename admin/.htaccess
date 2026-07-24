@@ -1,0 +1,7 @@
+# Block all direct access to admin/ from the web.
+# The PHP files do their own auth check, but this adds an extra layer.
+Options -Indexes
+Deny from all
+<Files "*.php">
+  Allow from all
+</Files>
