@@ -3,12 +3,12 @@ RewriteEngine On
 # ---------------------------------------------------------------
 # CUSTOM ERROR PAGES
 # ---------------------------------------------------------------
-ErrorDocument 400 /errors/400.php
-ErrorDocument 401 /errors/401.php
-ErrorDocument 403 /errors/403.php
-ErrorDocument 404 /errors/404.php
-ErrorDocument 500 /errors/500.php
-ErrorDocument 503 /errors/503.php
+ErrorDocument 400 /notfound/400.php
+ErrorDocument 401 /notfound/401.php
+ErrorDocument 403 /notfound/403.php
+ErrorDocument 404 /notfound/404.php
+ErrorDocument 500 /notfound/500.php
+ErrorDocument 503 /notfound/503.php
 
 # ---------------------------------------------------------------
 # ROUTING
@@ -18,28 +18,27 @@ ErrorDocument 503 /errors/503.php
 RewriteRule ^s/([a-zA-Z0-9\-]+)/?$ s.php?slug=$1 [L,QSA]
 
 # ---------------------------------------------------------------
-# CLEAN URLs — strip .php extension (portal, admin & root pages)
-# api/ is intentionally excluded: fetch() calls go directly to
-# /api/find-leads.php etc. and must NOT be 301'd
+# CLEAN URLs — strip .php extension
+# Exclude: api/, notfound/ (error pages must never be 301'd)
 # ---------------------------------------------------------------
 
-# 1. Redirect /page.php -> /page (301), skip api/ and errors/
+# 1. Redirect /page.php -> /page (301)
 RewriteCond %{THE_REQUEST} \s/([^.]+)\.php[\s?] [NC]
 RewriteCond %{REQUEST_URI} !^/api/ [NC]
-RewriteCond %{REQUEST_URI} !^/errors/ [NC]
+RewriteCond %{REQUEST_URI} !^/notfound/ [NC]
 RewriteRule ^ /%1 [R=301,L]
 
-# 2. Admin pages: /admin/page -> admin/page.php (internal rewrite)
+# 2. Admin pages: /admin/page -> admin/page.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^admin/([a-zA-Z0-9_\-]+)/?$ admin/$1.php [L,QSA]
 
-# 3. Portal pages: /portal/page -> portal/page.php (internal rewrite)
+# 3. Portal pages: /portal/page -> portal/page.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^portal/([a-zA-Z0-9_\-]+)/?$ portal/$1.php [L,QSA]
 
-# 4. Root pages: /page -> page.php (internal rewrite)
+# 4. Root pages: /page -> page.php
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^([a-zA-Z0-9_\-]+)/?$ $1.php [L,QSA]
@@ -47,11 +46,11 @@ RewriteRule ^([a-zA-Z0-9_\-]+)/?$ $1.php [L,QSA]
 # ---------------------------------------------------------------
 # BLOCK SENSITIVE PATHS
 # ---------------------------------------------------------------
-RewriteRule ^storage/         - [F,L]
-RewriteRule ^db/              - [F,L]
-RewriteRule ^sql/             - [F,L]
-RewriteRule ^migrations/      - [F,L]
-RewriteRule ^includes/        - [F,L]
+RewriteRule ^storage/    - [F,L]
+RewriteRule ^db/         - [F,L]
+RewriteRule ^sql/        - [F,L]
+RewriteRule ^migrations/ - [F,L]
+RewriteRule ^includes/   - [F,L]
 
 <FilesMatch "^(config|db|userdb)\.php$">
     Require all denied
