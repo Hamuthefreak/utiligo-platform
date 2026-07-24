@@ -1,13 +1,7 @@
-<?php http_response_code(503); ?>
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Maintenance — Utiligo</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-<style><?php include __DIR__ . '/error_styles.css.php'; ?></style>
-</head><body>
-<div class="wrap">
-  <div class="code">503</div>
-  <h1>Back Soon</h1>
-  <p>Utiligo is undergoing maintenance right now. Check back in a few minutes.</p>
-  <a href="/" class="btn">Try Again</a>
-</div>
-</body></html>
+<?php
+http_response_code(503);
+$pageTitle = '503 — Maintenance — Utiligo';
+$_err_code = '503';
+$_err_title = 'Back Soon';
+$_err_desc  = 'Utiligo is undergoing a quick maintenance. Check back in a few minutes.';
+require_once __DIR__ . '/error_page.php';

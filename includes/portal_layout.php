@@ -12,6 +12,7 @@ $_is_paid  = $_is_pro || $_is_ent;
 $_name     = htmlspecialchars(trim($_user['full_name'] ?? 'User'));
 $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
+$_is_admin = !empty($_user['is_admin']);   // ← fixed: was 'admin_flag'
 
 $_logo_path = __DIR__ . '/../assets/images/logo.png';
 $_logo_url  = '/assets/images/logo.png';
@@ -39,6 +40,9 @@ function _nav_active(string $href, string $current): string {
   .nav-link.active i { color:#ffffff; }
   .nav-link i { width:16px; text-align:center; font-size:.85rem; color:#64748b; transition:color .15s; }
   .nav-link:hover i { color:#e2e8f0; }
+  .nav-link.admin-link { color:#a78bfa; }
+  .nav-link.admin-link i { color:#a78bfa; }
+  .nav-link.admin-link:hover { background:rgba(139,92,246,.12); color:#c4b5fd; }
   #sidebar { transition: transform .25s cubic-bezier(.4,0,.2,1); }
   @media (max-width: 1023px) {
     #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); }
@@ -75,11 +79,16 @@ function _nav_active(string $href, string $current): string {
     <a href="/portal/leads.php"    class="nav-link <?= _nav_active('/portal/leads.php',    $_path) ?>"><i class="fa-solid fa-magnifying-glass"></i> Find Leads</a>
     <a href="/portal/generate.php" class="nav-link <?= _nav_active('/portal/generate.php', $_path) ?>"><i class="fa-solid fa-bolt"></i> Generate Site</a>
     <a href="/portal/my_sites.php" class="nav-link <?= _nav_active('/portal/my_sites.php', $_path) ?>"><i class="fa-solid fa-folder-open"></i> My Sites</a>
+
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mt-5 mb-2">Account</p>
     <a href="/portal/billing.php"  class="nav-link <?= _nav_active('/portal/billing.php',  $_path) ?>"><i class="fa-solid fa-credit-card"></i> Billing</a>
     <a href="/portal/settings.php" class="nav-link <?= _nav_active('/portal/settings.php', $_path) ?>"><i class="fa-solid fa-gear"></i> Settings</a>
-    <?php if (($_user['admin_flag'] ?? 0) && (defined('DEBUG_MODE') && DEBUG_MODE)): ?>
-    <a href="/portal/debug.php" class="nav-link <?= _nav_active('/portal/debug.php', $_path) ?>"><i class="fa-solid fa-bug"></i> Debug Panel</a>
+
+    <?php if ($_is_admin): ?>
+    <p class="text-xs font-semibold text-purple-700 uppercase tracking-widest px-3 mt-5 mb-2">Admin</p>
+    <a href="/admin/index.php" class="nav-link admin-link <?= str_starts_with($_path, '/admin/') ? 'active' : '' ?>">
+      <i class="fa-solid fa-shield-halved"></i> Admin Panel
+    </a>
     <?php endif; ?>
 
     <div class="pt-3 mt-3 border-t border-white/5">

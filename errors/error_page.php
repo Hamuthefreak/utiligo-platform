@@ -1,40 +1,42 @@
 <?php
-require_once __DIR__ . '/config.php';
-require_once __DIR__ . '/includes/auth.php';
-require_once __DIR__ . '/includes/functions.php';
-http_response_code(404);
-$pageTitle  = '404 \u2014 Page Not Found \u2014 Utiligo';
-$_err_code  = '404';
-$_err_title = 'This page doesn\u2019t exist';
-$_err_desc  = 'The page you\u2019re looking for may have been moved, deleted, or you might have typed the URL wrong.';
-require_once __DIR__ . '/includes/header.php';
+/**
+ * errors/error_page.php
+ * Shared error page template — uses the same design as 404.php.
+ * Requires: $pageTitle, $_err_code, $_err_title, $_err_desc
+ */
+if (!isset($_err_code))  { $_err_code  = '???'; }
+if (!isset($_err_title)) { $_err_title = 'Unexpected Error'; }
+if (!isset($_err_desc))  { $_err_desc  = 'Something went wrong. Please try again.'; }
+
+// Load header only when we safely can (500 may be called when config is broken)
+$_header_ok = function_exists('is_logged_in');
+if ($_header_ok) {
+    $pageTitle = $pageTitle ?? ($_err_code . ' \u2014 Utiligo');
+    require_once __DIR__ . '/../includes/header.php';
+}
 ?>
+<?php if (!$_header_ok): ?>
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title><?= htmlspecialchars($pageTitle ?? $_err_code) ?></title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+</head><body class="antialiased bg-slate-950 text-white">
+<?php endif; ?>
 
 <section class="min-h-[80vh] flex items-center justify-center px-6 py-20">
   <div class="text-center max-w-lg mx-auto">
 
-    <!-- Glowing 404 -->
+    <!-- Glowing error code -->
     <div class="relative inline-block mb-8 select-none">
       <div class="absolute inset-0 blur-3xl opacity-25 bg-emerald-500 rounded-full scale-150 pointer-events-none"></div>
-      <p class="relative text-[9rem] font-black leading-none tracking-tighter text-transparent bg-clip-text"
-         style="background-image:linear-gradient(135deg,#10b981 0%,#34d399 50%,#6ee7b7 100%);">
-        404
+      <p class="relative font-black leading-none tracking-tighter text-transparent bg-clip-text"
+         style="font-size:clamp(5rem,20vw,9rem);background-image:linear-gradient(135deg,#10b981 0%,#34d399 50%,#6ee7b7 100%);">
+        <?= htmlspecialchars($_err_code) ?>
       </p>
     </div>
 
-    <h1 class="text-2xl font-bold mb-3">This page doesn&rsquo;t exist</h1>
-    <p class="text-slate-400 mb-2 leading-relaxed">
-      The page you&rsquo;re looking for may have been moved, deleted,
-      or you might have typed the URL wrong.
-    </p>
-    <?php
-      $bad = htmlspecialchars(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '');
-      if ($bad && $bad !== '/404.php' && $bad !== '/404'):
-    ?>
-    <p class="text-xs text-slate-600 font-mono mb-8 break-all"><?= $bad ?></p>
-    <?php else: ?>
-    <p class="mb-8"></p>
-    <?php endif; ?>
+    <h1 class="text-2xl font-bold mb-3"><?= htmlspecialchars($_err_title) ?></h1>
+    <p class="text-slate-400 mb-8 leading-relaxed"><?= htmlspecialchars($_err_desc) ?></p>
 
     <div class="flex flex-col sm:flex-row gap-3 justify-center">
       <?php if (function_exists('is_logged_in') && is_logged_in()): ?>
@@ -58,11 +60,11 @@ require_once __DIR__ . '/includes/header.php';
     <div class="mt-10 pt-8 border-t border-white/5">
       <p class="text-xs text-slate-500 uppercase tracking-widest mb-4">Maybe you were looking for</p>
       <div class="flex flex-wrap gap-2 justify-center">
-        <a href="/" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Home</a>
-        <a href="/login.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Login</a>
+        <a href="/"            class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Home</a>
+        <a href="/login.php"   class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Login</a>
         <a href="/register.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Register</a>
         <?php if (function_exists('is_logged_in') && is_logged_in()): ?>
-        <a href="/portal/leads.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Find Leads</a>
+        <a href="/portal/leads.php"    class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Find Leads</a>
         <a href="/portal/generate.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Generate Site</a>
         <a href="/portal/my_sites.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">My Sites</a>
         <a href="/portal/settings.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Settings</a>
@@ -74,4 +76,10 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+<?php
+if ($_header_ok) {
+    require_once __DIR__ . '/../includes/footer.php';
+} else {
+    echo '</body></html>';
+}
+?>
