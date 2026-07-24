@@ -14,16 +14,27 @@ $admin = $GLOBALS['admin_user'];
 $udb = get_user_db();
 $pdb = get_platform_db();
 
-$totalUsers   = (int)$udb->query('SELECT COUNT(*) FROM utiligo_users')->fetchColumn();
-$proUsers     = (int)$udb->query("SELECT COUNT(*) FROM utiligo_users WHERE plan='pro'")->fetchColumn();
-$freeUsers    = $totalUsers - $proUsers;
-$verifiedUsers= (int)$udb->query('SELECT COUNT(*) FROM utiligo_users WHERE email_verified=1')->fetchColumn();
-$newToday     = (int)$udb->query("SELECT COUNT(*) FROM utiligo_users WHERE DATE(created_at)=CURDATE()")->fetchColumn();
-$totalSites   = (int)$pdb->query('SELECT COUNT(*) FROM utiligo_sites')->fetchColumn();
+// Helper: safely run a count query, return 0 on any error
+function safe_count(PDO $pdo, string $sql): int {
+    try { return (int)$pdo->query($sql)->fetchColumn(); }
+    catch (Throwable $e) { return 0; }
+}
 
-$recent = $udb->query(
-    'SELECT id,email,full_name,plan,created_at,is_admin FROM utiligo_users ORDER BY id DESC LIMIT 8'
-)->fetchAll(PDO::FETCH_ASSOC);
+$totalUsers    = safe_count($udb, 'SELECT COUNT(*) FROM utiligo_users');
+$proUsers      = safe_count($udb, "SELECT COUNT(*) FROM utiligo_users WHERE plan='pro'");
+$entUsers      = safe_count($udb, "SELECT COUNT(*) FROM utiligo_users WHERE plan='entrepreneur'");
+$freeUsers     = $totalUsers - $proUsers - $entUsers;
+$verifiedUsers = safe_count($udb, 'SELECT COUNT(*) FROM utiligo_users WHERE email_verified=1');
+$newToday      = safe_count($udb, "SELECT COUNT(*) FROM utiligo_users WHERE DATE(created_at)=CURDATE()");
+$totalSites    = safe_count($pdb, 'SELECT COUNT(*) FROM utiligo_generated_sites');  // fixed table name
+$activeSites   = safe_count($pdb, 'SELECT COUNT(*) FROM utiligo_generated_sites WHERE link_active=1');
+
+$recent = [];
+try {
+    $recent = $udb->query(
+        'SELECT id,email,full_name,plan,created_at,is_admin FROM utiligo_users ORDER BY id DESC LIMIT 8'
+    )->fetchAll(PDO::FETCH_ASSOC);
+} catch (Throwable $e) {}
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -40,6 +51,7 @@ $recent = $udb->query(
   .stat-card{transition:transform .2s,box-shadow .2s;}
   .stat-card:hover{transform:translateY(-3px);box-shadow:0 12px 40px rgba(16,185,129,.12);}
   .badge-pro{background:#10B981;color:#0F172A;font-size:.6rem;padding:2px 8px;border-radius:999px;font-weight:700;}
+  .badge-ent{background:#6366f1;color:#fff;font-size:.6rem;padding:2px 8px;border-radius:999px;font-weight:700;}
   .badge-free{background:#334155;color:#94A3B8;font-size:.6rem;padding:2px 8px;border-radius:999px;font-weight:700;}
   .badge-admin{background:#8B5CF6;color:#fff;font-size:.6rem;padding:2px 8px;border-radius:999px;font-weight:700;}
   .sidebar-link{display:flex;align-items:center;gap:10px;padding:10px 16px;border-radius:10px;font-size:.875rem;color:#94A3B8;transition:background .15s,color .15s;}
@@ -91,15 +103,17 @@ $recent = $udb->query(
     <div class="p-8 space-y-8">
 
       <!-- Stat cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <?php
         $stats = [
-          ['Total Users',    $totalUsers,    'text-white',         '&#128100;'],
-          ['Pro Users',      $proUsers,      'text-emerald-400',   '&#11088;'],
-          ['Free Users',     $freeUsers,     'text-slate-400',     '&#128274;'],
-          ['Verified',       $verifiedUsers, 'text-blue-400',      '&#10003;'],
-          ['New Today',      $newToday,      'text-yellow-400',    '&#128640;'],
-          ['Total Sites',    $totalSites,    'text-purple-400',    '&#127758;'],
+          ['Total Users',   $totalUsers,    'text-white',       '&#128100;'],
+          ['Pro',           $proUsers,      'text-emerald-400', '&#11088;'],
+          ['Entrepreneur',  $entUsers,      'text-indigo-400',  '&#128640;'],
+          ['Free',          $freeUsers,     'text-slate-400',   '&#128274;'],
+          ['Verified',      $verifiedUsers, 'text-blue-400',    '&#9989;'],
+          ['New Today',     $newToday,      'text-yellow-400',  '&#127381;'],
+          ['Total Sites',   $totalSites,    'text-purple-400',  '&#127758;'],
+          ['Active Sites',  $activeSites,   'text-emerald-300', '&#9989;'],
         ];
         foreach ($stats as [$label, $val, $cls, $icon]):
         ?>
@@ -136,15 +150,20 @@ $recent = $udb->query(
               <th class="px-6 py-3 text-left">Joined</th>
             </tr></thead>
             <tbody class="divide-y divide-white/5">
+            <?php if (!$recent): ?>
+            <tr><td colspan="4" class="px-6 py-8 text-center text-slate-500">No users yet.</td></tr>
+            <?php endif; ?>
             <?php foreach ($recent as $u): ?>
-            <tr class="hover:bg-white/2 transition">
+            <tr class="hover:bg-white/[0.02] transition">
               <td class="px-6 py-3 font-medium text-white">
                 <?= htmlspecialchars($u['full_name']) ?>
-                <?php if ($u['is_admin']): ?><span class="badge-admin ml-1">ADMIN</span><?php endif; ?>
+                <?php if (!empty($u['is_admin'])): ?><span class="badge-admin ml-1">ADMIN</span><?php endif; ?>
               </td>
               <td class="px-6 py-3 text-slate-400"><?= htmlspecialchars($u['email']) ?></td>
               <td class="px-6 py-3">
-                <?php if ($u['plan']==='pro'): ?>
+                <?php if ($u['plan']==='entrepreneur'): ?>
+                  <span class="badge-ent">ENT</span>
+                <?php elseif ($u['plan']==='pro'): ?>
                   <span class="badge-pro">PRO</span>
                 <?php else: ?>
                   <span class="badge-free">FREE</span>
