@@ -1,9 +1,14 @@
 RewriteEngine On
 
 # ---------------------------------------------------------------
-# 404 HANDLER
+# CUSTOM ERROR PAGES
 # ---------------------------------------------------------------
-ErrorDocument 404 /404.php
+ErrorDocument 400 /errors/400.php
+ErrorDocument 401 /errors/401.php
+ErrorDocument 403 /errors/403.php
+ErrorDocument 404 /errors/404.php
+ErrorDocument 500 /errors/500.php
+ErrorDocument 503 /errors/503.php
 
 # ---------------------------------------------------------------
 # ROUTING
@@ -13,23 +18,28 @@ ErrorDocument 404 /404.php
 RewriteRule ^s/([a-zA-Z0-9\-]+)/?$ s.php?slug=$1 [L,QSA]
 
 # ---------------------------------------------------------------
-# CLEAN URLs — strip .php extension (portal & root pages only)
+# CLEAN URLs — strip .php extension (portal, admin & root pages)
 # api/ is intentionally excluded: fetch() calls go directly to
-# /api/find-leads.php etc. and must NOT be 301'd to /api/find-leads
+# /api/find-leads.php etc. and must NOT be 301'd
 # ---------------------------------------------------------------
 
-# 1. If someone requests /page.php directly (but NOT under api/),
-#    redirect to /page (301)
+# 1. Redirect /page.php -> /page (301), skip api/ and errors/
 RewriteCond %{THE_REQUEST} \s/([^.]+)\.php[\s?] [NC]
 RewriteCond %{REQUEST_URI} !^/api/ [NC]
+RewriteCond %{REQUEST_URI} !^/errors/ [NC]
 RewriteRule ^ /%1 [R=301,L]
 
-# 2. Portal pages: /portal/page  ->  portal/page.php (internal rewrite)
+# 2. Admin pages: /admin/page -> admin/page.php (internal rewrite)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^admin/([a-zA-Z0-9_\-]+)/?$ admin/$1.php [L,QSA]
+
+# 3. Portal pages: /portal/page -> portal/page.php (internal rewrite)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^portal/([a-zA-Z0-9_\-]+)/?$ portal/$1.php [L,QSA]
 
-# 3. Root pages: /page  ->  page.php (internal rewrite)
+# 4. Root pages: /page -> page.php (internal rewrite)
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteRule ^([a-zA-Z0-9_\-]+)/?$ $1.php [L,QSA]
@@ -37,23 +47,18 @@ RewriteRule ^([a-zA-Z0-9_\-]+)/?$ $1.php [L,QSA]
 # ---------------------------------------------------------------
 # BLOCK SENSITIVE PATHS
 # ---------------------------------------------------------------
-
-# Block direct access to storage, db schemas, migrations
 RewriteRule ^storage/         - [F,L]
 RewriteRule ^db/              - [F,L]
 RewriteRule ^sql/             - [F,L]
 RewriteRule ^migrations/      - [F,L]
+RewriteRule ^includes/        - [F,L]
 
-# Block direct access to config and PHP includes
 <FilesMatch "^(config|db|userdb)\.php$">
     Require all denied
 </FilesMatch>
 <FilesMatch "\.(sql|sh|env|log|bak|zip)$">
     Require all denied
 </FilesMatch>
-
-# Block access to the includes/ directory entirely
-RewriteRule ^includes/        - [F,L]
 
 # ---------------------------------------------------------------
 # SECURITY HEADERS
