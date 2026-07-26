@@ -22,6 +22,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $audience  = $_POST['audience'] ?? 'all';
     $customRaw = trim($_POST['custom_emails'] ?? '');
 
+    // FIX 1: Whitelist audience to only valid DB enum values (plan is enum('free','pro'))
+    $validAudiences = ['all', 'pro', 'free', 'custom'];
+    if (!in_array($audience, $validAudiences)) $audience = 'all';
+
     if (!$subject || !$bodyHtml) {
         $errors[] = 'Subject and body are required.';
     } else {
@@ -31,11 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             $recipients = $udb->query('SELECT email,full_name FROM utiligo_users WHERE email_verified=1')->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($audience === 'pro') {
             $recipients = $udb->query("SELECT email,full_name FROM utiligo_users WHERE plan='pro' AND email_verified=1")->fetchAll(PDO::FETCH_ASSOC);
-        } elseif ($audience === 'entrepreneur') {
-            $recipients = $udb->query("SELECT email,full_name FROM utiligo_users WHERE plan='entrepreneur' AND email_verified=1")->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($audience === 'free') {
             $recipients = $udb->query("SELECT email,full_name FROM utiligo_users WHERE plan='free' AND email_verified=1")->fetchAll(PDO::FETCH_ASSOC);
         } else {
+            // custom list
             foreach (preg_split('/[\r\n,;]+/', $customRaw) as $line) {
                 $e = strtolower(trim($line));
                 if (filter_var($e, FILTER_VALIDATE_EMAIL))
@@ -50,6 +53,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if ($ok) $sent++; else $errors[] = 'Failed: ' . $r['email'];
             if ($sent % 10 === 0 && $sent > 0) usleep(300000);
         }
+
+        // FIX 2: Log the blast to utiligo_marketing_sends
+        try {
+            $db = get_db();
+            $logStmt = $db->prepare(
+                'INSERT INTO utiligo_marketing_sends (sent_by_admin, subject, segment, recipients_count)
+                 VALUES (:admin, :subject, :segment, :count)'
+            );
+            $logStmt->execute([
+                ':admin'   => $admin['email'] ?? 'admin',
+                ':subject' => $subject,
+                ':segment' => $audience,
+                ':count'   => $sent,
+            ]);
+        } catch (\Exception $e) {
+            _admin_log('ERROR', 'Failed to log blast to utiligo_marketing_sends: ' . $e->getMessage());
+        }
+
         _admin_log('INFO', "Blast done: sent={$sent} errors=".count($errors));
         $success = "Sent to {$sent} recipient(s).";
     }
@@ -192,7 +213,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       <div class="flex flex-wrap gap-1.5" id="aud-btns">
         <button type="button" class="aud-pill on" data-v="all">All</button>
         <button type="button" class="aud-pill" data-v="pro">Pro</button>
-        <button type="button" class="aud-pill" data-v="entrepreneur">ENT</button>
         <button type="button" class="aud-pill" data-v="free">Free</button>
         <button type="button" class="aud-pill" data-v="custom">Custom</button>
       </div>
@@ -969,7 +989,7 @@ document.getElementById('aud-btns').addEventListener('click', e => {
   document.querySelectorAll('.aud-pill').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('custom-box').classList.toggle('hidden', btn.dataset.v !== 'custom');
-  const labels = { all:'All verified users', pro:'Pro plan users', entrepreneur:'Entrepreneur users', free:'Free plan users', custom:'Custom list' };
+  const labels = { all:'All verified users', pro:'Pro plan users', free:'Free plan users', custom:'Custom list' };
   document.getElementById('pv-to-label').textContent = labels[btn.dataset.v] || 'All verified users';
 });
 
