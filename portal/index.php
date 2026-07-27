@@ -76,8 +76,9 @@ try {
 } catch (\Throwable $e) {}
 
 // ── Plan limits ───────────────────────────────────────────────────────────
-$site_limit = plan_site_limit($plan);  // 1 free, 200 pro, 500 ent (-1 = unlimited)
-$lead_limit = plan_lead_limit($plan);  // 0 free, 120 pro, -1 ent
+$site_limit  = plan_site_limit($plan);
+$lead_limit  = plan_lead_limit($plan);
+$team_seats  = plan_team_seats($plan);
 
 $hour      = (int)date('G');
 $greeting  = $hour < 12 ? 'Good morning' : ($hour < 18 ? 'Good afternoon' : 'Good evening');
@@ -87,6 +88,21 @@ $pageTitle = 'Dashboard — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
+<style>
+@keyframes ent-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.ent-badge-text {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24, #f97316, #f59e0b);
+  background-size: 200% auto;
+  animation: ent-shimmer 2.5s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+</style>
+
 <!-- Greeting -->
 <div class="mb-8 flex items-center justify-between flex-wrap gap-4">
   <div>
@@ -94,9 +110,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <h1 class="text-3xl font-bold tracking-tight">Your Dashboard</h1>
   </div>
   <?php if ($is_ent): ?>
-  <div class="flex items-center gap-2 bg-white/8 border border-white/15 rounded-full px-4 py-2 text-sm">
-    <i class="fa-solid fa-rocket text-white"></i>
-    <span class="text-white font-semibold">Entrepreneur Plan</span>
+  <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/25 rounded-full px-4 py-2 text-sm">
+    <i class="fa-solid fa-rocket text-amber-400"></i>
+    <span class="ent-badge-text font-bold">Entrepreneur Plan</span>
   </div>
   <?php elseif ($is_pro): ?>
   <div class="flex items-center gap-2 bg-white/8 border border-white/15 rounded-full px-4 py-2 text-sm">
@@ -110,6 +126,62 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </a>
   <?php endif; ?>
 </div>
+
+<?php if ($is_ent): ?>
+<!-- ===== ENTREPRENEUR FEATURE STRIP ===== -->
+<div class="rounded-2xl border border-amber-500/20 mb-8 overflow-hidden" style="background:linear-gradient(135deg,#0d0d14 0%,#15100a 100%)">
+  <div class="px-6 py-4 border-b border-white/5 flex items-center gap-3">
+    <i class="fa-solid fa-rocket text-amber-400"></i>
+    <span class="font-bold text-sm">Your Entrepreneur Features</span>
+    <span class="ml-auto text-xs text-amber-500/70"><?= ENT_TEAM_SEATS ?> team seats &bull; <?= ENT_SITE_LIMIT ?> active sites &bull; Unlimited leads</span>
+  </div>
+  <div class="grid sm:grid-cols-3 divide-y sm:divide-y-0 sm:divide-x divide-white/5">
+
+    <!-- Custom Domains -->
+    <div class="px-6 py-5 flex flex-col gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+        <i class="fa-solid fa-globe text-amber-400"></i>
+      </div>
+      <div>
+        <p class="font-semibold text-sm text-white">Custom Domains</p>
+        <p class="text-xs text-slate-400 mt-0.5">Point your own domain to any generated site. Unlimited domains included.</p>
+      </div>
+      <a href="/portal/my_sites.php" class="mt-auto text-xs text-amber-400 hover:text-amber-300 font-semibold transition">
+        Manage sites <i class="fa-solid fa-arrow-right text-[10px]"></i>
+      </a>
+    </div>
+
+    <!-- Client Reports -->
+    <div class="px-6 py-5 flex flex-col gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+        <i class="fa-solid fa-file-chart-column text-amber-400"></i>
+      </div>
+      <div>
+        <p class="font-semibold text-sm text-white">Client Reports</p>
+        <p class="text-xs text-slate-400 mt-0.5">Generate white-label performance reports to send directly to your clients.</p>
+      </div>
+      <a href="/portal/my_sites.php" class="mt-auto text-xs text-amber-400 hover:text-amber-300 font-semibold transition">
+        View sites <i class="fa-solid fa-arrow-right text-[10px]"></i>
+      </a>
+    </div>
+
+    <!-- Team Seats -->
+    <div class="px-6 py-5 flex flex-col gap-3">
+      <div class="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/20 flex items-center justify-center">
+        <i class="fa-solid fa-users text-amber-400"></i>
+      </div>
+      <div>
+        <p class="font-semibold text-sm text-white">Team Seats</p>
+        <p class="text-xs text-slate-400 mt-0.5">Invite up to <?= ENT_TEAM_SEATS ?> team members to collaborate on your Utiligo account.</p>
+      </div>
+      <a href="/portal/settings.php" class="mt-auto text-xs text-amber-400 hover:text-amber-300 font-semibold transition">
+        Manage team <i class="fa-solid fa-arrow-right text-[10px]"></i>
+      </a>
+    </div>
+
+  </div>
+</div>
+<?php endif; ?>
 
 <!-- Stat cards -->
 <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
@@ -257,7 +329,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   $recentLeads = [];
   try {
       $s = $pdo->prepare('
-          SELECT ul.business_name, ul.business_city, ul.business_category, ul.opportunity_score, ul.unlocked_at
+          SELECT ul.business_name, ul.business_city, ul.business_category, ul.opportunity_score, ul_j.unlocked_at
           FROM unlocked_leads ul_j
           JOIN utiligo_leads ul ON ul.id = ul_j.lead_id
           WHERE ul_j.user_id = ?
@@ -297,3 +369,5 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </ul>
   <?php endif; ?>
 </div>
+
+<?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
