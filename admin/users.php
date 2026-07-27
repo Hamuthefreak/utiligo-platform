@@ -103,7 +103,9 @@ require_once __DIR__ . '/../includes/admin_layout.php';
         <td class="px-5 py-3 text-slate-400"><?= htmlspecialchars($u['email']) ?></td>
         <td class="px-5 py-3">
           <?php if ($u['plan']==='entrepreneur'): ?>
-            <span class="text-[10px] bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 px-2 py-0.5 rounded-full font-semibold">ENT</span>
+            <span class="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">
+              &#x1F680; ENT
+            </span>
           <?php elseif ($u['plan']==='pro'): ?>
             <span class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">PRO</span>
           <?php else: ?>
@@ -123,14 +125,20 @@ require_once __DIR__ . '/../includes/admin_layout.php';
           <form method="POST" class="flex flex-wrap gap-1.5">
             <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
             <input type="hidden" name="user_id" value="<?= $u['id'] ?>">
-            <?php if ($u['plan'] !== 'pro'): ?>
-              <input type="hidden" name="plan" value="pro">
-              <button name="action" value="set_plan"
-                class="bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-lg text-xs transition">Upgrade</button>
-            <?php else: ?>
+            <?php if ($u['plan'] === 'entrepreneur'): ?>
               <input type="hidden" name="plan" value="free">
               <button name="action" value="set_plan"
                 class="bg-white/5 hover:bg-white/10 text-slate-400 border border-white/10 px-2.5 py-1 rounded-lg text-xs transition">Downgrade</button>
+            <?php elseif ($u['plan'] === 'pro'): ?>
+              <input type="hidden" name="plan" value="entrepreneur">
+              <button name="action" value="set_plan"
+                class="bg-amber-500/10 hover:bg-amber-500/25 text-amber-400 border border-amber-500/20 px-2.5 py-1 rounded-lg text-xs transition">
+                <i class="fa-solid fa-rocket text-[10px] mr-1"></i>Upgrade ENT
+              </button>
+            <?php else: ?>
+              <input type="hidden" name="plan" value="pro">
+              <button name="action" value="set_plan"
+                class="bg-emerald-500/10 hover:bg-emerald-500/25 text-emerald-400 border border-emerald-500/20 px-2.5 py-1 rounded-lg text-xs transition">Upgrade</button>
             <?php endif; ?>
             <?php if (($u['subscription_status'] ?? '') === 'banned'): ?>
               <button name="action" value="unban"

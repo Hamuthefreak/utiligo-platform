@@ -38,9 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $userdb->prepare("UPDATE utiligo_users SET plan=?, subscription_status='active' WHERE id=?")
                     ->execute([$subscribePlan, $user['id']]);
             }
-            $listIds = $subscribePlan === 'entrepreneur'
-                ? [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS]
-                : [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS];
+            $listIds = [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS];
             brevo_upsert_contact($user['email'], ['FIRSTNAME' => $user['full_name']], $listIds);
             send_welcome_email($user['email'], $user['full_name']);
             header('Location: /portal/index.php?upgraded=1'); exit;
@@ -61,10 +59,11 @@ $is_active    = ($user['subscription_status'] ?? '') === 'active';
 $is_cancelled = ($user['subscription_status'] ?? '') === 'cancelled';
 $pcfg         = get_plan_config($plan);
 
-// ---- Plan limit variables (all from plan_limits.php via config.php) ----
+// ---- Plan limit variables ----
 $_pro_leads     = (int) PRO_LEAD_LIMIT;
 $_pro_sites     = (int) PRO_SITE_LIMIT;
 $_ent_sites     = (int) ENT_SITE_LIMIT;
+$_ent_seats     = (int) ENT_TEAM_SEATS;
 $_free_leads    = (int) FREE_LEAD_LIMIT;
 $_free_sites    = (int) FREE_SITE_LIMIT;
 $_free_searches = (int) FREE_SEARCH_DAILY_LIMIT;
@@ -77,6 +76,40 @@ $pageTitle = 'Billing — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
+<style>
+/* ---- Entrepreneur gradient badge animation ---- */
+@keyframes ent-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+.ent-badge {
+  background: linear-gradient(90deg, #f59e0b, #fbbf24, #f59e0b);
+  background-size: 200% auto;
+  animation: ent-shimmer 2.5s linear infinite;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+.ent-pill-border {
+  background: linear-gradient(#0f172a, #0f172a) padding-box,
+              linear-gradient(135deg, #f59e0b, #fbbf24, #f97316) border-box;
+  border: 2px solid transparent;
+}
+.ent-glow-btn {
+  background: linear-gradient(135deg, #f59e0b 0%, #f97316 50%, #ef4444 100%);
+  box-shadow: 0 4px 24px rgba(245,158,11,.35);
+  transition: all .2s;
+}
+.ent-glow-btn:hover {
+  box-shadow: 0 6px 32px rgba(245,158,11,.55);
+  transform: translateY(-1px);
+}
+.ent-glow-btn:active { transform: scale(.98); }
+.compare-check  { color: #22c55e; }
+.compare-cross  { color: #475569; }
+.compare-ent    { color: #f59e0b; }
+</style>
+
 <div class="mb-8">
   <h1 class="text-3xl font-bold tracking-tight">Billing</h1>
   <p class="text-slate-400 text-sm mt-1">Manage your Utiligo subscription and plan.</p>
@@ -84,7 +117,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <?php if ($message): ?>
 <div class="flex items-center gap-3 bg-white/5 border border-white/10 text-white rounded-2xl px-5 py-4 mb-6 text-sm">
-  <i class="fa-solid fa-circle-check shrink-0"></i><?= htmlspecialchars($message) ?>
+  <i class="fa-solid fa-circle-check shrink-0 text-green-400"></i><?= htmlspecialchars($message) ?>
 </div>
 <?php endif; ?>
 <?php if ($error): ?>
@@ -93,32 +126,38 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 <?php endif; ?>
 
-<!-- Current plan card -->
+<!-- ===== CURRENT PLAN CARD ===== -->
 <div class="glass rounded-2xl p-6 border border-white/5 mb-6">
   <div class="flex items-center justify-between flex-wrap gap-4">
     <div class="flex items-center gap-4">
-      <div class="w-12 h-12 rounded-2xl <?= $is_paid ? 'bg-white/10' : 'bg-white/5' ?> flex items-center justify-center">
-        <i class="fa-solid fa-<?= $is_ent ? 'rocket' : ($is_pro ? 'crown' : 'user') ?> <?= $is_paid ? 'text-white' : 'text-slate-400' ?> text-lg"></i>
+      <div class="w-12 h-12 rounded-2xl <?= $is_ent ? 'bg-amber-500/15 border border-amber-500/30' : ($is_paid ? 'bg-white/10' : 'bg-white/5') ?> flex items-center justify-center">
+        <i class="fa-solid fa-<?= $is_ent ? 'rocket' : ($is_pro ? 'crown' : 'user') ?> <?= $is_ent ? 'text-amber-400' : ($is_paid ? 'text-white' : 'text-slate-400') ?> text-lg"></i>
       </div>
       <div>
         <p class="font-bold text-lg">
           <?php
-            if ($is_ent)       echo 'Utiligo Entrepreneur';
+            if ($is_ent)       echo '<span class="ent-badge">Utiligo Entrepreneur</span>';
             elseif ($is_pro)   echo 'Utiligo Pro';
             else               echo 'Free Plan';
           ?>
         </p>
         <p class="text-slate-400 text-sm"><?php
-          if ($is_ent  && $is_active)        echo '$'.$_ent_price_fmt.' / month &mdash; Active';
+          if ($is_ent  && $is_active)        echo '$'.$_ent_price_fmt.' / month &mdash; <span class="text-green-400 font-semibold">Active</span>';
           elseif ($is_ent  && $is_cancelled) echo 'Cancelled &mdash; Active until end of period';
-          elseif ($is_pro  && $is_active)    echo '$'.$_pro_price_fmt.' / month &mdash; Active';
+          elseif ($is_pro  && $is_active)    echo '$'.$_pro_price_fmt.' / month &mdash; <span class="text-green-400 font-semibold">Active</span>';
           elseif ($is_pro  && $is_cancelled) echo 'Cancelled &mdash; Active until end of period';
           else echo 'Limited to '.$_free_leads.' leads &bull; '.$_free_sites.' site/day &bull; 2 templates';
         ?></p>
       </div>
     </div>
-    <span class="text-xs px-3 py-1.5 rounded-full font-semibold <?= $is_paid && $is_active ? 'bg-white/10 text-white' : ($is_cancelled ? 'bg-amber-500/20 text-amber-400' : 'bg-white/5 text-slate-400') ?>">
-      <?= $is_paid && $is_active ? 'Active' : ($is_cancelled ? 'Cancelled' : 'Free') ?>
+    <span class="text-xs px-3 py-1.5 rounded-full font-semibold
+      <?= $is_ent && $is_active ? 'bg-amber-500/15 text-amber-400 border border-amber-500/30'
+        : ($is_pro && $is_active ? 'bg-white/10 text-white'
+        : ($is_cancelled ? 'bg-amber-500/20 text-amber-400'
+        : 'bg-white/5 text-slate-400')) ?>">
+      <?= $is_ent && $is_active ? '&#x1F680; Entrepreneur'
+        : ($is_pro && $is_active ? 'Pro'
+        : ($is_cancelled ? 'Cancelled' : 'Free')) ?>
     </span>
   </div>
 
@@ -126,21 +165,33 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <?php if ($is_paid && $is_active):
     $lead_limit = plan_lead_limit($plan);
     $site_limit = plan_site_limit($plan);
+    $seats      = plan_team_seats($plan);
   ?>
-  <div class="mt-5 pt-5 border-t border-white/5 grid sm:grid-cols-2 gap-4 text-xs text-slate-400">
+  <div class="mt-5 pt-5 border-t border-white/5 grid sm:grid-cols-<?= $is_ent ? '3' : '2' ?> gap-4 text-xs text-slate-400">
     <div>
-      <div class="flex justify-between mb-1">
-        <span>Leads unlocked</span>
+      <div class="flex justify-between mb-1"><span>Leads unlocked</span>
         <span class="text-white font-semibold"><?= $lead_limit === -1 ? 'Unlimited' : '0 / '.$lead_limit ?></span>
       </div>
     </div>
     <div>
-      <div class="flex justify-between mb-1">
-        <span>Active websites</span>
+      <div class="flex justify-between mb-1"><span>Active websites</span>
         <span class="text-white font-semibold"><?= $site_limit === -1 ? 'Unlimited' : '0 / '.$site_limit ?></span>
       </div>
     </div>
+    <?php if ($is_ent): ?>
+    <div>
+      <div class="flex justify-between mb-1"><span>Team seats</span>
+        <span class="text-amber-400 font-semibold"><?= $seats > 0 ? $seats : 'N/A' ?></span>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
+  <?php if ($is_ent && $is_active): ?>
+  <div class="mt-4 pt-4 border-t border-white/5 grid sm:grid-cols-2 gap-4 text-xs text-slate-400">
+    <div class="flex justify-between"><span>Custom domains</span><span class="text-amber-400 font-semibold">Unlimited</span></div>
+    <div class="flex justify-between"><span>Client reports</span><span class="text-amber-400 font-semibold">Included</span></div>
+  </div>
+  <?php endif; ?>
   <?php endif; ?>
 
   <?php if ($is_paid && $is_active): ?>
@@ -156,56 +207,119 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <?php endif; ?>
 </div>
 
-<!-- Upgrade to Entrepreneur if on Pro -->
+<!-- ===== PRO -> ENTREPRENEUR UPSELL (only shown to active Pro users) ===== -->
 <?php if ($is_pro && $is_active): ?>
-<div class="glass rounded-2xl p-5 border border-white/10 mb-6 flex items-center justify-between flex-wrap gap-4">
-  <div>
-    <p class="font-bold text-sm text-white"><i class="fa-solid fa-rocket mr-2"></i>Upgrade to Entrepreneur</p>
-    <p class="text-xs text-slate-400 mt-0.5">Unlimited leads &bull; <?= $_ent_sites ?> active sites &bull; Custom domains &bull; Team seats</p>
+<div class="rounded-2xl border border-amber-500/25 overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f1a 0%,#1a1205 100%)">
+  <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <i class="fa-solid fa-rocket text-amber-400 text-sm"></i>
+        <span class="text-xs font-bold uppercase tracking-widest text-amber-400">Upgrade to Entrepreneur</span>
+      </div>
+      <p class="text-white font-bold text-base">Unlock everything Pro can&rsquo;t do</p>
+      <div class="mt-2 flex flex-wrap gap-3 text-xs text-slate-300">
+        <span><i class="fa-solid fa-infinity text-amber-400 mr-1"></i>Unlimited leads</span>
+        <span><i class="fa-solid fa-globe text-amber-400 mr-1"></i>Custom domains</span>
+        <span><i class="fa-solid fa-users text-amber-400 mr-1"></i><?= $_ent_seats ?> team seats</span>
+        <span><i class="fa-solid fa-file-chart-column text-amber-400 mr-1"></i>Client reports</span>
+        <span><i class="fa-solid fa-server text-amber-400 mr-1"></i><?= $_ent_sites ?> active sites</span>
+      </div>
+    </div>
+    <a href="?plan=entrepreneur&upgrade=1"
+       class="shrink-0 text-sm font-bold px-6 py-3 rounded-xl text-black whitespace-nowrap ent-glow-btn">
+      Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
+    </a>
   </div>
-  <a href="?plan=entrepreneur&upgrade=1" class="text-xs bg-white hover:bg-slate-200 text-black px-5 py-2 rounded-xl font-bold transition whitespace-nowrap">Upgrade &rarr;</a>
 </div>
 <?php endif; ?>
 
+<!-- ===== UPGRADE FORMS (shown when not on a paid active plan) ===== -->
 <?php if (!$is_paid || $is_cancelled): ?>
+
 <!-- Plan selection tabs -->
-<?php
-  $showPlan = $_target_plan;
-?>
-<div class="flex gap-2 mb-5">
+<div class="flex gap-2 mb-6">
   <a href="?upgrade=1&plan=pro"
-     class="px-5 py-2 rounded-full text-sm font-bold transition <?= $showPlan==='pro' ? 'bg-white text-black' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
+     class="px-5 py-2 rounded-full text-sm font-bold transition
+     <?= $_target_plan==='pro' ? 'bg-white text-black' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
     Pro &mdash; $<?= $_pro_price_fmt ?>/mo
   </a>
   <a href="?upgrade=1&plan=entrepreneur"
-     class="px-5 py-2 rounded-full text-sm font-bold transition <?= $showPlan==='entrepreneur' ? 'bg-white text-black' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
-    Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
+     class="px-5 py-2 rounded-full text-sm font-bold transition
+     <?= $_target_plan==='entrepreneur' ? 'ent-pill-border text-amber-300' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
+    <i class="fa-solid fa-rocket mr-1 text-xs"></i>Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
   </a>
 </div>
 
-<?php if ($showPlan === 'entrepreneur'): ?>
-<!-- Entrepreneur upgrade card -->
-<div class="rounded-2xl border border-white/15 overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f0f 0%,#1a1a2e 100%)">
-  <div class="px-6 py-6">
-    <div class="flex items-start justify-between flex-wrap gap-4 mb-6">
+<?php if ($_target_plan === 'entrepreneur'): ?>
+<!-- ===== ENTREPRENEUR UPGRADE CARD ===== -->
+<div class="rounded-2xl border border-amber-500/20 overflow-hidden mb-6" style="background:linear-gradient(160deg,#0d0d14 0%,#15100a 60%,#1a0f00 100%)">
+
+  <!-- Hero header -->
+  <div class="px-6 pt-6 pb-5 border-b border-white/5">
+    <div class="flex items-start justify-between flex-wrap gap-4">
       <div>
-        <div class="flex items-center gap-2 mb-1">
-          <i class="fa-solid fa-rocket text-white"></i>
-          <span class="text-xs font-bold text-white uppercase tracking-widest">Entrepreneur Plan</span>
+        <div class="flex items-center gap-2 mb-2">
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-500/15 border border-amber-500/30">
+            <i class="fa-solid fa-rocket text-amber-400 text-xs"></i>
+            <span class="ent-badge">BEST VALUE</span>
+          </span>
         </div>
-        <p class="text-2xl font-black">$<?= $_ent_price_fmt ?> <span class="text-sm text-slate-400 font-normal">/ month</span></p>
-        <p class="text-slate-400 text-sm mt-1">Built for agencies running multiple clients at scale.</p>
+        <p class="text-3xl font-black">$<?= $_ent_price_fmt ?> <span class="text-base text-slate-400 font-normal">/ month</span></p>
+        <p class="text-slate-400 text-sm mt-1">Built for agencies &amp; founders running multiple clients at scale.</p>
       </div>
-      <div class="space-y-2 text-sm">
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-infinity text-white w-4"></i>Unlimited leads</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i><?= $_ent_sites ?> active websites</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>All templates + ZIP export</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Custom domains</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Client reports</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Team seats</div>
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Priority support</div>
+      <div class="text-right">
+        <p class="text-xs text-slate-500">Billed monthly</p>
+        <p class="text-xs text-amber-500/70 mt-1">Cancel any time</p>
       </div>
     </div>
+  </div>
+
+  <!-- Pro vs Entrepreneur comparison table -->
+  <div class="px-6 py-5 border-b border-white/5 overflow-x-auto">
+    <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Plan Comparison</p>
+    <table class="w-full text-sm min-w-[420px]">
+      <thead>
+        <tr class="text-xs">
+          <th class="text-left text-slate-500 font-semibold pb-3 w-1/2">Feature</th>
+          <th class="text-center text-slate-400 font-bold pb-3 w-1/4">Pro</th>
+          <th class="text-center pb-3 w-1/4">
+            <span class="ent-badge font-bold">Entrepreneur</span>
+          </th>
+        </tr>
+      </thead>
+      <tbody class="divide-y divide-white/5">
+        <?php
+        $rows = [
+          ['Leads / period',       number_format($_pro_leads), '<i class="fa-solid fa-infinity compare-ent"></i> Unlimited'],
+          ['Active websites',      $_pro_sites,                $_ent_sites],
+          ['Templates + ZIP',      '<i class="fa-solid fa-check compare-check"></i>', '<i class="fa-solid fa-check compare-ent"></i>'],
+          ['Revenue dashboard',    '<i class="fa-solid fa-check compare-check"></i>', '<i class="fa-solid fa-check compare-ent"></i>'],
+          ['Custom domains',       '<i class="fa-solid fa-xmark compare-cross"></i>',  '<i class="fa-solid fa-check compare-ent"></i>'],
+          ['Client reports',       '<i class="fa-solid fa-xmark compare-cross"></i>',  '<i class="fa-solid fa-check compare-ent"></i>'],
+          ['Team seats',           '<i class="fa-solid fa-xmark compare-cross"></i>',  $_ent_seats.' seats'],
+          ['Priority support',     '<i class="fa-solid fa-check compare-check"></i>', '<i class="fa-solid fa-check compare-ent"></i>'],
+          ['Price / month',        '$'.$_pro_price_fmt,       '<span class="font-bold text-amber-400">$'.$_ent_price_fmt.'</span>'],
+        ];
+        foreach ($rows as [$feature, $pro_val, $ent_val]): ?>
+        <tr>
+          <td class="py-2.5 text-slate-300 font-medium"><?= $feature ?></td>
+          <td class="py-2.5 text-center text-slate-400"><?= $pro_val ?></td>
+          <td class="py-2.5 text-center"><?= $ent_val ?></td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Social proof -->
+  <div class="px-6 py-4 border-b border-white/5 flex flex-wrap items-center gap-4 text-xs text-slate-500">
+    <span><i class="fa-solid fa-users mr-1 text-amber-500/60"></i>Trusted by agencies running 50+ client sites</span>
+    <span><i class="fa-solid fa-shield-halved mr-1 text-amber-500/60"></i>Cancel any time, no lock-in</span>
+    <span><i class="fa-solid fa-headset mr-1 text-amber-500/60"></i>Priority email &amp; chat support</span>
+  </div>
+
+  <!-- Payment form -->
+  <div class="px-6 py-6">
     <?php if (TEST_PAYMENT_MODE): ?>
     <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-400">
       <i class="fa-solid fa-flask"></i>
@@ -220,7 +334,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <div class="relative">
           <input type="text" name="card_number" id="cardNumberInputEnt" inputmode="numeric"
             placeholder="4242 4242 4242 4242" maxlength="19" required
-            class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl pl-4 pr-12 py-3 tracking-wider focus:outline-none focus:border-white/40 transition">
+            class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl pl-4 pr-12 py-3 tracking-wider focus:outline-none focus:border-amber-500/50 transition">
           <i class="fa-solid fa-credit-card absolute right-4 top-1/2 -translate-y-1/2 text-slate-500"></i>
         </div>
       </div>
@@ -228,34 +342,35 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <div>
           <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Expiry</label>
           <input type="text" name="card_expiry" inputmode="numeric" placeholder="MM/YY" maxlength="5" required
-            class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+            class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500/50 transition">
         </div>
         <div>
           <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">CVC</label>
           <input type="text" name="card_cvc" inputmode="numeric" placeholder="123" maxlength="4" required
-            class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
+            class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-amber-500/50 transition">
         </div>
       </div>
-      <button type="submit"
-              class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all shadow-lg">
-        <i class="fa-solid fa-lock mr-2"></i>Subscribe to Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
+      <button type="submit" class="w-full ent-glow-btn text-black py-3.5 rounded-xl font-bold text-base">
+        <i class="fa-solid fa-rocket mr-2"></i>Unlock Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
       </button>
       <div class="flex items-center justify-center gap-2 text-xs text-slate-500">
-        <i class="fa-solid fa-lock"></i>
-        <span>Secured by</span>
+        <i class="fa-solid fa-lock"></i><span>Secured by</span>
         <i class="fa-brands fa-stripe text-xl text-slate-300"></i>
       </div>
     </form>
     <?php else: ?>
-    <a href="#" class="block w-full text-center bg-white hover:bg-slate-200 text-black py-3.5 rounded-xl font-bold transition">
-      <i class="fa-solid fa-lock mr-2"></i>Subscribe via Stripe
+    <a href="#" class="block w-full text-center ent-glow-btn text-black py-3.5 rounded-xl font-bold text-base">
+      <i class="fa-solid fa-rocket mr-2"></i>Subscribe via Stripe &mdash; $<?= $_ent_price_fmt ?>/mo
     </a>
+    <div class="flex items-center justify-center gap-2 text-xs text-slate-500 mt-3">
+      <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
+    </div>
     <?php endif; ?>
   </div>
 </div>
 
 <?php else: ?>
-<!-- Pro upgrade card -->
+<!-- ===== PRO UPGRADE CARD ===== -->
 <div class="rounded-2xl border border-white/15 overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f0f 0%,#1c1c1c 100%)">
   <div class="px-6 py-6">
     <div class="flex items-start justify-between flex-wrap gap-4 mb-6">
@@ -268,7 +383,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <p class="text-slate-400 text-sm mt-1">Everything you need to run a full client-getting operation.</p>
       </div>
       <div class="space-y-2 text-sm">
-        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i><?= $_pro_leads ?> leads unlocked / period</div>
+        <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i><?= $_pro_leads ?> leads / period</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i><?= $_pro_sites ?> active websites</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Full phone numbers</div>
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>All templates + ZIP export</div>
@@ -313,9 +428,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <i class="fa-solid fa-lock mr-2"></i>Subscribe to Pro &mdash; $<?= $_pro_price_fmt ?>/mo
       </button>
       <div class="flex items-center justify-center gap-2 text-xs text-slate-500">
-        <i class="fa-solid fa-lock"></i>
-        <span>Secured by</span>
-        <i class="fa-brands fa-stripe text-xl text-slate-300"></i>
+        <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
       </div>
     </form>
     <?php else: ?>
@@ -328,9 +441,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <?php endif; ?>
   </div>
 </div>
+
+<!-- Nudge toward Entrepreneur -->
+<div class="text-center text-xs text-slate-500 mb-6">
+  Looking for more power? <a href="?upgrade=1&plan=entrepreneur" class="text-amber-400 hover:text-amber-300 font-semibold transition">See the Entrepreneur plan <i class="fa-solid fa-arrow-right text-[10px]"></i></a>
+</div>
+
 <?php endif; ?>
 <?php endif; ?>
 
-</div></main>
-<script src="/assets/js/billing_card.js?v=v300"></script>
-</body></html>
+<?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
+<script src="/assets/js/billing_card.js?v=v310"></script>
