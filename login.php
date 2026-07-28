@@ -48,7 +48,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $error = 'Please verify your email before logging in.';
             } elseif ($u['two_factor_enabled']) {
                 $_SESSION['pending_2fa_user_id']  = $u['id'];
-                // Pass the remember-me preference through to the 2FA step
                 $_SESSION['pending_2fa_remember'] = $rememberMe;
 
                 if (!empty($u['two_factor_secret'])) {
@@ -62,11 +61,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: /verify-2fa.php');
                 exit;
             } else {
-                // No 2FA — log in directly and set cookie if requested
                 login_user($u['id']);
                 if ($rememberMe) {
                     set_remember_me_cookie($u['id']);
                 }
+                // Signal portal to show the welcome-back animation
+                $_SESSION['show_login_onboarding'] = $u['full_name'] ?? '';
                 header('Location: /portal/index.php');
                 exit;
             }
