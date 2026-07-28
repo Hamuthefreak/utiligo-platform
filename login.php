@@ -19,14 +19,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
         $error = 'Invalid session. Please try again.';
     } else {
-        $email    = trim($_POST['email'] ?? '');
-        $password = $_POST['password'] ?? '';
-        $result   = attempt_login($email, $password);
+        $email      = trim($_POST['email'] ?? '');
+        $password   = $_POST['password'] ?? '';
+        $rememberMe = !empty($_POST['remember_me']);
+        $result     = attempt_login($email, $password);
 
         if ($result['success']) {
             $userdb = get_user_db();
 
-            // Fetch user with 2FA columns — gracefully handle missing columns
             try {
                 $stmt = $userdb->prepare('SELECT id, full_name, email, email_verified, two_factor_enabled, two_factor_secret FROM utiligo_users WHERE email = ? LIMIT 1');
                 $stmt->execute([strtolower(trim($email))]);
@@ -47,13 +47,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $unverifiedEmail = $u['email'];
                 $error = 'Please verify your email before logging in.';
             } elseif ($u['two_factor_enabled']) {
-                $_SESSION['pending_2fa_user_id'] = $u['id'];
+                $_SESSION['pending_2fa_user_id']  = $u['id'];
+                // Pass the remember-me preference through to the 2FA step
+                $_SESSION['pending_2fa_remember'] = $rememberMe;
 
-                // If a TOTP secret exists the user set up an authenticator app — use TOTP.
-                // Otherwise fall back to emailing a code.
                 if (!empty($u['two_factor_secret'])) {
                     $_SESSION['pending_2fa_method'] = 'totp';
-                    // Don't send an email — app generates the code
                 } else {
                     $_SESSION['pending_2fa_method'] = 'email';
                     $code = create_2fa_code($u['id']);
@@ -63,7 +62,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: /verify-2fa.php');
                 exit;
             } else {
+                // No 2FA — log in directly and set cookie if requested
                 login_user($u['id']);
+                if ($rememberMe) {
+                    set_remember_me_cookie($u['id']);
+                }
                 header('Location: /portal/index.php');
                 exit;
             }
@@ -138,9 +141,28 @@ require_once __DIR__ . '/includes/header.php';
           <input type="password" name="password" required
             class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
         </div>
-        <div class="text-right">
+
+        <!-- Remember me + forgot password row -->
+        <div class="flex items-center justify-between">
+          <label class="flex items-center gap-2.5 cursor-pointer select-none group">
+            <div class="relative">
+              <input type="checkbox" name="remember_me" value="1" id="rememberMe"
+                     class="sr-only peer"
+                     <?= !empty($_POST['remember_me']) ? 'checked' : '' ?>>
+              <div class="w-4 h-4 rounded border border-slate-500 bg-slate-800
+                          peer-checked:bg-emerald-500 peer-checked:border-emerald-500
+                          transition-colors"></div>
+              <svg class="absolute inset-0 w-4 h-4 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity"
+                   viewBox="0 0 16 16" fill="none">
+                <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="2"
+                      stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </div>
+            <span class="text-sm text-slate-400 group-hover:text-slate-300 transition-colors">Remember me for 30 days</span>
+          </label>
           <a href="/forgot-password.php" class="text-xs text-emerald-400 hover:underline">Forgot password?</a>
         </div>
+
         <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-full font-semibold transition">
           Log In
         </button>

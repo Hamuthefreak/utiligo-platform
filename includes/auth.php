@@ -40,12 +40,14 @@ function login_user(int $userId): void
 {
     session_regenerate_id(true);
     $_SESSION['user_id'] = $userId;
-    // Clear any lockout state on successful login
     unset($_SESSION['login_attempts'], $_SESSION['login_locked_until']);
 }
 
 function logout_user(): void
 {
+    // Clear persistent remember-me cookie + DB token
+    clear_remember_me_cookie();
+
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
         $p = session_get_cookie_params();
@@ -89,7 +91,6 @@ function attempt_login(string $email, string $password): array
     $pdo   = get_user_db();
     $email = strtolower(trim($email));
 
-    // --- Check session-based lockout ---
     $lockKey = 'login_locked_until_' . md5($email);
     $attKey  = 'login_attempts_' . md5($email);
     if (!empty($_SESSION[$lockKey]) && time() < $_SESSION[$lockKey]) {
@@ -102,7 +103,6 @@ function attempt_login(string $email, string $password): array
     $user = $stmt->fetch();
 
     if (!$user || !password_verify($password, $user['password_hash'])) {
-        // Increment attempt counter
         $_SESSION[$attKey] = ($_SESSION[$attKey] ?? 0) + 1;
         if ($_SESSION[$attKey] >= LOGIN_MAX_ATTEMPTS) {
             $_SESSION[$lockKey] = time() + (LOGIN_LOCKOUT_MINUTES * 60);
@@ -117,7 +117,6 @@ function attempt_login(string $email, string $password): array
         return ['success' => false, 'error' => 'This account has been suspended.'];
     }
 
-    // Success — clear counters
     unset($_SESSION[$attKey], $_SESSION[$lockKey]);
     return ['success' => true, 'user_id' => $user['id']];
 }
@@ -212,6 +211,172 @@ function verify_2fa_code(int $userId, string $code): bool
     if (!$row) return false;
     $pdo->prepare('UPDATE utiligo_2fa_codes SET used = 1 WHERE id = ?')->execute([$row['id']]);
     return true;
+}
+
+// ============================================================
+// REMEMBER ME — persistent trusted-device cookie
+// ============================================================
+
+define('REMEMBER_ME_COOKIE',   'utiligo_remember');
+define('REMEMBER_ME_DAYS',     30);
+define('REMEMBER_ME_BYTES',    32);   // 256-bit selector + validator
+
+/**
+ * Issue a new remember-me cookie and store its hashed token in the DB.
+ * Safe to call right after login_user().
+ */
+function set_remember_me_cookie(int $userId): void
+{
+    try {
+        $pdo = get_user_db();
+        // Delete any old tokens for this user+device (best-effort)
+        // Keep table tidy — max 10 active tokens per user
+        $pdo->prepare(
+            'DELETE FROM utiligo_remember_tokens
+             WHERE user_id = ?
+             AND id NOT IN (
+                 SELECT id FROM (
+                     SELECT id FROM utiligo_remember_tokens
+                     WHERE user_id = ?
+                     ORDER BY created_at DESC
+                     LIMIT 9
+                 ) AS t
+             )'
+        )->execute([$userId, $userId]);
+
+        $selector  = bin2hex(random_bytes(REMEMBER_ME_BYTES));
+        $validator = bin2hex(random_bytes(REMEMBER_ME_BYTES));
+        $tokenHash = hash('sha256', $validator);
+        $expires   = date('Y-m-d H:i:s', strtotime('+' . REMEMBER_ME_DAYS . ' days'));
+
+        $pdo->prepare(
+            'INSERT INTO utiligo_remember_tokens (user_id, selector, token_hash, expires_at)
+             VALUES (?, ?, ?, ?)'
+        )->execute([$userId, $selector, $tokenHash, $expires]);
+
+        $cookieValue = $selector . ':' . $validator;
+        $expireTs    = time() + (REMEMBER_ME_DAYS * 86400);
+
+        setcookie(
+            REMEMBER_ME_COOKIE,
+            $cookieValue,
+            [
+                'expires'  => $expireTs,
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => true,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]
+        );
+    } catch (\Throwable $e) {
+        // Non-fatal — user just won't be remembered
+        error_log('[remember_me] set failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Check the remember-me cookie and, if valid, log the user in.
+ * Call this once per request after session_start(), before any
+ * is_logged_in() checks.
+ */
+function check_remember_me_cookie(): void
+{
+    if (is_logged_in()) return;   // already logged in via session
+
+    $cookie = $_COOKIE[REMEMBER_ME_COOKIE] ?? null;
+    if (!$cookie || substr_count($cookie, ':') !== 1) return;
+
+    [$selector, $validator] = explode(':', $cookie, 2);
+    if (!ctype_xdigit($selector) || !ctype_xdigit($validator)) return;
+
+    try {
+        $pdo  = get_user_db();
+        $stmt = $pdo->prepare(
+            'SELECT * FROM utiligo_remember_tokens
+             WHERE selector = ? AND expires_at > NOW()
+             LIMIT 1'
+        );
+        $stmt->execute([$selector]);
+        $row = $stmt->fetch();
+
+        if (!$row) {
+            _clear_remember_cookie_header();
+            return;
+        }
+
+        // Constant-time comparison to prevent timing attacks
+        if (!hash_equals($row['token_hash'], hash('sha256', $validator))) {
+            // Possible token theft — delete ALL tokens for this user
+            $pdo->prepare('DELETE FROM utiligo_remember_tokens WHERE user_id = ?')
+                ->execute([$row['user_id']]);
+            _clear_remember_cookie_header();
+            return;
+        }
+
+        // Valid — rotate the token (issue new selector+validator)
+        $newSelector  = bin2hex(random_bytes(REMEMBER_ME_BYTES));
+        $newValidator = bin2hex(random_bytes(REMEMBER_ME_BYTES));
+        $newHash      = hash('sha256', $newValidator);
+        $newExpires   = date('Y-m-d H:i:s', strtotime('+' . REMEMBER_ME_DAYS . ' days'));
+
+        $pdo->prepare(
+            'UPDATE utiligo_remember_tokens
+             SET selector = ?, token_hash = ?, expires_at = ?
+             WHERE id = ?'
+        )->execute([$newSelector, $newHash, $newExpires, $row['id']]);
+
+        setcookie(
+            REMEMBER_ME_COOKIE,
+            $newSelector . ':' . $newValidator,
+            [
+                'expires'  => time() + (REMEMBER_ME_DAYS * 86400),
+                'path'     => '/',
+                'domain'   => '',
+                'secure'   => true,
+                'httponly' => true,
+                'samesite' => 'Lax',
+            ]
+        );
+
+        login_user((int)$row['user_id']);
+    } catch (\Throwable $e) {
+        error_log('[remember_me] check failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Delete the remember-me cookie and its DB token.
+ * Called automatically by logout_user().
+ */
+function clear_remember_me_cookie(): void
+{
+    $cookie = $_COOKIE[REMEMBER_ME_COOKIE] ?? null;
+    if ($cookie && substr_count($cookie, ':') === 1) {
+        [$selector] = explode(':', $cookie, 2);
+        try {
+            $pdo = get_user_db();
+            $pdo->prepare('DELETE FROM utiligo_remember_tokens WHERE selector = ?')
+                ->execute([$selector]);
+        } catch (\Throwable $e) {
+            error_log('[remember_me] clear failed: ' . $e->getMessage());
+        }
+    }
+    _clear_remember_cookie_header();
+}
+
+/** Internal: expire the cookie in the browser. */
+function _clear_remember_cookie_header(): void
+{
+    setcookie(REMEMBER_ME_COOKIE, '', [
+        'expires'  => time() - 3600,
+        'path'     => '/',
+        'domain'   => '',
+        'secure'   => true,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    unset($_COOKIE[REMEMBER_ME_COOKIE]);
 }
 
 // Handle logout action when this file is hit directly

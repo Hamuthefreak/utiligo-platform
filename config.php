@@ -44,35 +44,12 @@ if (!defined('USERDB_PASS')) define('USERDB_PASS', getenv('USERDB_PASS') ?: 'CHA
 if (!defined('GOOGLE_PLACES_API_KEY'))
     define('GOOGLE_PLACES_API_KEY', getenv('GOOGLE_PLACES_API_KEY') ?: 'YOUR_GOOGLE_PLACES_API_KEY');
 
-/**
- * Maximum Places Details lookups per search batch.
- * Each lookup costs ~$0.017. Keep this low on Text Search (which
- * already returns name/address/rating for free).
- * Only call Details when the lead card is expanded (lazy load).
- */
 if (!defined('MAX_PLACES_DETAILS_LOOKUPS'))
-    define('MAX_PLACES_DETAILS_LOOKUPS', 10);  // was 20 — saves ~50% detail cost
+    define('MAX_PLACES_DETAILS_LOOKUPS', 10);
 
-/**
- * Field masks — request ONLY what you need.
- * Google bills per field group; mixing groups charges the highest tier.
- *
- * Tier 'basic'   → name, formatted_address, geometry, place_id, types,
- *                   rating, user_ratings_total, business_status, photos
- *                   Cost: $0.00 on Text Search (included free)
- *
- * Tier 'contact' → adds formatted_phone_number, website, opening_hours
- *                   Cost: +$0.003 per Details call
- *
- * Tier 'full'    → adds reviews, price_level, plus_code, etc.
- *                   Cost: +$0.005 per Details call
- *
- * Set env GOOGLE_FIELDS_TIER=contact only when phone numbers are needed.
- */
 if (!defined('GOOGLE_FIELDS_TIER'))
     define('GOOGLE_FIELDS_TIER', getenv('GOOGLE_FIELDS_TIER') ?: 'contact');
 
-// Field mask strings used in Details API calls
 if (!defined('GOOGLE_FIELDS_BASIC'))
     define('GOOGLE_FIELDS_BASIC',
         'name,formatted_address,geometry,place_id,types,rating,user_ratings_total,business_status,photos');
@@ -85,7 +62,6 @@ if (!defined('GOOGLE_FIELDS_FULL'))
     define('GOOGLE_FIELDS_FULL',
         GOOGLE_FIELDS_CONTACT . ',reviews,price_level,plus_code,url,vicinity');
 
-/** Returns the active field mask string based on GOOGLE_FIELDS_TIER */
 function google_fields_mask(): string {
     return match(GOOGLE_FIELDS_TIER) {
         'full'    => GOOGLE_FIELDS_FULL,
@@ -94,20 +70,11 @@ function google_fields_mask(): string {
     };
 }
 
-/**
- * Text Search returns these fields for FREE (no per-field charge).
- * NEVER request a Details call just to get these — they're in the
- * Text Search response already.
- */
 if (!defined('GOOGLE_TEXT_SEARCH_FREE_FIELDS'))
     define('GOOGLE_TEXT_SEARCH_FREE_FIELDS',
         'name,formatted_address,geometry,place_id,types,rating,user_ratings_total,business_status,photos');
 
-/**
- * Cache TTL for lead search results.
- * Longer = fewer API calls. 48 h is safe for most use-cases.
- */
-if (!defined('LEAD_SEARCH_CACHE_HOURS')) define('LEAD_SEARCH_CACHE_HOURS', 48);  // was 24
+if (!defined('LEAD_SEARCH_CACHE_HOURS')) define('LEAD_SEARCH_CACHE_HOURS', 48);
 
 // ---- Stripe ----
 if (!defined('STRIPE_SECRET_KEY'))      define('STRIPE_SECRET_KEY',      getenv('STRIPE_SECRET_KEY')      ?: 'YOUR_STRIPE_SECRET_KEY');
@@ -132,7 +99,6 @@ if (!defined('TWO_FA_CODE_EXPIRY_MINUTES'))    define('TWO_FA_CODE_EXPIRY_MINUTE
 if (!defined('PASSWORD_RESET_EXPIRY_MINUTES')) define('PASSWORD_RESET_EXPIRY_MINUTES', 60);
 if (!defined('APP_BASE_URL'))                  define('APP_BASE_URL', getenv('APP_BASE_URL') ?: 'https://utiligo.ca');
 
-// Admin email — used by migration 009 to auto-promote the right account.
 if (!defined('ADMIN_EMAIL')) define('ADMIN_EMAIL', getenv('UTILIGO_ADMIN_EMAIL') ?: '');
 
 if (!defined('CRON_SECRET'))        define('CRON_SECRET',        getenv('UTILIGO_CRON_SECRET')   ?: bin2hex(random_bytes(16)));
@@ -183,3 +149,13 @@ if (session_status() === PHP_SESSION_NONE) {
 
 require_once __DIR__ . '/includes/run_migrations.php';
 require_once __DIR__ . '/includes/bootstrap_migrations.php';
+
+// ---- Remember-me bootstrap ----
+// Auto-log in users who have a valid persistent cookie.
+// Must run after session_start() and after auth.php is available.
+// auth.php is loaded by every page via its own require_once, but we
+// need it here too for the bootstrap call. Guard against double-load.
+if (!function_exists('check_remember_me_cookie')) {
+    require_once __DIR__ . '/includes/auth.php';
+}
+check_remember_me_cookie();
