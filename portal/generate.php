@@ -50,8 +50,6 @@ $free_keys           = array_slice($template_keys, 0, $free_template_limit);
 
 $prefill = ['business_name'=>'','business_category'=>'','business_city'=>'','business_phone'=>'','business_email'=>''];
 
-// Prefer URL params passed directly from leads.js (name, category, city, phone)
-// Fall back to DB lookup via lead_id for backwards compatibility
 if (!empty($_GET['name']) || !empty($_GET['city'])) {
     $prefill['business_name']     = trim($_GET['name']     ?? '');
     $prefill['business_category'] = trim($_GET['category'] ?? '');
@@ -76,12 +74,29 @@ foreach ($all_templates as $key => $t) {
     $templateCategories[$t['category']][] = $key;
 }
 
+// Build a JS-safe map of all template data for the live preview
+$tpl_json = json_encode(array_map(function($t) {
+    return [
+        'label'       => $t['label'],
+        'description' => $t['description'],
+        'category'    => $t['category'],
+        'primary'     => $t['primary'],
+        'secondary'   => $t['secondary'],
+        'accent'      => $t['accent'],
+        'text'        => $t['text'],
+        'font'        => $t['font'],
+        'font_url'    => $t['font_url'] ?? null,
+        'radius'      => $t['radius'],
+        'dark'        => $t['dark'] ?? false,
+        'hero_style'  => $t['hero_style'] ?? 'centered',
+    ];
+}, $all_templates), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP);
+
 $pageTitle = 'Generate Website — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
-/* Skeleton shimmer */
 @keyframes shimmer {
   0%   { background-position: -600px 0; }
   100% { background-position:  600px 0; }
@@ -91,6 +106,85 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   background: linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 75%);
   background-size: 600px 100%;
   animation: shimmer 1.4s infinite linear;
+}
+/* Full preview modal */
+#fullPreviewModal {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,.88);
+  backdrop-filter: blur(8px);
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+  overflow-y: auto;
+}
+#fullPreviewModal.open { display: flex; }
+#fullPreviewInner {
+  width: 100%;
+  max-width: 1000px;
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 32px 80px rgba(0,0,0,.8);
+}
+#previewTopBar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: #0F172A;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  flex-wrap: wrap;
+}
+#previewPageTabs {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  flex-wrap: wrap;
+}
+.preview-tab {
+  padding: 5px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,.5);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  transition: background .15s, color .15s;
+}
+.preview-tab:hover  { background: rgba(255,255,255,.08); color: #fff; }
+.preview-tab.active { background: rgba(255,255,255,.15); color: #fff; }
+#previewModalLabel {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+  white-space: nowrap;
+}
+#previewCloseBtn, #previewSelectBtn {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+#previewCloseBtn  { background: rgba(255,255,255,.1); color: #fff; }
+#previewCloseBtn:hover { background: rgba(255,255,255,.18); }
+#previewSelectBtn { background: #fff; color: #000; }
+#previewSelectBtn:hover { background: #e2e8f0; }
+#previewFrame {
+  width: 100%;
+  height: 75vh;
+  border: none;
+  display: block;
+  background: #fff;
 }
 </style>
 
@@ -220,8 +314,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php else: ?>
-<!-- ==================== MAIN FORM ==================== -->
-<!-- Skeleton shown while JS resources are loading, replaced by the real form -->
 <div id="generateSkeleton" aria-hidden="true" class="space-y-4 mb-6">
   <div class="glass rounded-2xl p-6 border border-white/5">
     <div class="skeleton h-3 w-32 mb-5"></div>
@@ -329,7 +421,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <button type="button"
                 class="preview-tpl-btn absolute top-2 right-2 z-20 w-6 h-6 rounded-full bg-black/40 hover:bg-black/70 text-white/80 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                 data-tpl-key="<?= $key ?>"
-                title="Preview template">
+                title="Full preview">
           <i class="fa-solid fa-eye text-[9px]"></i>
         </button>
         <?php endif; ?>
@@ -408,39 +500,26 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </form>
 <?php endif; /* gen_locked */ ?>
 
-<!-- Template Preview Modal -->
-<div id="tplPreviewModal" class="fixed inset-0 z-50 hidden items-center justify-center p-4" style="background:rgba(0,0,0,.75);backdrop-filter:blur(6px);">
-  <div class="glass rounded-2xl border border-white/10 shadow-2xl w-full max-w-sm overflow-hidden">
-    <div id="tplPreviewBanner" class="h-28 flex flex-col justify-end px-5 pb-4 relative">
-      <button type="button" id="tplPreviewClose"
-              class="absolute top-3 right-3 w-7 h-7 rounded-full bg-black/40 hover:bg-black/70 text-white flex items-center justify-center">
-        <i class="fa-solid fa-xmark text-xs"></i>
-      </button>
-      <p id="tplPreviewName" class="text-white font-black text-lg leading-tight"></p>
-      <p id="tplPreviewCat"  class="text-white/60 text-xs font-semibold"></p>
+<!-- ========================================================
+     FULL LIVE PREVIEW MODAL
+     Renders an iframe srcdoc with real template styles + all
+     5 page sections. Page tabs scroll to anchors inside.
+======================================================== -->
+<div id="fullPreviewModal" role="dialog" aria-modal="true" aria-label="Template preview">
+  <div id="fullPreviewInner">
+    <div id="previewTopBar">
+      <span id="previewModalLabel">Template Preview</span>
+      <div id="previewPageTabs">
+        <button class="preview-tab active" data-section="home">Home</button>
+        <button class="preview-tab" data-section="about">About</button>
+        <button class="preview-tab" data-section="services">Services</button>
+        <button class="preview-tab" data-section="gallery">Gallery</button>
+        <button class="preview-tab" data-section="contact">Contact</button>
+      </div>
+      <button id="previewSelectBtn"><i class="fa-solid fa-check" style="margin-right:5px"></i>Use Template</button>
+      <button id="previewCloseBtn"><i class="fa-solid fa-xmark" style="margin-right:5px"></i>Close</button>
     </div>
-    <div class="p-5 space-y-3">
-      <p id="tplPreviewDesc" class="text-sm text-slate-300 leading-relaxed"></p>
-      <div class="flex items-center gap-2">
-        <div id="tplSwatch1" class="w-7 h-7 rounded-full border-2 border-white/20" title="Primary"></div>
-        <div id="tplSwatch2" class="w-7 h-7 rounded-full border-2 border-white/20" title="Secondary"></div>
-        <div id="tplSwatch3" class="w-7 h-7 rounded-full border-2 border-white/10" title="Accent"></div>
-        <span id="tplPreviewFont" class="text-[11px] text-slate-500 ml-2 italic"></span>
-      </div>
-      <div class="flex items-center gap-2">
-        <div id="tplRadiusDemo" class="h-7 px-4 bg-white/10 text-xs text-white flex items-center font-semibold">Button</div>
-        <span class="text-[10px] text-slate-600">border-radius style</span>
-      </div>
-      <div class="flex gap-1.5 flex-wrap">
-        <?php foreach (['Home','About','Services','Gallery','Contact'] as $pg): ?>
-          <span class="text-[10px] bg-white/8 text-slate-400 px-2 py-0.5 rounded-full"><?= $pg ?></span>
-        <?php endforeach; ?>
-      </div>
-      <button type="button" id="tplPreviewSelect"
-              class="w-full bg-white hover:bg-slate-200 text-black py-2.5 rounded-xl font-bold text-sm transition">
-        Use This Template
-      </button>
-    </div>
+    <iframe id="previewFrame" title="Template preview" sandbox="allow-same-origin"></iframe>
   </div>
 </div>
 
@@ -487,7 +566,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<!-- Error boundary: shown if generator.js throws or the API returns a fatal error -->
 <div id="genErrorBoundary" class="hidden glass rounded-2xl p-10 text-center border border-red-500/20 mt-6">
   <div class="w-14 h-14 rounded-full bg-red-500/10 flex items-center justify-center mx-auto mb-4">
     <i class="fa-solid fa-triangle-exclamation text-red-400 text-2xl"></i>
@@ -507,19 +585,21 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <script>
+// Template data from PHP
+const TEMPLATES = <?= $tpl_json ?>;
+
 document.addEventListener('DOMContentLoaded', function () {
-  // Reveal the real form and hide skeleton once DOM + scripts are ready
   const skeleton = document.getElementById('generateSkeleton');
   const form     = document.getElementById('generateForm');
   if (skeleton) skeleton.remove();
   if (form)     form.classList.remove('hidden');
 
-  // ---- Error boundary: hook into window.onerror and custom genError event ----
-  const errBoundary = document.getElementById('genErrorBoundary');
-  const errMsg      = document.getElementById('genErrorMsg');
-  const retryBtn    = document.getElementById('genRetryBtn');
-  const progressWrap  = document.getElementById('genProgressWrap');
-  const downloadWrap  = document.getElementById('genDownloadWrap');
+  // Error boundary
+  const errBoundary  = document.getElementById('genErrorBoundary');
+  const errMsg       = document.getElementById('genErrorMsg');
+  const retryBtn     = document.getElementById('genRetryBtn');
+  const progressWrap = document.getElementById('genProgressWrap');
+  const downloadWrap = document.getElementById('genDownloadWrap');
 
   function showError(msg) {
     if (progressWrap) progressWrap.classList.add('hidden');
@@ -527,27 +607,17 @@ document.addEventListener('DOMContentLoaded', function () {
     if (errMsg)       errMsg.textContent = msg || 'Something went wrong. Please try again.';
     if (errBoundary)  errBoundary.classList.remove('hidden');
   }
-
-  // Listen for custom error event dispatched by generator.js
-  window.addEventListener('genError', function (e) {
-    showError(e.detail?.message);
-  });
-
-  // Catch any uncaught JS error while generation is in progress
-  window.addEventListener('error', function (e) {
+  window.addEventListener('genError', e => showError(e.detail?.message));
+  window.addEventListener('error', e => {
     if (!progressWrap || progressWrap.classList.contains('hidden')) return;
     showError('A script error interrupted the generation. Please try again.');
   });
+  if (retryBtn) retryBtn.addEventListener('click', () => {
+    if (errBoundary) errBoundary.classList.add('hidden');
+    if (form)        form.classList.remove('hidden');
+  });
 
-  // Retry: hide boundary, re-show and re-submit form
-  if (retryBtn) {
-    retryBtn.addEventListener('click', function () {
-      if (errBoundary) errBoundary.classList.add('hidden');
-      if (form)        form.classList.remove('hidden');
-    });
-  }
-
-  // ---- Template card selection ----
+  // Template card selection
   const cards    = document.querySelectorAll('.template-card');
   const tplInput = document.getElementById('selectedTemplateInput');
   const tplLabel = document.getElementById('selectedTemplateLabel');
@@ -561,66 +631,310 @@ document.addEventListener('DOMContentLoaded', function () {
   }
 
   cards.forEach(card => {
-    card.addEventListener('click', function (e) {
+    card.addEventListener('click', e => {
       if (e.target.closest('.preview-tpl-btn')) return;
       selectCard(card);
     });
-    card.addEventListener('keydown', function (e) {
+    card.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectCard(card); }
     });
   });
-
   const first = document.querySelector('.template-card:not([data-locked])');
   if (first) selectCard(first);
 
-  // ---- Template preview modal ----
-  const modal      = document.getElementById('tplPreviewModal');
-  const mBanner    = document.getElementById('tplPreviewBanner');
-  const mName      = document.getElementById('tplPreviewName');
-  const mCat       = document.getElementById('tplPreviewCat');
-  const mDesc      = document.getElementById('tplPreviewDesc');
-  const mSwatch1   = document.getElementById('tplSwatch1');
-  const mSwatch2   = document.getElementById('tplSwatch2');
-  const mSwatch3   = document.getElementById('tplSwatch3');
-  const mFont      = document.getElementById('tplPreviewFont');
-  const mRadius    = document.getElementById('tplRadiusDemo');
-  const mSelectBtn = document.getElementById('tplPreviewSelect');
-  let   previewKey = null;
+  // ================================================================
+  // FULL LIVE PREVIEW MODAL
+  // ================================================================
+  const fullModal      = document.getElementById('fullPreviewModal');
+  const previewFrame   = document.getElementById('previewFrame');
+  const previewLabel   = document.getElementById('previewModalLabel');
+  const previewSelBtn  = document.getElementById('previewSelectBtn');
+  const previewClsBtn  = document.getElementById('previewCloseBtn');
+  const pageTabs       = document.querySelectorAll('.preview-tab');
+  let   activePreviewKey = null;
 
-  function openPreview(card) {
-    previewKey = card.dataset.template;
-    mBanner.style.background = `linear-gradient(135deg,${card.dataset.secondary} 0%,${card.dataset.primary} 100%)`;
-    mName.textContent  = card.dataset.label;
-    mCat.textContent   = card.dataset.font;
-    mDesc.textContent  = card.dataset.description;
-    mSwatch1.style.background = card.dataset.primary;
-    mSwatch2.style.background = card.dataset.secondary;
-    mSwatch3.style.background = card.dataset.accent;
-    mFont.textContent  = card.dataset.font;
-    mRadius.style.borderRadius = card.dataset.radius;
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
+  function buildPreviewHTML(key) {
+    const t = TEMPLATES[key];
+    if (!t) return '<p>Template not found.</p>';
+
+    const isDark   = t.dark;
+    const bg       = isDark ? t.secondary : (t.accent || '#ffffff');
+    const fg       = t.text;
+    const primary  = t.primary;
+    const secondary = t.secondary;
+    const radius   = t.radius;
+    const fontFamily = t.font;
+    const fontLink = t.font_url ? `<link rel="stylesheet" href="${t.font_url}">` : '';
+
+    const navBg    = isDark ? secondary : primary;
+    const navFg    = '#ffffff';
+    const btnBg    = primary;
+    const btnFg    = '#ffffff';
+    const cardBg   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+    const borderC  = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
+    const mutedFg  = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)';
+    const heroGrad = `linear-gradient(135deg, ${secondary} 0%, ${primary} 100%)`;
+
+    // Helper: pill badge
+    const pill = (txt) => `<span style="display:inline-block;background:${isDark?'rgba(255,255,255,0.12)':'rgba(0,0,0,0.07)'};color:${fg};padding:3px 12px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">${txt}</span>`;
+
+    // Helper: button
+    const btn = (txt, outline=false) => outline
+      ? `<button style="background:transparent;border:2px solid ${primary};color:${primary};padding:11px 28px;border-radius:${radius};font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;">${txt}</button>`
+      : `<button style="background:${btnBg};color:${btnFg};border:none;padding:12px 32px;border-radius:${radius};font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;box-shadow:0 4px 16px rgba(0,0,0,.2);">${txt}</button>`;
+
+    // Helper: section wrapper
+    const section = (id, bgOverride, content) =>
+      `<section id="${id}" style="background:${bgOverride||bg};padding:80px 40px;">${content}</section>`;
+
+    // Helper: heading
+    const h2 = (txt) => `<h2 style="font-size:clamp(24px,4vw,38px);font-weight:800;color:${fg};margin:0 0 12px;line-height:1.15;">${txt}</h2>`;
+    const h3 = (txt) => `<h3 style="font-size:18px;font-weight:700;color:${fg};margin:0 0 8px;">${txt}</h3>`;
+    const p  = (txt) => `<p style="color:${mutedFg};font-size:15px;line-height:1.7;margin:0 0 16px;">${txt}</p>`;
+
+    // Service card
+    const svcCard = (icon, title, desc) =>
+      `<div style="background:${cardBg};border:1px solid ${borderC};border-radius:${radius};padding:28px 24px;">
+        <div style="font-size:28px;margin-bottom:12px;">${icon}</div>
+        ${h3(title)}
+        <p style="color:${mutedFg};font-size:14px;margin:0;line-height:1.6;">${desc}</p>
+       </div>`;
+
+    // Gallery tile
+    const galTile = (hue) =>
+      `<div style="aspect-ratio:1;border-radius:${radius};background:linear-gradient(135deg,${primary}66,${secondary}aa);display:flex;align-items:center;justify-content:center;font-size:28px;">&#128247;</div>`;
+
+    // Stats row
+    const stat = (num, label) =>
+      `<div style="text-align:center;">
+        <div style="font-size:32px;font-weight:900;color:${primary};">${num}</div>
+        <div style="font-size:12px;font-weight:600;color:${mutedFg};text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">${label}</div>
+       </div>`;
+
+    // Testimonial card
+    const testimonial = (quote, author) =>
+      `<div style="background:${cardBg};border:1px solid ${borderC};border-radius:${radius};padding:24px;">
+        <p style="color:${fg};font-size:14px;font-style:italic;margin:0 0 12px;line-height:1.7;">&ldquo;${quote}&rdquo;</p>
+        <div style="font-size:13px;font-weight:700;color:${primary};">&mdash; ${author}</div>
+       </div>`;
+
+    const heroSection = `
+      <section id="home" style="background:${heroGrad};padding:100px 40px 80px;text-align:center;position:relative;">
+        <nav style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 40px;background:rgba(0,0,0,0.15);">
+          <span style="font-weight:900;font-size:18px;color:#fff;letter-spacing:-.01em;">YourBusiness</span>
+          <div style="display:flex;gap:20px;">
+            ${['Home','About','Services','Gallery','Contact'].map(p=>`<a href="#${p.toLowerCase()}" style="color:rgba(255,255,255,0.85);text-decoration:none;font-size:13px;font-weight:600;">${p}</a>`).join('')}
+          </div>
+          ${btn('Get Quote')}
+        </nav>
+        <div style="max-width:680px;margin:60px auto 0;">
+          ${pill(t.category)}
+          <h1 style="font-size:clamp(32px,6vw,60px);font-weight:900;color:#fff;margin:20px 0;line-height:1.1;letter-spacing:-.02em;">We Build Things<br>That Last</h1>
+          <p style="color:rgba(255,255,255,0.75);font-size:17px;line-height:1.7;margin:0 auto 32px;max-width:520px;">Professional services tailored to your needs. Trusted by hundreds of clients across the country.</p>
+          <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">
+            ${btn('Get Started')}
+            ${btn('See Our Work', true)}
+          </div>
+        </div>
+      </section>`;
+
+    const whyUsSection = section('why-us', bg,
+      `<div style="max-width:900px;margin:0 auto;text-align:center;">
+        ${pill('Why Us')}
+        <div style="margin-top:12px;">${h2('Why Clients Choose Us')}</div>
+        ${p('We deliver quality, reliability, and results every single time.')}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;margin-top:40px;">
+          ${[['&#9889;','Fast Turnaround','We get the job done on time, every time.'],['&#127941;','Quality First','No shortcuts — only premium workmanship.'],['&#128179;','Transparent Pricing','Clear quotes with zero hidden fees.'],['&#127775;','5-Star Rated','Hundreds of happy customers vouch for us.']].map(([icon,t,d])=>svcCard(icon,t,d)).join('')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-top:48px;padding:32px;background:${cardBg};border-radius:${radius};border:1px solid ${borderC};">
+          ${stat('500+','Projects Done')}
+          ${stat('12+','Years Experience')}
+          ${stat('98%','Satisfaction Rate')}
+          ${stat('24/7','Support')}
+        </div>
+       </div>`);
+
+    const aboutSection = section('about', isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
+      `<div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;">
+        <div>
+          ${pill('Our Story')}
+          <div style="margin-top:12px;">${h2('About Our Business')}</div>
+          ${p('Founded with a passion for quality, we have been serving our community for over a decade. Our team brings expertise, dedication, and a genuine commitment to every project.')}
+          ${p('We believe in building long-term relationships — not just completing jobs. Every client is treated like family.')}
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;">
+            ${['Licensed & Insured','Free Estimates','Locally Owned','Award Winning'].map(f=>`<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:${fg};"><span style="color:${primary};font-size:18px;">&#10003;</span>${f}</div>`).join('')}
+          </div>
+          <div style="margin-top:32px;">${btn('Meet the Team')}</div>
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+          <div style="grid-column:1/-1;aspect-ratio:16/9;border-radius:${radius};background:linear-gradient(135deg,${primary}88,${secondary}cc);display:flex;align-items:center;justify-content:center;font-size:48px;">&#127968;</div>
+          <div style="aspect-ratio:1;border-radius:${radius};background:${cardBg};border:1px solid ${borderC};display:flex;align-items:center;justify-content:center;font-size:32px;">&#127775;</div>
+          <div style="aspect-ratio:1;border-radius:${radius};background:${cardBg};border:1px solid ${borderC};display:flex;align-items:center;justify-content:center;font-size:32px;">&#128205;</div>
+        </div>
+       </div>`);
+
+    const servicesSection = section('services', bg,
+      `<div style="max-width:900px;margin:0 auto;text-align:center;">
+        ${pill('What We Do')}
+        <div style="margin-top:12px;">${h2('Our Services')}</div>
+        ${p('Everything you need, handled by our expert team.')}
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:40px;">
+          ${[['&#128295;','Core Service','Our flagship offering, delivered with precision and care to every client.'],
+            ['&#128640;','Premium Package','The complete solution for clients who want the absolute best results.'],
+            ['&#128200;','Consultation','Expert advice and planning to ensure your project succeeds from day one.'],
+            ['&#128274;','Maintenance Plan','Ongoing support and care to keep everything running smoothly long-term.'],
+            ['&#128241;','Emergency Support','24/7 rapid response for urgent needs — we are always available.'],
+            ['&#127881;','Custom Solutions','Bespoke services designed around your exact requirements and goals.']
+          ].map(([icon,t,d])=>svcCard(icon,t,d)).join('')}
+        </div>
+        <div style="margin-top:40px;">${btn('View All Services')}</div>
+       </div>`);
+
+    const gallerySection = section('gallery', isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
+      `<div style="max-width:900px;margin:0 auto;">
+        <div style="text-align:center;">
+          ${pill('Portfolio')}
+          <div style="margin-top:12px;">${h2('Our Work')}</div>
+          ${p('A sample of the projects we are most proud of.')}
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px;">
+          ${[1,2,3,4,5,6].map(()=>galTile()).join('')}
+        </div>
+        <div style="margin-top:32px;text-align:center;">
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:32px;">
+            ${[testimonial('Absolutely incredible work. We could not be happier with the results!','Sarah M.'),
+               testimonial('Professional, fast, and fairly priced. Will definitely hire again.','James K.'),
+               testimonial('From start to finish — a seamless and impressive experience.','Linda R.')].join('')}
+          </div>
+          ${btn('See Full Portfolio')}
+        </div>
+       </div>`);
+
+    const contactSection = `
+      <section id="contact" style="background:${heroGrad};padding:80px 40px;">
+        <div style="max-width:800px;margin:0 auto;">
+          <div style="text-align:center;margin-bottom:48px;">
+            ${pill('Get In Touch')}
+            <h2 style="font-size:clamp(24px,4vw,38px);font-weight:800;color:#fff;margin:12px 0;line-height:1.15;">Ready to Get Started?</h2>
+            <p style="color:rgba(255,255,255,0.7);font-size:16px;max-width:480px;margin:0 auto;">Fill in the form below and we will get back to you within 24 hours.</p>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;">
+            <div style="background:rgba(255,255,255,0.1);border-radius:${radius};padding:32px;backdrop-filter:blur(8px);">
+              ${[['Your Name','text'],['Email Address','email'],['Phone Number','tel']].map(([lbl,type])=>`
+                <div style="margin-bottom:16px;">
+                  <label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">${lbl}</label>
+                  <input type="${type}" placeholder="${lbl}" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;font-family:inherit;" />
+                </div>`).join('')}
+              <div style="margin-bottom:20px;">
+                <label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Message</label>
+                <textarea rows="4" placeholder="Tell us about your project" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
+              </div>
+              <button style="width:100%;background:#fff;color:${primary};border:none;padding:13px;border-radius:${radius};font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;">Send Message &#8594;</button>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:20px;justify-content:center;">
+              ${[['&#128205;','Address','123 Main Street, Your City, State 12345'],
+                 ['&#128222;','Phone','(555) 000-0000'],
+                 ['&#128231;','Email','hello@yourbusiness.com'],
+                 ['&#128336;','Hours','Mon-Fri: 8am-6pm | Sat: 9am-3pm']
+                ].map(([icon,lbl,val])=>`
+                <div style="display:flex;gap:14px;align-items:flex-start;">
+                  <div style="width:42px;height:42px;border-radius:${radius};background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">${icon}</div>
+                  <div><div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:.06em;">${lbl}</div><div style="font-size:14px;color:#fff;margin-top:3px;">${val}</div></div>
+                </div>`).join('')}
+              <div style="margin-top:8px;padding:20px;background:rgba(255,255,255,0.1);border-radius:${radius};">
+                <div style="font-size:32px;text-align:center;margin-bottom:8px;">&#127757;</div>
+                <div style="background:rgba(255,255,255,0.15);height:120px;border-radius:${radius};display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.6);font-size:12px;">Map Preview</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>`;
+
+    const footer = `
+      <footer style="background:${secondary};padding:32px 40px;text-align:center;border-top:1px solid ${borderC};">
+        <p style="color:${mutedFg};font-size:13px;margin:0;">&#169; 2025 YourBusiness. All rights reserved. &nbsp;|&nbsp; Built with Utiligo</p>
+      </footer>`;
+
+    return `<!DOCTYPE html><html lang="en"><head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      ${fontLink}
+      <style>
+        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+        html{scroll-behavior:smooth;}
+        body{font-family:${fontFamily};color:${fg};background:${bg};}
+        input,textarea,button{font-family:${fontFamily};}
+        a{color:inherit;}
+        ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:rgba(128,128,128,.4);border-radius:3px;}
+      </style>
+    </head><body>
+      ${heroSection}
+      ${whyUsSection}
+      ${aboutSection}
+      ${servicesSection}
+      ${gallerySection}
+      ${contactSection}
+      ${footer}
+    </body></html>`;
   }
 
+  let currentPreviewKey = null;
+
+  function openFullPreview(key) {
+    const t = TEMPLATES[key];
+    if (!t) return;
+    currentPreviewKey = key;
+    previewLabel.textContent = t.label + ' — Full Preview';
+    // Reset to Home tab
+    pageTabs.forEach(tb => tb.classList.toggle('active', tb.dataset.section === 'home'));
+    // Inject HTML into iframe srcdoc
+    const html = buildPreviewHTML(key);
+    previewFrame.srcdoc = html;
+    fullModal.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  }
+
+  function closeFullPreview() {
+    fullModal.classList.remove('open');
+    document.body.style.overflow = '';
+    previewFrame.srcdoc = '';
+    currentPreviewKey = null;
+  }
+
+  // Tab switching — scroll the iframe's inner document to the section
+  pageTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      pageTabs.forEach(tb => tb.classList.remove('active'));
+      tab.classList.add('active');
+      const sectionId = tab.dataset.section;
+      try {
+        const iDoc = previewFrame.contentDocument || previewFrame.contentWindow?.document;
+        if (iDoc) {
+          const el = iDoc.getElementById(sectionId);
+          if (el) el.scrollIntoView({ behavior: 'smooth' });
+        }
+      } catch(e) {}
+    });
+  });
+
+  previewSelBtn.addEventListener('click', () => {
+    if (!currentPreviewKey) return;
+    const card = document.querySelector(`.template-card[data-template="${currentPreviewKey}"]`);
+    if (card) selectCard(card);
+    closeFullPreview();
+  });
+
+  previewClsBtn.addEventListener('click', closeFullPreview);
+  fullModal.addEventListener('click', e => { if (e.target === fullModal) closeFullPreview(); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFullPreview(); });
+
+  // Hook eye buttons on template cards
   document.addEventListener('click', function (e) {
     const btn = e.target.closest('.preview-tpl-btn');
     if (!btn) return;
     e.stopPropagation();
     const card = btn.closest('.template-card');
-    if (card) openPreview(card);
-  });
-
-  document.getElementById('tplPreviewClose').addEventListener('click', function () {
-    modal.classList.add('hidden'); modal.classList.remove('flex');
-  });
-  modal.addEventListener('click', function (e) {
-    if (e.target === modal) { modal.classList.add('hidden'); modal.classList.remove('flex'); }
-  });
-  mSelectBtn.addEventListener('click', function () {
-    if (!previewKey) return;
-    const card = document.querySelector(`.template-card[data-template="${previewKey}"]`);
-    if (card) selectCard(card);
-    modal.classList.add('hidden'); modal.classList.remove('flex');
+    if (card) openFullPreview(card.dataset.template);
   });
 });
 </script>
