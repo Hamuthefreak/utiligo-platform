@@ -26,7 +26,7 @@ $_has_logo  = file_exists($_logo_path);
     line-height: 1;
   }
 
-  /* ─── Page Transition Loader ─────────────────────────────── */
+  /* ─── Page Transition Loader ───────────────────────────────── */
   #utl-loader {
     position: fixed;
     inset: 0;
@@ -36,7 +36,7 @@ $_has_logo  = file_exists($_logo_path);
     align-items: center;
     justify-content: center;
     gap: 20px;
-    background: #020817; /* slate-950 */
+    background: #020817;
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.18s ease;
@@ -46,7 +46,6 @@ $_has_logo  = file_exists($_logo_path);
     pointer-events: all;
   }
 
-  /* Progress bar at top */
   #utl-progress-track {
     position: absolute;
     top: 0; left: 0;
@@ -62,7 +61,6 @@ $_has_logo  = file_exists($_logo_path);
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
-  /* Spinning ring */
   .utl-ring {
     width: 36px;
     height: 36px;
@@ -75,7 +73,6 @@ $_has_logo  = file_exists($_logo_path);
     to { transform: rotate(360deg); }
   }
 
-  /* Logo wordmark fade */
   #utl-loader .utl-brand {
     font-family: 'Space Grotesk', sans-serif;
     font-weight: 800;
@@ -84,7 +81,6 @@ $_has_logo  = file_exists($_logo_path);
     color: rgba(255,255,255,0.35);
   }
 
-  /* Page body fade-in on arrival */
   body.page-ready > *:not(#utl-loader) {
     animation: utl-fadein 0.22s ease forwards;
   }
@@ -96,7 +92,7 @@ $_has_logo  = file_exists($_logo_path);
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
 
-<!-- ─── Transition Loader Overlay ─────────────────────────── -->
+<!-- ─── Transition Loader Overlay ───────────────────────────── -->
 <div id="utl-loader" role="status" aria-label="Loading" aria-live="polite">
   <div id="utl-progress-track"><div id="utl-progress-bar"></div></div>
   <div class="utl-ring"></div>
@@ -122,7 +118,7 @@ $_has_logo  = file_exists($_logo_path);
     <div class="flex items-center gap-3">
       <?php if ($loggedIn): ?>
         <a href="/portal/index.php" class="text-sm font-semibold px-5 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">Dashboard</a>
-        <a href="/includes/auth.php?action=logout" class="text-sm text-slate-400 hover:text-white">Logout</a>
+        <a href="/logout.php" class="text-sm text-slate-400 hover:text-white">Logout</a>
       <?php else: ?>
         <a href="/login.php"    class="text-sm text-slate-300 hover:text-white">Log In</a>
         <a href="/register.php" class="text-sm font-semibold px-5 py-2 rounded-full bg-white hover:bg-slate-200 text-black transition">Start Free</a>
