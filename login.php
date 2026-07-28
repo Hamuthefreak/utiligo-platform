@@ -65,8 +65,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($rememberMe) {
                     set_remember_me_cookie($u['id']);
                 }
-                // Signal portal to show the welcome-back animation
-                $_SESSION['show_login_onboarding'] = $u['full_name'] ?? '';
                 header('Location: /portal/index.php');
                 exit;
             }
@@ -142,7 +140,6 @@ require_once __DIR__ . '/includes/header.php';
             class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
         </div>
 
-        <!-- Remember me + forgot password row -->
         <div class="flex items-center justify-between">
           <label class="flex items-center gap-2.5 cursor-pointer select-none group">
             <div class="relative">
