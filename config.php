@@ -81,6 +81,12 @@ if (!defined('STRIPE_SECRET_KEY'))      define('STRIPE_SECRET_KEY',      getenv(
 if (!defined('STRIPE_PUBLISHABLE_KEY')) define('STRIPE_PUBLISHABLE_KEY', getenv('STRIPE_PUBLISHABLE_KEY') ?: 'YOUR_STRIPE_PUBLISHABLE_KEY');
 if (!defined('STRIPE_WEBHOOK_SECRET'))  define('STRIPE_WEBHOOK_SECRET',  getenv('STRIPE_WEBHOOK_SECRET')  ?: 'YOUR_STRIPE_WEBHOOK_SECRET');
 
+// Stripe Price IDs — set these env vars on your server:
+//   STRIPE_PRO_PRICE_ID=price_xxxxxxxxxxxxxxxx
+//   STRIPE_ENT_PRICE_ID=price_xxxxxxxxxxxxxxxx
+if (!defined('STRIPE_PRO_PRICE_ID')) define('STRIPE_PRO_PRICE_ID', getenv('STRIPE_PRO_PRICE_ID') ?: 'YOUR_STRIPE_PRO_PRICE_ID');
+if (!defined('STRIPE_ENT_PRICE_ID')) define('STRIPE_ENT_PRICE_ID', getenv('STRIPE_ENT_PRICE_ID') ?: 'YOUR_STRIPE_ENT_PRICE_ID');
+
 if (!defined('TEST_PAYMENT_MODE')) define('TEST_PAYMENT_MODE', (bool)(getenv('TEST_PAYMENT_MODE') ?: true));
 
 require_once __DIR__ . '/includes/plan_limits.php';
@@ -151,10 +157,6 @@ require_once __DIR__ . '/includes/run_migrations.php';
 require_once __DIR__ . '/includes/bootstrap_migrations.php';
 
 // ---- Remember-me bootstrap ----
-// Auto-log in users who have a valid persistent cookie.
-// Must run after session_start() and after auth.php is available.
-// auth.php is loaded by every page via its own require_once, but we
-// need it here too for the bootstrap call. Guard against double-load.
 if (!function_exists('check_remember_me_cookie')) {
     require_once __DIR__ . '/includes/auth.php';
 }

@@ -72,12 +72,22 @@ $_ent_price     = (float) ENTREPRENEUR_PLAN_PRICE;
 $_pro_price_fmt = number_format($_pro_price, 2);
 $_ent_price_fmt = number_format($_ent_price, 2);
 
+// ---- Stripe error from redirect ----
+if (!empty($_GET['stripe_error'])) {
+    $stripeMsg = htmlspecialchars(urldecode($_GET['stripe_error']));
+    $error = $stripeMsg === 'not_configured'
+        ? 'Stripe payments are not yet configured. Please contact support.'
+        : 'Stripe error: ' . $stripeMsg . '. Please try again or contact support.';
+}
+if (isset($_GET['cancelled'])) {
+    $message = 'Checkout cancelled — you were not charged.';
+}
+
 $pageTitle = 'Billing — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
-/* ---- Entrepreneur gradient badge animation ---- */
 @keyframes ent-shimmer {
   0%   { background-position: -200% center; }
   100% { background-position:  200% center; }
@@ -161,7 +171,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </span>
   </div>
 
-  <!-- Plan limits bar -->
   <?php if ($is_paid && $is_active):
     $lead_limit = plan_lead_limit($plan);
     $site_limit = plan_site_limit($plan);
@@ -225,10 +234,20 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <span><i class="fa-solid fa-server text-amber-400 mr-1"></i><?= $_ent_sites ?> active sites</span>
       </div>
     </div>
+    <?php if (TEST_PAYMENT_MODE): ?>
     <a href="?plan=entrepreneur&upgrade=1"
        class="shrink-0 text-sm font-bold px-6 py-3 rounded-xl text-black whitespace-nowrap ent-glow-btn">
       Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
     </a>
+    <?php else: ?>
+    <form method="POST" action="/stripe-checkout.php" class="shrink-0">
+      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+      <input type="hidden" name="plan" value="entrepreneur">
+      <button type="submit" class="text-sm font-bold px-6 py-3 rounded-xl text-black whitespace-nowrap ent-glow-btn">
+        Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
+      </button>
+    </form>
+    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>
@@ -236,7 +255,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <!-- ===== UPGRADE FORMS (shown when not on a paid active plan) ===== -->
 <?php if (!$is_paid || $is_cancelled): ?>
 
-<!-- Plan selection tabs -->
 <div class="flex gap-2 mb-6">
   <a href="?upgrade=1&plan=pro"
      class="px-5 py-2 rounded-full text-sm font-bold transition
@@ -251,10 +269,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php if ($_target_plan === 'entrepreneur'): ?>
-<!-- ===== ENTREPRENEUR UPGRADE CARD ===== -->
 <div class="rounded-2xl border border-amber-500/20 overflow-hidden mb-6" style="background:linear-gradient(160deg,#0d0d14 0%,#15100a 60%,#1a0f00 100%)">
 
-  <!-- Hero header -->
   <div class="px-6 pt-6 pb-5 border-b border-white/5">
     <div class="flex items-start justify-between flex-wrap gap-4">
       <div>
@@ -274,7 +290,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
 
-  <!-- Pro vs Entrepreneur comparison table -->
   <div class="px-6 py-5 border-b border-white/5 overflow-x-auto">
     <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Plan Comparison</p>
     <table class="w-full text-sm min-w-[420px]">
@@ -282,9 +297,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <tr class="text-xs">
           <th class="text-left text-slate-500 font-semibold pb-3 w-1/2">Feature</th>
           <th class="text-center text-slate-400 font-bold pb-3 w-1/4">Pro</th>
-          <th class="text-center pb-3 w-1/4">
-            <span class="ent-badge font-bold">Entrepreneur</span>
-          </th>
+          <th class="text-center pb-3 w-1/4"><span class="ent-badge font-bold">Entrepreneur</span></th>
         </tr>
       </thead>
       <tbody class="divide-y divide-white/5">
@@ -311,14 +324,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </table>
   </div>
 
-  <!-- Social proof -->
   <div class="px-6 py-4 border-b border-white/5 flex flex-wrap items-center gap-4 text-xs text-slate-500">
     <span><i class="fa-solid fa-users mr-1 text-amber-500/60"></i>Trusted by agencies running 50+ client sites</span>
     <span><i class="fa-solid fa-shield-halved mr-1 text-amber-500/60"></i>Cancel any time, no lock-in</span>
     <span><i class="fa-solid fa-headset mr-1 text-amber-500/60"></i>Priority email &amp; chat support</span>
   </div>
 
-  <!-- Payment form -->
   <div class="px-6 py-6">
     <?php if (TEST_PAYMENT_MODE): ?>
     <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-400">
@@ -359,18 +370,22 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
     </form>
     <?php else: ?>
-    <a href="#" class="block w-full text-center ent-glow-btn text-black py-3.5 rounded-xl font-bold text-base">
-      <i class="fa-solid fa-rocket mr-2"></i>Subscribe via Stripe &mdash; $<?= $_ent_price_fmt ?>/mo
-    </a>
-    <div class="flex items-center justify-center gap-2 text-xs text-slate-500 mt-3">
-      <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
-    </div>
+    <form method="POST" action="/stripe-checkout.php" class="space-y-2">
+      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+      <input type="hidden" name="plan" value="entrepreneur">
+      <button type="submit" class="w-full ent-glow-btn text-black py-3.5 rounded-xl font-bold text-base">
+        <i class="fa-solid fa-rocket mr-2"></i>Subscribe via Stripe &mdash; $<?= $_ent_price_fmt ?>/mo
+      </button>
+      <div class="flex items-center justify-center gap-2 text-xs text-slate-500 mt-1">
+        <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
+      </div>
+    </form>
     <?php endif; ?>
   </div>
 </div>
 
 <?php else: ?>
-<!-- ===== PRO UPGRADE CARD ===== -->
+<!-- PRO UPGRADE CARD -->
 <div class="rounded-2xl border border-white/15 overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f0f 0%,#1c1c1c 100%)">
   <div class="px-6 py-6">
     <div class="flex items-start justify-between flex-wrap gap-4 mb-6">
@@ -432,17 +447,21 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
     </form>
     <?php else: ?>
-    <a href="#" class="block w-full text-center bg-white hover:bg-slate-200 text-black py-3.5 rounded-xl font-bold transition">
-      <i class="fa-solid fa-lock mr-2"></i>Subscribe via Stripe
-    </a>
-    <div class="flex items-center justify-center gap-2 text-xs text-slate-500 mt-3">
-      <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
-    </div>
+    <form method="POST" action="/stripe-checkout.php" class="space-y-2">
+      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+      <input type="hidden" name="plan" value="pro">
+      <button type="submit"
+              class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all shadow-lg">
+        <i class="fa-solid fa-lock mr-2"></i>Subscribe via Stripe &mdash; $<?= $_pro_price_fmt ?>/mo
+      </button>
+      <div class="flex items-center justify-center gap-2 text-xs text-slate-500 mt-1">
+        <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
+      </div>
+    </form>
     <?php endif; ?>
   </div>
 </div>
 
-<!-- Nudge toward Entrepreneur -->
 <div class="text-center text-xs text-slate-500 mb-6">
   Looking for more power? <a href="?upgrade=1&plan=entrepreneur" class="text-amber-400 hover:text-amber-300 font-semibold transition">See the Entrepreneur plan <i class="fa-solid fa-arrow-right text-[10px]"></i></a>
 </div>
