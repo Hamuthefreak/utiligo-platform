@@ -1,0 +1,489 @@
+/* =====================================================================
+   onboarding.css — Shared animation styles for all onboarding flows
+   ===================================================================== */
+
+/* ── Shared overlay ─────────────────────────────────────────────────── */
+.ob-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #020817;
+  opacity: 1;
+  transition: opacity 0.55s cubic-bezier(0.4,0,0.2,1);
+  overflow: hidden;
+}
+.ob-overlay.ob-exit {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ── Particle canvas (shared) ───────────────────────────────────────── */
+.ob-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* ── LOGIN SPLASH ───────────────────────────────────────────────────── */
+#ob-login {
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, #0f2a1a 0%, #020817 65%);
+}
+
+.ob-login-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0;
+}
+
+/* Logo ring */
+.ob-logo-ring {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  border: 2px solid rgba(16,185,129,0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: scale(0.5);
+  animation: ob-pop 0.55s cubic-bezier(0.34,1.56,0.64,1) 0.15s forwards;
+}
+.ob-logo-ring::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border-radius: 50%;
+  border: 1px solid rgba(16,185,129,0.12);
+  animation: ob-pulse-ring 2s ease-in-out 0.7s infinite;
+}
+.ob-logo-ring::after {
+  content: '';
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  border: 1px solid rgba(16,185,129,0.06);
+  animation: ob-pulse-ring 2s ease-in-out 1s infinite;
+}
+.ob-logo-icon {
+  font-size: 2rem;
+  color: #10b981;
+}
+
+/* Greeting text */
+.ob-greeting {
+  font-size: clamp(1.6rem, 5vw, 2.4rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  margin-bottom: 8px;
+  opacity: 0;
+  transform: translateY(18px);
+  animation: ob-rise 0.5s ease 0.55s forwards;
+}
+.ob-greeting span {
+  background: linear-gradient(90deg, #10b981, #34d399);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.ob-subtext {
+  font-size: 0.95rem;
+  color: #64748b;
+  margin-bottom: 36px;
+  opacity: 0;
+  transform: translateY(12px);
+  animation: ob-rise 0.45s ease 0.72s forwards;
+}
+
+/* Stat pills */
+.ob-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 44px;
+}
+.ob-stat {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 100px;
+  padding: 8px 16px;
+  opacity: 0;
+  transform: translateY(10px) scale(0.95);
+  transition: border-color 0.2s;
+}
+.ob-stat.ob-in {
+  animation: ob-stat-in 0.4s cubic-bezier(0.34,1.4,0.64,1) forwards;
+}
+.ob-stat-icon { font-size: 0.85rem; color: #10b981; }
+.ob-stat-label { font-size: 0.78rem; color: #94a3b8; }
+.ob-stat-val { font-size: 0.78rem; font-weight: 700; color: #fff; }
+
+/* Continue pill */
+.ob-continue {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border: none;
+  border-radius: 100px;
+  padding: 12px 32px;
+  cursor: pointer;
+  opacity: 0;
+  transform: translateY(10px);
+  animation: ob-rise 0.45s ease 1.4s forwards;
+  box-shadow: 0 0 30px rgba(16,185,129,0.25);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.ob-continue:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 45px rgba(16,185,129,0.4);
+}
+
+/* ── SIGNUP PLAN SHOWCASE ───────────────────────────────────────────── */
+#ob-signup {
+  background: radial-gradient(ellipse 90% 70% at 50% 20%, #0c1a2e 0%, #020817 70%);
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.ob-signup-inner {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  max-width: 860px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+}
+
+.ob-signup-heading {
+  font-size: clamp(1.4rem, 4vw, 2rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  text-align: center;
+  margin-bottom: 6px;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: ob-rise 0.5s ease 0.1s forwards;
+}
+.ob-signup-sub {
+  font-size: 0.9rem;
+  color: #64748b;
+  text-align: center;
+  margin-bottom: 36px;
+  opacity: 0;
+  animation: ob-rise 0.45s ease 0.3s forwards;
+}
+
+/* Plan cards grid */
+.ob-plans {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  width: 100%;
+  margin-bottom: 32px;
+}
+
+.ob-plan-card {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 20px;
+  padding: 28px 22px;
+  cursor: pointer;
+  position: relative;
+  opacity: 0;
+  transform: translateY(30px) scale(0.96);
+  transition: border-color 0.2s, background 0.2s, transform 0.18s, box-shadow 0.2s;
+  overflow: hidden;
+}
+.ob-plan-card.ob-in {
+  animation: ob-card-in 0.5s cubic-bezier(0.34,1.3,0.64,1) forwards;
+}
+.ob-plan-card:hover {
+  border-color: rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.05);
+  transform: translateY(-4px);
+}
+.ob-plan-card.ob-selected {
+  border-color: var(--plan-color, #10b981);
+  background: rgba(16,185,129,0.06);
+  box-shadow: 0 0 40px rgba(16,185,129,0.15);
+}
+.ob-plan-card.ob-selected .ob-plan-select-btn {
+  background: var(--plan-color, #10b981);
+  color: #020817;
+}
+
+/* Plan card: badge */
+.ob-plan-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 4px 10px;
+  border-radius: 100px;
+  margin-bottom: 16px;
+  background: rgba(255,255,255,0.06);
+  color: #94a3b8;
+}
+.ob-plan-card.ob-plan-pro .ob-plan-badge   { background: rgba(139,92,246,0.15); color: #a78bfa; }
+.ob-plan-card.ob-plan-ent .ob-plan-badge   { background: rgba(245,158,11,0.15); color: #fbbf24; }
+.ob-plan-card.ob-plan-free .ob-plan-badge  { background: rgba(16,185,129,0.12); color: #34d399; }
+
+.ob-plan-name {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: #fff;
+  margin-bottom: 4px;
+}
+.ob-plan-price {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-bottom: 20px;
+}
+.ob-plan-price strong { color: #cbd5e1; font-size: 1.1rem; }
+
+/* Feature bullets */
+.ob-plan-features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.ob-plan-features li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  color: #94a3b8;
+  opacity: 0;
+  transform: translateX(-8px);
+}
+.ob-plan-features li.ob-in {
+  animation: ob-bullet-in 0.3s ease forwards;
+}
+.ob-feat-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #10b981;
+  flex-shrink: 0;
+}
+.ob-plan-card.ob-plan-pro  .ob-feat-dot { background: #a78bfa; }
+.ob-plan-card.ob-plan-ent  .ob-feat-dot { background: #fbbf24; }
+
+/* Select button */
+.ob-plan-select-btn {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.12);
+  background: transparent;
+  color: #fff;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
+}
+.ob-plan-select-btn:hover {
+  background: rgba(255,255,255,0.08);
+}
+
+/* Continue CTA */
+.ob-signup-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  opacity: 0;
+  animation: ob-rise 0.4s ease 1.3s forwards;
+}
+.ob-signup-go {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #020817;
+  font-size: 1rem;
+  font-weight: 800;
+  border: none;
+  border-radius: 100px;
+  padding: 14px 44px;
+  cursor: pointer;
+  box-shadow: 0 0 40px rgba(16,185,129,0.3);
+  transition: transform 0.15s, box-shadow 0.15s, background 0.2s;
+}
+.ob-signup-go:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 0 55px rgba(16,185,129,0.45);
+}
+.ob-signup-go.ob-plan-pro-go  { background: linear-gradient(135deg, #8b5cf6, #6d28d9); box-shadow: 0 0 40px rgba(139,92,246,0.3); }
+.ob-signup-go.ob-plan-pro-go:hover  { box-shadow: 0 0 55px rgba(139,92,246,0.5); }
+.ob-signup-go.ob-plan-ent-go  { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 0 40px rgba(245,158,11,0.3); }
+.ob-signup-go.ob-plan-ent-go:hover  { box-shadow: 0 0 55px rgba(245,158,11,0.5); }
+.ob-skip { font-size: 0.78rem; color: #475569; cursor: pointer; background: none; border: none; }
+.ob-skip:hover { color: #94a3b8; }
+
+/* ── PURCHASE SUCCESS ───────────────────────────────────────────────── */
+#ob-purchase {
+  background: #020817;
+}
+#ob-purchase.ob-plan-free-bg {
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, #062818 0%, #020817 65%);
+}
+#ob-purchase.ob-plan-pro-bg {
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, #170a2e 0%, #020817 65%);
+}
+#ob-purchase.ob-plan-ent-bg {
+  background: radial-gradient(ellipse 80% 60% at 50% 30%, #1c1104 0%, #020817 65%);
+}
+
+.ob-purchase-inner {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0;
+  padding: 0 20px;
+}
+
+.ob-purchase-icon {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.6rem;
+  margin-bottom: 28px;
+  opacity: 0;
+  transform: scale(0.4) rotate(-20deg);
+  animation: ob-burst 0.65s cubic-bezier(0.34,1.56,0.64,1) 0.2s forwards;
+}
+.ob-purchase-icon.ob-icon-free { background: rgba(16,185,129,0.12); border: 2px solid rgba(16,185,129,0.3); }
+.ob-purchase-icon.ob-icon-pro  { background: rgba(139,92,246,0.12); border: 2px solid rgba(139,92,246,0.3); }
+.ob-purchase-icon.ob-icon-ent  { background: rgba(245,158,11,0.12); border: 2px solid rgba(245,158,11,0.3); }
+
+.ob-purchase-plan-badge {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  padding: 5px 14px;
+  border-radius: 100px;
+  margin-bottom: 14px;
+  opacity: 0;
+  animation: ob-rise 0.4s ease 0.6s forwards;
+}
+.ob-badge-free { background: rgba(16,185,129,0.12); color: #34d399; }
+.ob-badge-pro  { background: rgba(139,92,246,0.12); color: #a78bfa; }
+.ob-badge-ent  { background: rgba(245,158,11,0.12);  color: #fbbf24; }
+
+.ob-purchase-title {
+  font-size: clamp(1.8rem, 5vw, 2.8rem);
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: #fff;
+  margin-bottom: 10px;
+  opacity: 0;
+  transform: translateY(16px);
+  animation: ob-rise 0.5s ease 0.75s forwards;
+}
+.ob-purchase-sub {
+  font-size: 0.95rem;
+  color: #64748b;
+  max-width: 380px;
+  margin-bottom: 40px;
+  opacity: 0;
+  animation: ob-rise 0.45s ease 0.95s forwards;
+}
+
+.ob-purchase-perks {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 44px;
+}
+.ob-perk {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.07);
+  border-radius: 100px;
+  padding: 7px 14px;
+  font-size: 0.78rem;
+  color: #cbd5e1;
+  opacity: 0;
+  transform: scale(0.9);
+}
+.ob-perk.ob-in {
+  animation: ob-stat-in 0.4s cubic-bezier(0.34,1.4,0.64,1) forwards;
+}
+.ob-perk-icon { font-size: 0.8rem; }
+
+.ob-purchase-go {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #020817;
+  font-size: 1rem;
+  font-weight: 800;
+  border: none;
+  border-radius: 100px;
+  padding: 14px 44px;
+  cursor: pointer;
+  opacity: 0;
+  animation: ob-rise 0.4s ease 1.5s forwards;
+  box-shadow: 0 0 40px rgba(16,185,129,0.25);
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+.ob-purchase-go:hover { transform: translateY(-2px); }
+.ob-purchase-go.ob-go-pro { background: linear-gradient(135deg, #8b5cf6, #6d28d9); box-shadow: 0 0 40px rgba(139,92,246,0.25); }
+.ob-purchase-go.ob-go-ent { background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 0 40px rgba(245,158,11,0.25); color: #020817; }
+
+/* ── KEYFRAMES ──────────────────────────────────────────────────────── */
+@keyframes ob-pop {
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes ob-rise {
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes ob-pulse-ring {
+  0%,100% { transform: scale(1); opacity: 0.5; }
+  50%      { transform: scale(1.12); opacity: 0.15; }
+}
+@keyframes ob-stat-in {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ob-card-in {
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes ob-bullet-in {
+  to { opacity: 1; transform: translateX(0); }
+}
+@keyframes ob-burst {
+  to { opacity: 1; transform: scale(1) rotate(0deg); }
+}

@@ -65,6 +65,12 @@ $pageTitle = 'Create Account — Utiligo';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
+<?php if (!$success && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
+<!-- Signup plan showcase overlay — only on fresh page load -->
+<link rel="stylesheet" href="/assets/css/onboarding.css">
+<script defer src="/assets/js/onboarding-signup.js"></script>
+<?php endif; ?>
+
 <section class="min-h-screen flex items-center justify-center px-4 py-16">
   <div class="w-full max-w-md">
 
@@ -80,9 +86,7 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 
   <div class="glass rounded-2xl border border-white/10 overflow-hidden">
-    <!-- Gradient banner -->
     <div class="relative h-36 flex items-center justify-center" style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);">
-      <!-- subtle glow -->
       <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
         <div class="w-40 h-40 rounded-full bg-white/5 blur-2xl"></div>
       </div>
@@ -98,7 +102,6 @@ require_once __DIR__ . '/includes/header.php';
         <span class="text-white font-semibold"><?= htmlspecialchars($email) ?></span>
       </p>
 
-      <!-- Steps -->
       <ol class="space-y-3 mb-8">
         <li class="flex items-start gap-3">
           <span class="w-6 h-6 rounded-full bg-white text-black text-xs font-black flex items-center justify-center shrink-0 mt-0.5">1</span>
@@ -110,13 +113,12 @@ require_once __DIR__ . '/includes/header.php';
         </li>
         <li class="flex items-start gap-3">
           <span class="w-6 h-6 rounded-full bg-white/10 border border-white/20 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">3</span>
-          <span class="text-sm text-slate-300">You’ll be taken straight to your dashboard — ready to go!</span>
+          <span class="text-sm text-slate-300">You'll be taken straight to your dashboard — ready to go!</span>
         </li>
       </ol>
 
-      <!-- Divider -->
       <div class="border-t border-white/8 pt-5">
-        <p class="text-xs text-slate-500 text-center mb-3">Didn’t get it? Check your spam folder, or</p>
+        <p class="text-xs text-slate-500 text-center mb-3">Didn't get it? Check your spam folder, or</p>
         <form method="POST" action="/resend-verification.php">
           <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
           <input type="hidden" name="email" value="<?= htmlspecialchars($email) ?>">
@@ -149,7 +151,7 @@ require_once __DIR__ . '/includes/header.php';
   <?php if ($_plan_param !== 'free'): ?>
   <div class="flex items-center gap-2 bg-white/8 border border-white/15 rounded-xl px-4 py-3 mb-5 text-sm">
     <i class="fa-solid fa-<?= $_plan_param === 'entrepreneur' ? 'rocket' : 'crown' ?> text-white"></i>
-    <span class="text-white font-semibold">Starting on <strong><?= $_plan_labels[$_plan_param] ?></strong> &mdash; you’ll complete payment after signup.</span>
+    <span class="text-white font-semibold">Starting on <strong><?= $_plan_labels[$_plan_param] ?></strong> &mdash; you'll complete payment after signup.</span>
   </div>
   <?php endif; ?>
 
