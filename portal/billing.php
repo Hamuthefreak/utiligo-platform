@@ -14,7 +14,7 @@ $error   = '';
 
 // Read plan from GET or POST (so errors re-render the right card)
 $_target_plan = 'pro';
-if (isset($_GET['plan']) && $_GET['plan'] === 'entrepreneur')         $_target_plan = 'entrepreneur';
+if (isset($_GET['plan']) && $_GET['plan'] === 'entrepreneur')                            $_target_plan = 'entrepreneur';
 elseif (isset($_POST['subscribe_plan']) && $_POST['subscribe_plan'] === 'entrepreneur') $_target_plan = 'entrepreneur';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -23,7 +23,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     } elseif ($_POST['action'] === 'test_subscribe') {
         $subscribePlan = in_array($_POST['subscribe_plan'] ?? '', ['pro','entrepreneur']) ? $_POST['subscribe_plan'] : 'pro';
         $cardNumber    = preg_replace('/\D/', '', $_POST['card_number'] ?? '');
-        $cardExpiry    = trim($_POST['card_expiry'] ?? '');
+        // normalise expiry: strip spaces so both "01/26" and "01 / 26" pass
+        $cardExpiry    = preg_replace('/\s/', '', trim($_POST['card_expiry'] ?? ''));
         $cardCvc       = preg_replace('/\D/', '', $_POST['card_cvc'] ?? '');
         if (strlen($cardNumber) < 12) {
             $error = 'Please enter a valid card number.';
@@ -43,7 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $listIds = [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS];
             brevo_upsert_contact($user['email'], ['FIRSTNAME' => $user['full_name']], $listIds);
             send_welcome_email($user['email'], $user['full_name']);
-            header('Location: /portal?upgraded=1'); exit;
+            header('Location: /portal/index?upgraded=1'); exit;
         }
     } elseif ($_POST['action'] === 'cancel') {
         $userdb = get_user_db();
@@ -59,6 +60,7 @@ $is_ent       = $plan === 'entrepreneur';
 $is_paid      = $is_pro || $is_ent;
 $is_active    = ($user['subscription_status'] ?? '') === 'active';
 $is_cancelled = ($user['subscription_status'] ?? '') === 'cancelled';
+$pcfg         = get_plan_config($plan);
 
 $_pro_leads     = (int) PRO_LEAD_LIMIT;
 $_pro_sites     = (int) PRO_SITE_LIMIT;
@@ -79,7 +81,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <style>
 @keyframes ent-shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
-@keyframes pulse-ring{0%,100%{opacity:.4;transform:scale(1)}50%{opacity:.7;transform:scale(1.04)}}
 .ent-badge{background:linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b);background-size:200% auto;animation:ent-shimmer 2.5s linear infinite;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 .ent-glow-btn{background:linear-gradient(135deg,#f59e0b 0%,#f97316 60%,#ef4444 100%);box-shadow:0 4px 24px rgba(245,158,11,.4);transition:all .2s}
 .ent-glow-btn:hover{box-shadow:0 8px 40px rgba(245,158,11,.65);transform:translateY(-2px)}
@@ -91,7 +92,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .card-input::placeholder{color:rgba(148,163,184,.5)}
 .card-input:focus{border-color:rgba(255,255,255,.35);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
 .card-input-ent:focus{border-color:rgba(245,158,11,.5);box-shadow:0 0 0 3px rgba(245,158,11,.08)}
-.card-input-error{border-color:rgba(239,68,68,.5)!important;box-shadow:0 0 0 3px rgba(239,68,68,.08)!important}
 .input-label{display:block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.45rem;color:rgba(148,163,184,.8)}
 .trust-row{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem;font-size:.7rem;color:rgba(100,116,139,.8)}
 .plan-tab{padding:.5rem 1.25rem;border-radius:9999px;font-size:.8rem;font-weight:700;transition:all .2s;cursor:pointer;text-decoration:none}
@@ -190,10 +190,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <?php if ($_target_plan === 'entrepreneur'): ?>
 
-<!-- ====== ENTREPRENEUR PAYMENT CARD ====== -->
+<!-- ENTREPRENEUR PAYMENT CARD -->
 <div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#08080f 0%,#0f0a02 60%,#160b00 100%)">
 
-  <!-- Hero -->
   <div class="relative px-7 pt-8 pb-7 border-b border-white/5 overflow-hidden">
     <div class="absolute inset-0 pointer-events-none" style="background:radial-gradient(ellipse 70% 90% at 85% 10%,rgba(245,158,11,.13) 0%,transparent 65%)"></div>
     <div class="relative flex flex-wrap gap-6 items-start justify-between">
@@ -227,7 +226,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
 
-  <!-- Compare table -->
   <div class="px-7 py-5 border-b border-white/5 overflow-x-auto">
     <p class="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">Entrepreneur vs Pro</p>
     <table class="w-full text-xs min-w-[340px]">
@@ -257,7 +255,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </table>
   </div>
 
-  <!-- Social proof -->
   <div class="px-7 py-3 border-b border-white/5 trust-row">
     <span><i class="fa-solid fa-star text-amber-500/60 mr-1"></i>200+ agencies</span>
     <span><i class="fa-solid fa-bolt text-amber-500/60 mr-1"></i>Instant activation</span>
@@ -265,7 +262,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <span><i class="fa-solid fa-headset text-amber-500/60 mr-1"></i>Priority support</span>
   </div>
 
-  <!-- Payment form -->
   <div class="px-7 py-7">
     <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
       <i class="fa-solid fa-flask text-amber-500/70"></i>
@@ -275,8 +271,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="entrepreneur">
-
-      <!-- Card number -->
       <div>
         <label class="input-label text-slate-500" for="cardNumberInputEnt">Card number</label>
         <div class="relative">
@@ -288,8 +282,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </span>
         </div>
       </div>
-
-      <!-- Expiry + CVC -->
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="input-label text-slate-500" for="cardExpiryInputEnt">Expiry</label>
@@ -307,11 +299,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </div>
         </div>
       </div>
-
       <button type="submit" class="w-full ent-glow-btn text-black py-4 rounded-xl font-black text-base mt-1">
         <i class="fa-solid fa-rocket mr-2"></i>Unlock Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
       </button>
-
       <div class="trust-row justify-center pt-1">
         <i class="fa-solid fa-lock"></i><span>Secured by</span>
         <i class="fa-brands fa-stripe text-lg text-slate-400"></i>
@@ -326,10 +316,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <?php else: ?>
 
-<!-- ====== PRO PAYMENT CARD ====== -->
+<!-- PRO PAYMENT CARD -->
 <div class="rounded-2xl pro-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#0a0a0a 0%,#111 100%)">
-
-  <!-- Hero -->
   <div class="px-7 pt-8 pb-7 border-b border-white/5">
     <div class="flex flex-wrap gap-6 items-start justify-between">
       <div>
@@ -352,8 +340,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </ul>
     </div>
   </div>
-
-  <!-- Payment form -->
   <div class="px-7 py-7">
     <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
       <i class="fa-solid fa-flask text-amber-500/70"></i>
@@ -363,7 +349,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="pro">
-
       <div>
         <label class="input-label text-slate-500" for="cardNumberInput">Card number</label>
         <div class="relative">
@@ -375,7 +360,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </span>
         </div>
       </div>
-
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="input-label text-slate-500" for="cardExpiryInput">Expiry</label>
@@ -393,12 +377,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </div>
         </div>
       </div>
-
       <button type="submit"
         class="w-full bg-white hover:bg-slate-100 active:scale-[.98] text-black py-4 rounded-xl font-black text-base shadow-lg shadow-white/5 transition-all mt-1">
         <i class="fa-solid fa-lock mr-2 text-sm"></i>Subscribe to Pro &mdash; $<?= $_pro_price_fmt ?>/mo
       </button>
-
       <div class="trust-row justify-center pt-1">
         <i class="fa-solid fa-lock"></i><span>Secured by</span>
         <i class="fa-brands fa-stripe text-lg text-slate-400"></i>

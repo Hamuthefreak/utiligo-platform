@@ -2,17 +2,10 @@
 /**
  * includes/plans.php
  * 3-plan system: free | pro | entrepreneur
- *
- * Limits come from includes/plan_limits.php (loaded via config.php).
- * Edit plan_limits.php — changes flow here automatically.
- *
- * Fallbacks below only fire if the server somehow skips plan_limits.php
- * (e.g. a broken partial deploy). They mirror plan_limits.php exactly.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/auth.php';
 
-// ---- Last-resort fallbacks (values must match plan_limits.php) ----
 if (!defined('FREE_LEAD_LIMIT'))            define('FREE_LEAD_LIMIT',            3);
 if (!defined('FREE_SITE_LIMIT'))            define('FREE_SITE_LIMIT',            1);
 if (!defined('FREE_SEARCH_DAILY_LIMIT'))    define('FREE_SEARCH_DAILY_LIMIT',    2);
@@ -31,7 +24,6 @@ if (!defined('ENT_CUSTOM_DOMAIN_LIMIT'))    define('ENT_CUSTOM_DOMAIN_LIMIT',   
 if (!defined('PRO_PLAN_PRICE'))             define('PRO_PLAN_PRICE',          21.99);
 if (!defined('ENTREPRENEUR_PLAN_PRICE'))    define('ENTREPRENEUR_PLAN_PRICE', 49.99);
 
-// ---- Plan definitions — all values come from constants above ----
 function plan_config(): array {
     return [
         'free' => [
@@ -44,9 +36,7 @@ function plan_config(): array {
             'template_limit'     => FREE_TEMPLATE_LIMIT,
             'team_seats'         => 0,
             'custom_domain_limit'=> 0,
-            'features'           => [
-                'basic_dashboard',
-            ],
+            'features'           => ['basic_dashboard'],
         ],
         'pro' => [
             'label'              => 'Pro',
@@ -59,11 +49,8 @@ function plan_config(): array {
             'team_seats'         => 0,
             'custom_domain_limit'=> 0,
             'features'           => [
-                'basic_dashboard',
-                'website_generation',
-                'zip_export',
-                'revenue_dashboard',
-                'priority_support',
+                'basic_dashboard','website_generation','zip_export',
+                'revenue_dashboard','priority_support',
             ],
         ],
         'entrepreneur' => [
@@ -77,102 +64,67 @@ function plan_config(): array {
             'team_seats'         => ENT_TEAM_SEATS,
             'custom_domain_limit'=> ENT_CUSTOM_DOMAIN_LIMIT,
             'features'           => [
-                'basic_dashboard',
-                'website_generation',
-                'zip_export',
-                'revenue_dashboard',
-                'priority_support',
-                'custom_domains',
-                'client_reports',
-                'team_seats',
+                'basic_dashboard','website_generation','zip_export',
+                'revenue_dashboard','priority_support',
+                'custom_domains','client_reports','team_seats',
             ],
         ],
     ];
 }
 
-// ---- Helpers ----
-
 function get_plan_config(string $plan): array {
     return plan_config()[$plan] ?? plan_config()['free'];
 }
-
 function plan_label(string $plan): string {
     return get_plan_config($plan)['label'];
 }
-
 function has_feature(string $feature, string $plan): bool {
     return in_array($feature, get_plan_config($plan)['features'], true);
 }
-
-/** Returns the lead unlock limit for the plan. -1 = unlimited. */
 function plan_lead_limit(string $plan): int {
     return (int) get_plan_config($plan)['lead_limit'];
 }
-
-/** Returns the active-site limit for the plan. -1 = unlimited. */
 function plan_site_limit(string $plan): int {
     return (int) get_plan_config($plan)['site_limit'];
 }
-
-/** Returns the daily search limit for the plan. -1 = unlimited. */
 function plan_search_daily_limit(string $plan): int {
     return (int) get_plan_config($plan)['search_daily'];
 }
-
-/** Returns the number of team seats for the plan. 0 = none. */
 function plan_team_seats(string $plan): int {
     return (int) (get_plan_config($plan)['team_seats'] ?? 0);
 }
-
-/** Returns the custom domain limit for the plan. -1 = unlimited, 0 = none. */
 function plan_custom_domain_limit(string $plan): int {
     return (int) (get_plan_config($plan)['custom_domain_limit'] ?? 0);
 }
-
 function free_lead_limit(): int {
     return FREE_LEAD_LIMIT;
 }
-
-/**
- * Returns true if the user can generate/activate another site.
- */
 function can_generate_site(string $plan, int $current_active): bool {
     $limit = plan_site_limit($plan);
     if ($limit === -1) return true;
     return $current_active < $limit;
 }
-
-/**
- * Returns true if the user is within their lead unlock limit.
- */
 function can_unlock_lead(string $plan, int $unlocked_count): bool {
     $limit = plan_lead_limit($plan);
     if ($limit === -1) return true;
     if ($plan === 'free') return false;
     return $unlocked_count < $limit;
 }
-
 function require_paid(): void {
     require_login();
     $user = current_user();
     if (!in_array($user['plan'] ?? 'free', ['pro', 'entrepreneur'], true)) {
-        header('Location: /portal/billing.php?upgrade=1');
+        header('Location: /portal/billing?upgrade=1');
         exit;
     }
 }
-
-/**
- * Requires the user to be on the Entrepreneur plan.
- * Redirects to billing with plan=entrepreneur pre-selected if not.
- */
 function require_entrepreneur(): void {
     require_login();
     $user = current_user();
     if (($user['plan'] ?? 'free') !== 'entrepreneur') {
-        header('Location: /portal/billing.php?upgrade=1&plan=entrepreneur');
+        header('Location: /portal/billing?upgrade=1&plan=entrepreneur');
         exit;
     }
 }
-
 /** @deprecated use require_paid() */
 function require_pro(): void { require_paid(); }
