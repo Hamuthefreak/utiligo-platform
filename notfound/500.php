@@ -1,45 +1,34 @@
-<?php
-require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/../includes/auth.php';
-require_once __DIR__ . '/../includes/functions.php';
-http_response_code(500);
-$pageTitle = '500 — Server Error — Utiligo';
-require_once __DIR__ . '/../includes/header.php';
-?>
-
-<section class="min-h-[80vh] flex items-center justify-center px-6 py-20">
-  <div class="text-center max-w-lg mx-auto">
-
-    <div class="relative inline-block mb-8 select-none">
-      <div class="absolute inset-0 blur-3xl opacity-25 bg-emerald-500 rounded-full scale-150 pointer-events-none"></div>
-      <p class="relative text-[9rem] font-black leading-none tracking-tighter text-transparent bg-clip-text"
-         style="background-image:linear-gradient(135deg,#10b981 0%,#34d399 50%,#6ee7b7 100%);">500</p>
-    </div>
-
-    <h1 class="text-2xl font-bold mb-3">Something Went Wrong</h1>
-    <p class="text-slate-400 mb-8 leading-relaxed">
-      Our server hit an unexpected error. We&rsquo;ve been notified and
-      are looking into it &mdash; please try again in a moment.
-    </p>
-
-    <div class="flex flex-col sm:flex-row gap-3 justify-center">
-      <a href="/" class="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-6 py-3 rounded-xl font-bold transition-all hover:scale-105 shadow-lg shadow-emerald-500/20">
-        <i class="fa-solid fa-house"></i> Go Home
-      </a>
-      <button onclick="location.reload()" class="inline-flex items-center justify-center gap-2 bg-white/8 hover:bg-white/15 text-white px-6 py-3 rounded-xl font-semibold transition">
-        <i class="fa-solid fa-rotate-right"></i> Try Again
-      </button>
-    </div>
-
-    <div class="mt-10 pt-8 border-t border-white/5">
-      <p class="text-xs text-slate-500 uppercase tracking-widest mb-4">Maybe you were looking for</p>
-      <div class="flex flex-wrap gap-2 justify-center">
-        <a href="/" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Home</a>
-        <a href="/login.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Login</a>
-        <a href="/contact.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Contact</a>
-      </div>
-    </div>
+<?php http_response_code(500); ?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>500 — Server Error — Utiligo</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#020617;color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:2rem}
+  .wrap{text-align:center;max-width:480px}
+  .code{font-size:7rem;font-weight:900;line-height:1;background:linear-gradient(135deg,#10b981,#34d399);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+  h1{font-size:1.5rem;font-weight:700;margin:.75rem 0}
+  p{color:#94a3b8;line-height:1.6;margin-bottom:2rem}
+  .btns{display:flex;gap:.75rem;justify-content:center;flex-wrap:wrap}
+  a,button{display:inline-flex;align-items:center;gap:.4rem;padding:.75rem 1.5rem;border-radius:.75rem;font-weight:600;font-size:.9rem;text-decoration:none;border:none;cursor:pointer;transition:.15s}
+  .primary{background:#10b981;color:#020617}
+  .primary:hover{background:#34d399}
+  .secondary{background:rgba(255,255,255,.08);color:#f1f5f9}
+  .secondary:hover{background:rgba(255,255,255,.14)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="code">500</div>
+  <h1>Something Went Wrong</h1>
+  <p>Our server hit an unexpected error. We&rsquo;ve been notified and are looking into it &mdash; please try again in a moment.</p>
+  <div class="btns">
+    <a href="/" class="primary">&#8962; Go Home</a>
+    <button onclick="location.reload()" class="secondary">&#8635; Try Again</button>
   </div>
-</section>
-
-<?php require_once __DIR__ . '/../includes/footer.php'; ?>
+</div>
+</body>
+</html>
