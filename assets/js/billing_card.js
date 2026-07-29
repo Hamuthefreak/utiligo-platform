@@ -40,14 +40,15 @@ document.addEventListener('DOMContentLoaded', function () {
   initExpiry('cardExpiryInputEnt');
   initCvc('cardCvcInputEnt');
 
-  // Loading state on submit
+  // Visual-only loading state — do NOT disable the button (breaks POST in Chrome/Safari)
   ['billingForm', 'entForm'].forEach(function (formId) {
     var form = document.getElementById(formId);
     if (!form) return;
     form.addEventListener('submit', function () {
       var btn = form.querySelector('button[type="submit"]');
       if (btn) {
-        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.style.pointerEvents = 'none';
         btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
       }
     });

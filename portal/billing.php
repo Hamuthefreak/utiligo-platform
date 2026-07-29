@@ -16,7 +16,7 @@ $_target_plan = (isset($_GET['plan']) && $_GET['plan'] === 'entrepreneur') ? 'en
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
-        $error = 'Invalid session. Please try again.';
+        $error = 'Invalid session. Please refresh the page and try again.';
     } elseif ($_POST['action'] === 'test_subscribe') {
         $subscribePlan = in_array($_POST['subscribe_plan'] ?? '', ['pro','entrepreneur']) ? $_POST['subscribe_plan'] : 'pro';
         $cardNumber    = preg_replace('/\D/', '', $_POST['card_number'] ?? '');
@@ -27,7 +27,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } elseif (!preg_match('/^(0[1-9]|1[0-2])\/\d{2}$/', $cardExpiry)) {
             $error = 'Please enter a valid expiry date (MM/YY).';
         } elseif (strlen($cardCvc) < 3) {
-            $error = 'Please enter a valid CVC.';
+            $error = 'Please enter a valid CVC (3+ digits).';
         } else {
             $userdb = get_user_db();
             try {
@@ -69,9 +69,9 @@ $_ent_price     = (float) ENTREPRENEUR_PLAN_PRICE;
 $_pro_price_fmt = number_format($_pro_price, 2);
 $_ent_price_fmt = number_format($_ent_price, 2);
 
-if (isset($_GET['cancelled'])) $message = 'Checkout cancelled \u2014 you were not charged.';
+if (isset($_GET['cancelled'])) $message = 'Checkout cancelled — you were not charged.';
 
-$pageTitle = 'Billing \u2014 Utiligo';
+$pageTitle = 'Billing — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
@@ -79,10 +79,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 @keyframes ent-shimmer {
   0%   { background-position: -200% center; }
   100% { background-position:  200% center; }
-}
-@keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 20px rgba(245,158,11,.3); }
-  50%       { box-shadow: 0 0 40px rgba(245,158,11,.6); }
 }
 .ent-badge {
   background: linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b);
@@ -191,7 +187,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
   <?php if ($is_paid && $is_active): ?>
   <div class="mt-5 pt-5 border-t border-white/5">
-    <form method="POST" onsubmit="return confirm('Cancel your subscription? You will lose access at the end of the billing period.');">
+    <form method="POST" action="/portal/billing.php" onsubmit="return confirm('Cancel your subscription? You will lose access at the end of the billing period.');">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="cancel">
       <button type="submit" class="text-sm text-red-400 hover:text-red-300 transition">
@@ -227,10 +223,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 <?php endif; ?>
 
-<!-- ===== UPGRADE SECTION (free / cancelled users always see this) ===== -->
+<!-- ===== UPGRADE SECTION ===== -->
 <?php if (!$is_paid || $is_cancelled): ?>
 
-<!-- Plan tabs -->
 <div class="flex gap-2 mb-6">
   <a href="?plan=pro"
      class="px-5 py-2 rounded-full text-sm font-bold transition <?= $_target_plan==='pro' ? 'bg-white text-black' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
@@ -243,12 +238,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php if ($_target_plan === 'entrepreneur'): ?>
-<!-- ===== ENTREPRENEUR CARD ===== -->
+<!-- ENTREPRENEUR CARD -->
 <div class="rounded-2xl overflow-hidden mb-6 ent-card-border" style="background:linear-gradient(160deg,#0a0a12 0%,#110d05 55%,#180c00 100%)">
 
-  <!-- Glowing hero header -->
   <div class="relative px-6 pt-8 pb-6 border-b border-white/5 overflow-hidden">
-    <!-- subtle radial glow background -->
     <div class="absolute inset-0 pointer-events-none" style="background:radial-gradient(ellipse 60% 80% at 80% 20%,rgba(245,158,11,.12) 0%,transparent 70%)"></div>
     <div class="relative">
       <div class="flex flex-wrap items-start justify-between gap-4">
@@ -269,7 +262,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <p><i class="fa-solid fa-shield-halved mr-1 text-amber-400/60"></i>No lock-in</p>
         </div>
       </div>
-      <!-- Feature pills -->
       <div class="mt-5 flex flex-wrap gap-2">
         <span class="pill-feature"><i class="fa-solid fa-infinity"></i>Unlimited leads</span>
         <span class="pill-feature"><i class="fa-solid fa-globe"></i>Custom domains</span>
@@ -281,7 +273,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
 
-  <!-- Plan comparison table -->
   <div class="px-6 py-5 border-b border-white/5 overflow-x-auto">
     <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">What you unlock vs Pro</p>
     <table class="w-full text-sm min-w-[380px]">
@@ -289,23 +280,21 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <tr class="text-xs">
           <th class="text-left text-slate-500 font-semibold pb-3 pr-4">Feature</th>
           <th class="text-center text-slate-500 font-semibold pb-3 px-4">Pro</th>
-          <th class="text-center pb-3 px-4 rounded-t-lg ent-col-highlight">
-            <span class="ent-badge font-black text-xs">Entrepreneur</span>
-          </th>
+          <th class="text-center pb-3 px-4 rounded-t-lg ent-col-highlight"><span class="ent-badge font-black text-xs">Entrepreneur</span></th>
         </tr>
       </thead>
       <tbody>
         <?php
         $rows = [
-          ['Leads / period',    number_format($_pro_leads),                             '<i class="fa-solid fa-infinity compare-ent text-lg"></i>'],
-          ['Active websites',   $_pro_sites.' sites',                                   '<span class="text-amber-400 font-bold">'.$_ent_sites.' sites</span>'],
+          ['Leads / period',    number_format($_pro_leads),                                '<i class="fa-solid fa-infinity compare-ent text-lg"></i>'],
+          ['Active websites',   $_pro_sites.' sites',                                      '<span class="text-amber-400 font-bold">'.$_ent_sites.' sites</span>'],
           ['Custom domains',    '<i class="fa-solid fa-xmark compare-cross text-lg"></i>', '<i class="fa-solid fa-check compare-ent text-lg"></i>'],
           ['Client reports',    '<i class="fa-solid fa-xmark compare-cross text-lg"></i>', '<i class="fa-solid fa-check compare-ent text-lg"></i>'],
           ['Team seats',        '<i class="fa-solid fa-xmark compare-cross text-lg"></i>', '<span class="text-amber-400 font-bold">'.$_ent_seats.' seats</span>'],
           ['Revenue dashboard', '<i class="fa-solid fa-check compare-check text-lg"></i>', '<i class="fa-solid fa-check compare-ent text-lg"></i>'],
           ['ZIP export',        '<i class="fa-solid fa-check compare-check text-lg"></i>', '<i class="fa-solid fa-check compare-ent text-lg"></i>'],
           ['Priority support',  '<i class="fa-solid fa-check compare-check text-lg"></i>', '<i class="fa-solid fa-check compare-ent text-lg"></i>'],
-          ['Monthly price',     '<span class="text-slate-400">$'.$_pro_price_fmt.'</span>',  '<span class="font-black text-amber-400">$'.$_ent_price_fmt.'</span>'],
+          ['Monthly price',     '<span class="text-slate-400">$'.$_pro_price_fmt.'</span>', '<span class="font-black text-amber-400">$'.$_ent_price_fmt.'</span>'],
         ];
         foreach ($rows as $i => [$feature, $pro_val, $ent_val]): ?>
         <tr class="<?= $i%2===0 ? '' : 'bg-white/2' ?>">
@@ -318,7 +307,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </table>
   </div>
 
-  <!-- Social proof strip -->
   <div class="px-6 py-3.5 border-b border-white/5 flex flex-wrap items-center gap-x-6 gap-y-2 text-xs text-slate-500">
     <span><i class="fa-solid fa-star text-amber-400/70 mr-1"></i>Trusted by 200+ agencies</span>
     <span><i class="fa-solid fa-bolt text-amber-400/70 mr-1"></i>Instant activation</span>
@@ -326,15 +314,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <span><i class="fa-solid fa-headset text-amber-400/70 mr-1"></i>Priority support</span>
   </div>
 
-  <!-- Payment form -->
   <div class="px-6 py-6">
     <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-400">
       <i class="fa-solid fa-flask"></i>
       <span><strong>Test Mode</strong> &mdash; No real card needed. Any 12+ digit number works.</span>
     </div>
-    <form method="POST" class="space-y-4" id="entForm">
+    <form method="POST" action="/portal/billing.php" class="space-y-4" id="entForm">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-      <input type="hidden" name="action"       value="test_subscribe">
+      <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="entrepreneur">
       <div>
         <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Card Number</label>
@@ -370,7 +357,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php else: ?>
-<!-- ===== PRO CARD ===== -->
+<!-- PRO CARD -->
 <div class="rounded-2xl border border-white/10 overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f0f 0%,#1c1c1c 100%)">
   <div class="px-6 py-6">
     <div class="flex items-start justify-between flex-wrap gap-4 mb-6">
@@ -395,7 +382,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <i class="fa-solid fa-flask"></i>
       <span><strong>Test Mode</strong> &mdash; No real card needed. Any 12+ digit number works.</span>
     </div>
-    <form method="POST" class="space-y-4" id="billingForm">
+    <form method="POST" action="/portal/billing.php" class="space-y-4" id="billingForm">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="pro">
@@ -444,4 +431,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v312"></script>
+<script src="/assets/js/billing_card.js?v=v313"></script>
