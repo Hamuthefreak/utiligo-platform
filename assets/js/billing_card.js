@@ -1,35 +1,55 @@
 document.addEventListener('DOMContentLoaded', function () {
-  const cardNumberInput = document.getElementById('cardNumberInput');
-  const expiryInput = document.getElementById('cardExpiryInput');
-  const cvcInput = document.getElementById('cardCvcInput');
-
-  if (cardNumberInput) {
-    cardNumberInput.addEventListener('input', function (e) {
-      let digits = e.target.value.replace(/\D/g, '').slice(0, 16);
-      let formatted = digits.replace(/(.{4})/g, '$1 ').trim();
-      e.target.value = formatted;
+  function initCardNumber(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', function (e) {
+      var digits = e.target.value.replace(/\D/g, '').slice(0, 16);
+      e.target.value = digits.replace(/(.{4})/g, '$1 ').trim();
     });
   }
 
-  if (expiryInput) {
-    expiryInput.addEventListener('input', function (e) {
-      let digits = e.target.value.replace(/\D/g, '').slice(0, 4);
-      if (digits.length >= 3) {
-        e.target.value = digits.slice(0, 2) + '/' + digits.slice(2);
-      } else {
-        e.target.value = digits;
-      }
+  function initExpiry(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', function (e) {
+      var digits = e.target.value.replace(/\D/g, '').slice(0, 4);
+      e.target.value = digits.length >= 3 ? digits.slice(0, 2) + '/' + digits.slice(2) : digits;
     });
-    expiryInput.addEventListener('keydown', function (e) {
+    el.addEventListener('keydown', function (e) {
       if (e.key === 'Backspace' && e.target.value.endsWith('/')) {
         e.target.value = e.target.value.slice(0, -1);
       }
     });
   }
 
-  if (cvcInput) {
-    cvcInput.addEventListener('input', function (e) {
+  function initCvc(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('input', function (e) {
       e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
     });
   }
+
+  // Pro form
+  initCardNumber('cardNumberInput');
+  initExpiry('cardExpiryInput');
+  initCvc('cardCvcInput');
+
+  // Entrepreneur form
+  initCardNumber('cardNumberInputEnt');
+  initExpiry('cardExpiryInputEnt');
+  initCvc('cardCvcInputEnt');
+
+  // Loading state on submit
+  ['billingForm', 'entForm'].forEach(function (formId) {
+    var form = document.getElementById(formId);
+    if (!form) return;
+    form.addEventListener('submit', function () {
+      var btn = form.querySelector('button[type="submit"]');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
+      }
+    });
+  });
 });
