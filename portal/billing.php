@@ -18,13 +18,13 @@ $_target_plan = isset($_GET['plan']) && $_GET['plan'] === 'entrepreneur' ? 'entr
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
         $error = 'Invalid session. Please try again.';
-    } elseif ($_POST['action'] === 'test_subscribe' && TEST_PAYMENT_MODE) {
+    } elseif ($_POST['action'] === 'test_subscribe') {
         $subscribePlan = in_array($_POST['subscribe_plan'] ?? '', ['pro','entrepreneur']) ? $_POST['subscribe_plan'] : 'pro';
         $cardNumber    = preg_replace('/\D/', '', $_POST['card_number'] ?? '');
         $cardExpiry    = trim($_POST['card_expiry'] ?? '');
         $cardCvc       = preg_replace('/\D/', '', $_POST['card_cvc'] ?? '');
         if (strlen($cardNumber) < 12) {
-            $error = 'Please enter a valid test card number (any 12+ digits work in test mode).';
+            $error = 'Please enter a valid card number (12+ digits).';
         } elseif (!preg_match('/^(0[1-9]|1[0-2])\/\d{2}$/', $cardExpiry)) {
             $error = 'Please enter a valid expiry date (MM/YY).';
         } elseif (strlen($cardCvc) < 3) {
@@ -72,13 +72,6 @@ $_ent_price     = (float) ENTREPRENEUR_PLAN_PRICE;
 $_pro_price_fmt = number_format($_pro_price, 2);
 $_ent_price_fmt = number_format($_ent_price, 2);
 
-// ---- Stripe error from redirect ----
-if (!empty($_GET['stripe_error'])) {
-    $stripeMsg = htmlspecialchars(urldecode($_GET['stripe_error']));
-    $error = $stripeMsg === 'not_configured'
-        ? 'Stripe payments are not yet configured. Please contact support.'
-        : 'Stripe error: ' . $stripeMsg . '. Please try again or contact support.';
-}
 if (isset($_GET['cancelled'])) {
     $message = 'Checkout cancelled — you were not charged.';
 }
@@ -234,20 +227,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <span><i class="fa-solid fa-server text-amber-400 mr-1"></i><?= $_ent_sites ?> active sites</span>
       </div>
     </div>
-    <?php if (TEST_PAYMENT_MODE): ?>
     <a href="?plan=entrepreneur&upgrade=1"
        class="shrink-0 text-sm font-bold px-6 py-3 rounded-xl text-black whitespace-nowrap ent-glow-btn">
       Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
     </a>
-    <?php else: ?>
-    <form method="POST" action="/stripe-checkout.php" class="shrink-0">
-      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-      <input type="hidden" name="plan" value="entrepreneur">
-      <button type="submit" class="text-sm font-bold px-6 py-3 rounded-xl text-black whitespace-nowrap ent-glow-btn">
-        Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
-      </button>
-    </form>
-    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>
@@ -269,8 +252,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php if ($_target_plan === 'entrepreneur'): ?>
+<!-- ===== ENTREPRENEUR UPGRADE CARD ===== -->
 <div class="rounded-2xl border border-amber-500/20 overflow-hidden mb-6" style="background:linear-gradient(160deg,#0d0d14 0%,#15100a 60%,#1a0f00 100%)">
 
+  <!-- Hero header -->
   <div class="px-6 pt-6 pb-5 border-b border-white/5">
     <div class="flex items-start justify-between flex-wrap gap-4">
       <div>
@@ -290,6 +275,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
 
+  <!-- Comparison table -->
   <div class="px-6 py-5 border-b border-white/5 overflow-x-auto">
     <p class="text-xs font-bold text-slate-500 uppercase tracking-widest mb-4">Plan Comparison</p>
     <table class="w-full text-sm min-w-[420px]">
@@ -297,7 +283,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <tr class="text-xs">
           <th class="text-left text-slate-500 font-semibold pb-3 w-1/2">Feature</th>
           <th class="text-center text-slate-400 font-bold pb-3 w-1/4">Pro</th>
-          <th class="text-center pb-3 w-1/4"><span class="ent-badge font-bold">Entrepreneur</span></th>
+          <th class="text-center pb-3 w-1/4">
+            <span class="ent-badge font-bold">Entrepreneur</span>
+          </th>
         </tr>
       </thead>
       <tbody class="divide-y divide-white/5">
@@ -324,14 +312,15 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </table>
   </div>
 
+  <!-- Social proof -->
   <div class="px-6 py-4 border-b border-white/5 flex flex-wrap items-center gap-4 text-xs text-slate-500">
     <span><i class="fa-solid fa-users mr-1 text-amber-500/60"></i>Trusted by agencies running 50+ client sites</span>
     <span><i class="fa-solid fa-shield-halved mr-1 text-amber-500/60"></i>Cancel any time, no lock-in</span>
     <span><i class="fa-solid fa-headset mr-1 text-amber-500/60"></i>Priority email &amp; chat support</span>
   </div>
 
+  <!-- Payment form — dummy card (works regardless of TEST_PAYMENT_MODE) -->
   <div class="px-6 py-6">
-    <?php if (TEST_PAYMENT_MODE): ?>
     <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-400">
       <i class="fa-solid fa-flask"></i>
       <span><strong>Test Mode</strong> &mdash; No real card needed. Any 12+ digit number works.</span>
@@ -369,23 +358,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <i class="fa-brands fa-stripe text-xl text-slate-300"></i>
       </div>
     </form>
-    <?php else: ?>
-    <form method="POST" action="/stripe-checkout.php" class="space-y-2">
-      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-      <input type="hidden" name="plan" value="entrepreneur">
-      <button type="submit" class="w-full ent-glow-btn text-black py-3.5 rounded-xl font-bold text-base">
-        <i class="fa-solid fa-rocket mr-2"></i>Subscribe via Stripe &mdash; $<?= $_ent_price_fmt ?>/mo
-      </button>
-      <div class="flex items-center justify-center gap-2 text-xs text-slate-500 mt-1">
-        <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
-      </div>
-    </form>
-    <?php endif; ?>
   </div>
 </div>
 
 <?php else: ?>
-<!-- PRO UPGRADE CARD -->
+<!-- ===== PRO UPGRADE CARD ===== -->
 <div class="rounded-2xl border border-white/15 overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f0f 0%,#1c1c1c 100%)">
   <div class="px-6 py-6">
     <div class="flex items-start justify-between flex-wrap gap-4 mb-6">
@@ -406,7 +383,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <div class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-white w-4"></i>Priority support</div>
       </div>
     </div>
-    <?php if (TEST_PAYMENT_MODE): ?>
     <div class="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-xl px-4 py-2.5 mb-5 text-xs text-amber-400">
       <i class="fa-solid fa-flask"></i>
       <span><strong>Test Mode</strong> &mdash; No real card needed. Any 12+ digit number works.</span>
@@ -446,19 +422,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
       </div>
     </form>
-    <?php else: ?>
-    <form method="POST" action="/stripe-checkout.php" class="space-y-2">
-      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-      <input type="hidden" name="plan" value="pro">
-      <button type="submit"
-              class="w-full bg-white hover:bg-slate-200 active:scale-95 text-black py-3.5 rounded-xl font-bold transition-all shadow-lg">
-        <i class="fa-solid fa-lock mr-2"></i>Subscribe via Stripe &mdash; $<?= $_pro_price_fmt ?>/mo
-      </button>
-      <div class="flex items-center justify-center gap-2 text-xs text-slate-500 mt-1">
-        <i class="fa-solid fa-lock"></i><span>Secured by</span><i class="fa-brands fa-stripe text-xl text-slate-300"></i>
-      </div>
-    </form>
-    <?php endif; ?>
   </div>
 </div>
 
@@ -470,4 +433,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v310"></script>
+<script src="/assets/js/billing_card.js?v=v311"></script>
