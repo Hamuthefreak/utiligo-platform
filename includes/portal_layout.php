@@ -12,7 +12,7 @@ $_is_paid  = $_is_pro || $_is_ent;
 $_name     = htmlspecialchars(trim($_user['full_name'] ?? 'User'));
 $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
-$_is_admin = !empty($_user['is_admin']);   // ← fixed: was 'admin_flag'
+$_is_admin = !empty($_user['is_admin']);
 
 $_logo_path = __DIR__ . '/../assets/images/logo.png';
 $_logo_url  = '/assets/images/logo.png';
@@ -20,8 +20,14 @@ $_has_logo  = file_exists($_logo_path);
 
 $_plan_label = $_is_ent ? 'Entrepreneur' : ($_is_pro ? 'Pro' : 'Free');
 
-function _nav_active(string $href, string $current): string {
-    return (rtrim($current, '/') === rtrim($href, '/')) ? 'active' : '';
+// Guard against fatal redeclaration if layout is ever included twice
+if (!function_exists('_nav_active')) {
+    function _nav_active(string $href, string $current): string {
+        // Match both clean URL (/portal/billing) and .php variant (/portal/billing.php)
+        $clean_href    = preg_replace('/\.php$/', '', $href);
+        $clean_current = preg_replace('/\.php$/', '', $current);
+        return (rtrim($clean_current, '/') === rtrim($clean_href, '/')) ? 'active' : '';
+    }
 }
 ?>
 <!DOCTYPE html>
@@ -75,18 +81,18 @@ function _nav_active(string $href, string $current): string {
   <!-- Nav -->
   <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mb-2">Main</p>
-    <a href="/portal/index.php"    class="nav-link <?= _nav_active('/portal/index.php',    $_path) ?>"><i class="fa-solid fa-house"></i> Dashboard</a>
-    <a href="/portal/leads.php"    class="nav-link <?= _nav_active('/portal/leads.php',    $_path) ?>"><i class="fa-solid fa-magnifying-glass"></i> Find Leads</a>
-    <a href="/portal/generate.php" class="nav-link <?= _nav_active('/portal/generate.php', $_path) ?>"><i class="fa-solid fa-bolt"></i> Generate Site</a>
-    <a href="/portal/my_sites.php" class="nav-link <?= _nav_active('/portal/my_sites.php', $_path) ?>"><i class="fa-solid fa-folder-open"></i> My Sites</a>
+    <a href="/portal/index"    class="nav-link <?= _nav_active('/portal/index',    $_path) ?>"><i class="fa-solid fa-house"></i> Dashboard</a>
+    <a href="/portal/leads"    class="nav-link <?= _nav_active('/portal/leads',    $_path) ?>"><i class="fa-solid fa-magnifying-glass"></i> Find Leads</a>
+    <a href="/portal/generate" class="nav-link <?= _nav_active('/portal/generate', $_path) ?>"><i class="fa-solid fa-bolt"></i> Generate Site</a>
+    <a href="/portal/my_sites" class="nav-link <?= _nav_active('/portal/my_sites', $_path) ?>"><i class="fa-solid fa-folder-open"></i> My Sites</a>
 
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mt-5 mb-2">Account</p>
-    <a href="/portal/billing.php"  class="nav-link <?= _nav_active('/portal/billing.php',  $_path) ?>"><i class="fa-solid fa-credit-card"></i> Billing</a>
-    <a href="/portal/settings.php" class="nav-link <?= _nav_active('/portal/settings.php', $_path) ?>"><i class="fa-solid fa-gear"></i> Settings</a>
+    <a href="/portal/billing"  class="nav-link <?= _nav_active('/portal/billing',  $_path) ?>"><i class="fa-solid fa-credit-card"></i> Billing</a>
+    <a href="/portal/settings" class="nav-link <?= _nav_active('/portal/settings', $_path) ?>"><i class="fa-solid fa-gear"></i> Settings</a>
 
     <?php if ($_is_admin): ?>
     <p class="text-xs font-semibold text-purple-700 uppercase tracking-widest px-3 mt-5 mb-2">Admin</p>
-    <a href="/admin/index.php" class="nav-link admin-link <?= str_starts_with($_path, '/admin/') ? 'active' : '' ?>">
+    <a href="/admin/index" class="nav-link admin-link <?= str_starts_with($_path, '/admin/') ? 'active' : '' ?>">
       <i class="fa-solid fa-shield-halved"></i> Admin Panel
     </a>
     <?php endif; ?>
@@ -104,7 +110,7 @@ function _nav_active(string $href, string $current): string {
   <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
     <p class="text-xs font-bold text-white mb-0.5">Free Plan</p>
     <p class="text-xs text-slate-400 mb-3">Unlock more leads &amp; sites</p>
-    <a href="/portal/billing.php?upgrade=1"
+    <a href="/portal/billing?upgrade=1"
        class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
       <i class="fa-solid fa-crown mr-1"></i> Upgrade Plan
     </a>
@@ -113,7 +119,7 @@ function _nav_active(string $href, string $current): string {
   <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
     <p class="text-xs font-bold text-white mb-0.5">Pro Plan</p>
     <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; 500 sites</p>
-    <a href="/portal/billing.php?upgrade=1&plan=entrepreneur"
+    <a href="/portal/billing?plan=entrepreneur"
        class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
       <i class="fa-solid fa-rocket mr-1"></i> Go Entrepreneur
     </a>
@@ -129,7 +135,7 @@ function _nav_active(string $href, string $current): string {
       <p class="text-xs font-semibold text-white truncate"><?= $_name ?></p>
       <p class="text-xs text-slate-500"><?= $_plan_label ?> Plan</p>
     </div>
-    <a href="/logout.php" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
+    <a href="/logout" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
     </a>
   </div>
@@ -151,7 +157,7 @@ function _nav_active(string $href, string $current): string {
     <?php endif; ?>
     <span class="font-black text-base">Utiligo</span>
   </a>
-  <a href="/logout.php" class="text-slate-400 hover:text-white text-sm">
+  <a href="/logout" class="text-slate-400 hover:text-white text-sm">
     <i class="fa-solid fa-arrow-right-from-bracket"></i>
   </a>
 </header>
