@@ -187,7 +187,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
   <?php if ($is_paid && $is_active): ?>
   <div class="mt-5 pt-5 border-t border-white/5">
-    <form method="POST" action="/portal/billing.php" onsubmit="return confirm('Cancel your subscription? You will lose access at the end of the billing period.');">
+    <form method="POST" action="/portal/billing" onsubmit="return confirm('Cancel your subscription? You will lose access at the end of the billing period.');">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="cancel">
       <button type="submit" class="text-sm text-red-400 hover:text-red-300 transition">
@@ -216,7 +216,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <span class="pill-feature"><i class="fa-solid fa-server"></i><?= $_ent_sites ?> active sites</span>
       </div>
     </div>
-    <a href="?plan=entrepreneur" class="shrink-0 text-sm font-bold px-8 py-3.5 rounded-xl text-black whitespace-nowrap ent-glow-btn">
+    <a href="/portal/billing?plan=entrepreneur" class="shrink-0 text-sm font-bold px-8 py-3.5 rounded-xl text-black whitespace-nowrap ent-glow-btn">
       <i class="fa-solid fa-rocket mr-2"></i>Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
     </a>
   </div>
@@ -227,11 +227,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php if (!$is_paid || $is_cancelled): ?>
 
 <div class="flex gap-2 mb-6">
-  <a href="?plan=pro"
+  <a href="/portal/billing?plan=pro"
      class="px-5 py-2 rounded-full text-sm font-bold transition <?= $_target_plan==='pro' ? 'bg-white text-black' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
     <i class="fa-solid fa-crown mr-1 text-xs"></i>Pro &mdash; $<?= $_pro_price_fmt ?>/mo
   </a>
-  <a href="?plan=entrepreneur"
+  <a href="/portal/billing?plan=entrepreneur"
      class="px-5 py-2 rounded-full text-sm font-bold transition <?= $_target_plan==='entrepreneur' ? 'ent-pill-border text-amber-300' : 'bg-white/8 text-slate-300 hover:bg-white/15' ?>">
     <i class="fa-solid fa-rocket mr-1 text-xs"></i>Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
   </a>
@@ -319,7 +319,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <i class="fa-solid fa-flask"></i>
       <span><strong>Test Mode</strong> &mdash; No real card needed. Any 12+ digit number works.</span>
     </div>
-    <form method="POST" action="/portal/billing.php" class="space-y-4" id="entForm">
+    <form method="POST" action="/portal/billing" class="space-y-4" id="entForm">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="entrepreneur">
@@ -382,7 +382,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <i class="fa-solid fa-flask"></i>
       <span><strong>Test Mode</strong> &mdash; No real card needed. Any 12+ digit number works.</span>
     </div>
-    <form method="POST" action="/portal/billing.php" class="space-y-4" id="billingForm">
+    <form method="POST" action="/portal/billing" class="space-y-4" id="billingForm">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="pro">
@@ -422,7 +422,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <div class="text-center text-xs text-slate-500 mb-6">
   Want unlimited leads, custom domains &amp; team seats?
-  <a href="?plan=entrepreneur" class="text-amber-400 hover:text-amber-300 font-semibold transition ml-1">
+  <a href="/portal/billing?plan=entrepreneur" class="text-amber-400 hover:text-amber-300 font-semibold transition ml-1">
     See Entrepreneur <i class="fa-solid fa-arrow-right text-[10px]"></i>
   </a>
 </div>
@@ -431,4 +431,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v313"></script>
+<script src="/assets/js/billing_card.js?v=v314"></script>
