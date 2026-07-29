@@ -1,4 +1,9 @@
 <?php
+// TEMPORARY DEBUG — remove after error is identified
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+error_reporting(E_ALL);
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../userdb.php';
@@ -23,7 +28,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     } elseif ($_POST['action'] === 'test_subscribe') {
         $subscribePlan = in_array($_POST['subscribe_plan'] ?? '', ['pro','entrepreneur']) ? $_POST['subscribe_plan'] : 'pro';
         $cardNumber    = preg_replace('/\D/', '', $_POST['card_number'] ?? '');
-        // normalise expiry: strip spaces so both "01/26" and "01 / 26" pass
         $cardExpiry    = preg_replace('/\s/', '', trim($_POST['card_expiry'] ?? ''));
         $cardCvc       = preg_replace('/\D/', '', $_POST['card_cvc'] ?? '');
         if (strlen($cardNumber) < 12) {
