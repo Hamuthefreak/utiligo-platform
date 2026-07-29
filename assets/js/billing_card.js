@@ -1,23 +1,38 @@
 document.addEventListener('DOMContentLoaded', function () {
-  function initCardNumber(id) {
-    var el = document.getElementById(id);
+
+  function cardBrand(digits) {
+    if (/^4/.test(digits))            return 'fa-brands fa-cc-visa';
+    if (/^5[1-5]|^2[2-7]/.test(digits)) return 'fa-brands fa-cc-mastercard';
+    if (/^3[47]/.test(digits))        return 'fa-brands fa-cc-amex';
+    if (/^6(?:011|5)/.test(digits))   return 'fa-brands fa-cc-discover';
+    return 'fa-regular fa-credit-card';
+  }
+
+  function initCardNumber(inputId, iconId) {
+    var el = document.getElementById(inputId);
+    var ic = document.getElementById(iconId);
     if (!el) return;
-    el.addEventListener('input', function (e) {
-      var digits = e.target.value.replace(/\D/g, '').slice(0, 16);
-      e.target.value = digits.replace(/(.{4})/g, '$1 ').trim();
+    el.addEventListener('input', function () {
+      var digits = el.value.replace(/\D/g, '').slice(0, 16);
+      el.value = digits.replace(/(.{4})/g, '$1 ').trim();
+      if (ic) ic.innerHTML = '<i class="' + cardBrand(digits) + '"></i>';
     });
   }
 
   function initExpiry(id) {
     var el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener('input', function (e) {
-      var digits = e.target.value.replace(/\D/g, '').slice(0, 4);
-      e.target.value = digits.length >= 3 ? digits.slice(0, 2) + '/' + digits.slice(2) : digits;
+    el.addEventListener('input', function () {
+      var digits = el.value.replace(/\D/g, '').slice(0, 4);
+      if (digits.length > 2) {
+        el.value = digits.slice(0, 2) + ' / ' + digits.slice(2);
+      } else {
+        el.value = digits;
+      }
     });
     el.addEventListener('keydown', function (e) {
-      if (e.key === 'Backspace' && e.target.value.endsWith('/')) {
-        e.target.value = e.target.value.slice(0, -1);
+      if (e.key === 'Backspace' && el.value.endsWith(' ')) {
+        el.value = el.value.trimEnd().replace(/\s*\/\s*$/, '');
       }
     });
   }
@@ -25,32 +40,34 @@ document.addEventListener('DOMContentLoaded', function () {
   function initCvc(id) {
     var el = document.getElementById(id);
     if (!el) return;
-    el.addEventListener('input', function (e) {
-      e.target.value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    el.addEventListener('input', function () {
+      el.value = el.value.replace(/\D/g, '').slice(0, 4);
     });
   }
 
   // Pro form
-  initCardNumber('cardNumberInput');
+  initCardNumber('cardNumberInput',    'cardBrandIconPro');
   initExpiry('cardExpiryInput');
   initCvc('cardCvcInput');
 
   // Entrepreneur form
-  initCardNumber('cardNumberInputEnt');
+  initCardNumber('cardNumberInputEnt', 'cardBrandIconEnt');
   initExpiry('cardExpiryInputEnt');
   initCvc('cardCvcInputEnt');
 
-  // Visual-only loading state — do NOT disable the button (breaks POST in Chrome/Safari)
+  // Visual-only submit state (no disabled — breaks POST in some browsers)
   ['billingForm', 'entForm'].forEach(function (formId) {
     var form = document.getElementById(formId);
     if (!form) return;
     form.addEventListener('submit', function () {
       var btn = form.querySelector('button[type="submit"]');
       if (btn) {
-        btn.style.opacity = '0.6';
+        btn.style.opacity = '0.65';
         btn.style.pointerEvents = 'none';
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin mr-2"></i>Processing...';
+        btn.innerHTML = btn.innerHTML.replace(/<i[^>]*><\/i>/, '') +
+          '<i class="fa-solid fa-spinner fa-spin mr-2"></i>';
       }
     });
   });
+
 });
