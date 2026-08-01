@@ -1,9 +1,4 @@
 <?php
-// TEMPORARY DEBUG — remove after error is identified
-ini_set('display_errors', 1);
-ini_set('display_startup_errors', 1);
-error_reporting(E_ALL);
-
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../userdb.php';
@@ -37,24 +32,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         } elseif (strlen($cardCvc) < 3) {
             $error = 'Please enter a valid CVC.';
         } else {
-            $userdb = get_user_db();
             try {
-                $userdb->prepare("UPDATE utiligo_users SET plan=?, subscription_status='active', subscription_started_at=NOW() WHERE id=?")
-                    ->execute([$subscribePlan, $user['id']]);
-            } catch (\PDOException $e) {
-                $userdb->prepare("UPDATE utiligo_users SET plan=?, subscription_status='active' WHERE id=?")
-                    ->execute([$subscribePlan, $user['id']]);
+                $userdb = get_user_db();
+                try {
+                    $userdb->prepare("UPDATE utiligo_users SET plan=?, subscription_status='active', subscription_started_at=NOW() WHERE id=?")
+                        ->execute([$subscribePlan, $user['id']]);
+                } catch (\PDOException $e) {
+                    $userdb->prepare("UPDATE utiligo_users SET plan=?, subscription_status='active' WHERE id=?")
+                        ->execute([$subscribePlan, $user['id']]);
+                }
+                $listIds = [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS];
+                brevo_upsert_contact($user['email'], ['FIRSTNAME' => $user['full_name']], $listIds);
+                send_welcome_email($user['email'], $user['full_name']);
+                header('Location: /portal/index?upgraded=1'); exit;
+            } catch (\Throwable $e) {
+                error_log('[billing] test_subscribe failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+                $error = 'Something went wrong while activating your plan. Please try again or contact support.';
             }
-            $listIds = [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS];
-            brevo_upsert_contact($user['email'], ['FIRSTNAME' => $user['full_name']], $listIds);
-            send_welcome_email($user['email'], $user['full_name']);
-            header('Location: /portal/index?upgraded=1'); exit;
         }
     } elseif ($_POST['action'] === 'cancel') {
-        $userdb = get_user_db();
-        $userdb->prepare("UPDATE utiligo_users SET subscription_status='cancelled' WHERE id=?")->execute([$user['id']]);
-        $message = 'Subscription cancelled. Your plan features remain active until the end of your billing period.';
-        $user['subscription_status'] = 'cancelled';
+        try {
+            $userdb = get_user_db();
+            $userdb->prepare("UPDATE utiligo_users SET subscription_status='cancelled' WHERE id=?")->execute([$user['id']]);
+            $message = 'Subscription cancelled. Your plan features remain active until the end of your billing period.';
+            $user['subscription_status'] = 'cancelled';
+        } catch (\Throwable $e) {
+            error_log('[billing] cancel failed: ' . $e->getMessage());
+            $error = 'Could not cancel subscription right now. Please try again.';
+        }
     }
 }
 
@@ -408,4 +413,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v315"></script>
+<script src="/assets/js/billing_card.js?v=v316"></script>
