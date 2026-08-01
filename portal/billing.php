@@ -110,14 +110,15 @@ if ($is_ent && $is_active) {
     $_plan_badge_txt = 'Free';
 }
 
+// A Pro-active user visiting ?plan=entrepreneur should see the Ent checkout
+$_pro_upgrading_to_ent = ($is_pro && $is_active && $_target_plan === 'entrepreneur');
+
 $pageTitle = 'Billing — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
 @keyframes ent-shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
-/* ent-badge: animated gold gradient text. color: fallback for browsers that
-   don't clip background to text (e.g. Firefox without -webkit-background-clip). */
 .ent-badge{
   background:linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b);
   background-size:200% auto;
@@ -125,9 +126,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
   background-clip:text;
-  color:#fbbf24; /* fallback */
+  color:#fbbf24;
 }
-/* Inside buttons the shimmer clips awkwardly; just show solid gold */
 button .ent-badge, a .ent-badge {
   -webkit-text-fill-color:#fbbf24;
   animation:none;
@@ -136,7 +136,7 @@ button .ent-badge, a .ent-badge {
   background:linear-gradient(135deg,#f59e0b 0%,#f97316 60%,#ef4444 100%);
   box-shadow:0 4px 24px rgba(245,158,11,.4);
   transition:all .2s;
-  color:#fff;  /* white text on amber/orange gradient */
+  color:#fff;
 }
 .ent-glow-btn:hover{box-shadow:0 8px 40px rgba(245,158,11,.65);transform:translateY(-2px)}
 .ent-glow-btn:active{transform:scale(.97)}
@@ -156,7 +156,7 @@ button .ent-badge, a .ent-badge {
 .plan-tab-inactive:hover{background:rgba(255,255,255,.12)}
 .plan-tab-ent-active{background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;box-shadow:0 2px 12px rgba(245,158,11,.3)}
 .compare-check{color:#22c55e}.compare-cross{color:#334155}.compare-ent{color:#f59e0b}
-.ent-col{background:rgba(245,158,11,.10)} /* bumped from .05 for visible contrast */
+.ent-col{background:rgba(245,158,11,.10)}
 </style>
 
 <div class="mb-8">
@@ -201,7 +201,7 @@ button .ent-badge, a .ent-badge {
       <?= $_plan_badge_txt ?>
     </span>
   </div>
-  <?php if ($is_paid && $is_active): ?>
+  <?php if ($is_paid && $is_active && !$_pro_upgrading_to_ent): ?>
   <div class="mt-5 pt-4 border-t border-white/5">
     <form method="POST" action="/portal/billing" onsubmit="return confirm('Cancel your subscription?');">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
@@ -214,8 +214,8 @@ button .ent-badge, a .ent-badge {
   <?php endif; ?>
 </div>
 
-<!-- PRO -> ENT UPSELL BAR -->
-<?php if ($is_pro && $is_active): ?>
+<!-- PRO -> ENT UPSELL BAR (only when NOT already on the upgrade checkout) -->
+<?php if ($is_pro && $is_active && !$_pro_upgrading_to_ent): ?>
 <div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f1a,#140f05)">
   <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div>
@@ -231,8 +231,10 @@ button .ent-badge, a .ent-badge {
 <?php endif; ?>
 
 <!-- UPGRADE SECTION -->
-<?php if (!$is_paid || $is_cancelled): ?>
+<!-- Show to: free/cancelled users, OR a Pro-active user explicitly upgrading to Ent -->
+<?php if (!$is_paid || $is_cancelled || $_pro_upgrading_to_ent): ?>
 
+<?php if (!$_pro_upgrading_to_ent): ?>
 <div class="flex gap-2 mb-5">
   <a href="/portal/billing?plan=pro"
      class="plan-tab <?= $_target_plan==='pro' ? 'plan-tab-active' : 'plan-tab-inactive' ?>">
@@ -243,10 +245,19 @@ button .ent-badge, a .ent-badge {
     <i class="fa-solid fa-rocket mr-1.5 text-xs"></i>Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
   </a>
 </div>
+<?php endif; ?>
 
-<?php if ($_target_plan === 'entrepreneur'): ?>
+<?php if ($_target_plan === 'entrepreneur' || $_pro_upgrading_to_ent): ?>
 
 <!-- ENTREPRENEUR PAYMENT CARD -->
+<?php if ($_pro_upgrading_to_ent): ?>
+<div class="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-2xl px-5 py-3 mb-5 text-sm">
+  <i class="fa-solid fa-rocket shrink-0"></i>
+  <span>You’re upgrading from <strong>Pro</strong> to <strong>Entrepreneur</strong>. Enter your card to activate instantly.</span>
+  <a href="/portal/billing" class="ml-auto text-xs text-slate-500 hover:text-slate-300 transition shrink-0">Cancel</a>
+</div>
+<?php endif; ?>
+
 <div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#08080f 0%,#0f0a02 60%,#160b00 100%)">
 
   <div class="relative px-7 pt-8 pb-7 border-b border-white/5 overflow-hidden">
@@ -373,7 +384,7 @@ button .ent-badge, a .ent-badge {
       </div>
       <button type="submit" id="entSubmitBtn"
         class="w-full ent-glow-btn text-white py-4 rounded-xl font-black text-base mt-1">
-        <i class="fa-solid fa-rocket mr-2"></i>Unlock Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
+        <i class="fa-solid fa-rocket mr-2"></i><?= $_pro_upgrading_to_ent ? 'Upgrade to Entrepreneur' : 'Unlock Entrepreneur' ?> &mdash; $<?= $_ent_price_fmt ?>/mo
       </button>
       <div class="trust-row justify-center pt-1">
         <i class="fa-solid fa-lock"></i><span>Secured by</span>
@@ -478,4 +489,4 @@ button .ent-badge, a .ent-badge {
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v319"></script>
+<script src="/assets/js/billing_card.js?v=v320"></script>
