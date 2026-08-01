@@ -1,21 +1,6 @@
 <?php
 require_once __DIR__ . '/../config.php';
 
-// Force errors visible AFTER config.php (which sets display_errors=0 in production).
-// REMOVE these four lines once the 500 is fixed.
-ini_set('display_errors', '1');
-ini_set('display_startup_errors', '1');
-error_reporting(E_ALL);
-register_shutdown_function(function () {
-    $e = error_get_last();
-    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
-        echo '<pre style="background:#1e1e2e;color:#f38ba8;padding:20px;margin:0;font-size:13px;">';
-        echo '<strong>FATAL ERROR (billing.php shutdown handler)</strong>' . "\n";
-        echo htmlspecialchars(print_r($e, true));
-        echo '</pre>';
-    }
-});
-
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../userdb.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -100,6 +85,33 @@ $_ent_price_fmt = number_format($_ent_price, 2);
 
 if (isset($_GET['cancelled'])) $message = 'Checkout cancelled — you were not charged.';
 
+// Pre-compute class strings to avoid chained ternaries (fatal in PHP 8)
+if ($is_ent && $is_active) {
+    $_plan_icon_bg   = 'bg-amber-500/15 border border-amber-500/30';
+    $_plan_icon_col  = 'text-amber-400';
+    $_plan_icon_name = 'rocket';
+    $_plan_badge_cls = 'bg-amber-500/15 text-amber-400 border border-amber-500/25';
+    $_plan_badge_txt = '🚀 Entrepreneur';
+} elseif ($is_pro && $is_active) {
+    $_plan_icon_bg   = 'bg-white/10 border border-white/10';
+    $_plan_icon_col  = 'text-white';
+    $_plan_icon_name = 'crown';
+    $_plan_badge_cls = 'bg-white/10 text-white border border-white/10';
+    $_plan_badge_txt = 'Pro';
+} elseif ($is_cancelled) {
+    $_plan_icon_bg   = 'bg-white/5';
+    $_plan_icon_col  = 'text-slate-500';
+    $_plan_icon_name = 'user';
+    $_plan_badge_cls = 'bg-amber-500/15 text-amber-400';
+    $_plan_badge_txt = 'Cancelled';
+} else {
+    $_plan_icon_bg   = 'bg-white/5';
+    $_plan_icon_col  = 'text-slate-500';
+    $_plan_icon_name = 'user';
+    $_plan_badge_cls = 'bg-white/5 text-slate-500';
+    $_plan_badge_txt = 'Free';
+}
+
 $pageTitle = 'Billing — Utiligo';
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
@@ -148,8 +160,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <div class="glass rounded-2xl p-6 border border-white/5 mb-6">
   <div class="flex items-center justify-between flex-wrap gap-4">
     <div class="flex items-center gap-4">
-      <div class="w-11 h-11 rounded-xl <?= $is_ent ? 'bg-amber-500/15 border border-amber-500/30' : ($is_paid ? 'bg-white/10 border border-white/10' : 'bg-white/5') ?> flex items-center justify-center shrink-0">
-        <i class="fa-solid fa-<?= $is_ent ? 'rocket' : ($is_pro ? 'crown' : 'user') ?> <?= $is_ent ? 'text-amber-400' : ($is_paid ? 'text-white' : 'text-slate-500') ?>"></i>
+      <div class="w-11 h-11 rounded-xl <?= $_plan_icon_bg ?> flex items-center justify-center shrink-0">
+        <i class="fa-solid fa-<?= $_plan_icon_name ?> <?= $_plan_icon_col ?>"></i>
       </div>
       <div>
         <p class="font-bold"><?php
@@ -158,19 +170,16 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           else             echo 'Free Plan';
         ?></p>
         <p class="text-slate-400 text-xs mt-0.5"><?php
-          if ($is_ent && $is_active)         echo '$'.$_ent_price_fmt.'/mo &mdash; <span class="text-emerald-400 font-semibold">Active</span>';
-          elseif ($is_ent && $is_cancelled)  echo 'Cancelled &mdash; active until end of period';
-          elseif ($is_pro && $is_active)     echo '$'.$_pro_price_fmt.'/mo &mdash; <span class="text-emerald-400 font-semibold">Active</span>';
-          elseif ($is_pro && $is_cancelled)  echo 'Cancelled &mdash; active until end of period';
-          else echo $_free_leads.' leads &bull; '.$_free_sites.' site/day &bull; 2 templates';
+          if ($is_ent && $is_active)        echo '$'.$_ent_price_fmt.'/mo &mdash; <span class="text-emerald-400 font-semibold">Active</span>';
+          elseif ($is_ent && $is_cancelled) echo 'Cancelled &mdash; active until end of period';
+          elseif ($is_pro && $is_active)    echo '$'.$_pro_price_fmt.'/mo &mdash; <span class="text-emerald-400 font-semibold">Active</span>';
+          elseif ($is_pro && $is_cancelled) echo 'Cancelled &mdash; active until end of period';
+          else                              echo $_free_leads.' leads &bull; '.$_free_sites.' site/day &bull; 2 templates';
         ?></p>
       </div>
     </div>
-    <span class="text-xs px-3 py-1 rounded-full font-bold <?=
-      ($is_ent && $is_active)  ? 'bg-amber-500/15 text-amber-400 border border-amber-500/25' :
-      ($is_pro && $is_active)  ? 'bg-white/10 text-white border border-white/10' :
-      ($is_cancelled           ? 'bg-amber-500/15 text-amber-400' : 'bg-white/5 text-slate-500') ?>">
-      <?= ($is_ent && $is_active) ? '🚀 Entrepreneur' : (($is_pro && $is_active) ? 'Pro' : ($is_cancelled ? 'Cancelled' : 'Free')) ?>
+    <span class="text-xs px-3 py-1 rounded-full font-bold <?= $_plan_badge_cls ?>">
+      <?= $_plan_badge_txt ?>
     </span>
   </div>
   <?php if ($is_paid && $is_active): ?>
@@ -429,4 +438,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v317"></script>
+<script src="/assets/js/billing_card.js?v=v318"></script>
