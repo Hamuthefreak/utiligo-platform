@@ -25,13 +25,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'set_plan' && $targetId > 0) {
-        $plan = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
-        $udb->prepare('UPDATE utiligo_users SET plan=? WHERE id=?')->execute([$plan, $targetId]);
-        _admin_log('INFO', "Set plan={$plan} for user_id={$targetId}");
+        $plan   = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
+        // Also sync subscription_status so billing.php $is_active works correctly
+        $status = in_array($plan, ['pro','entrepreneur']) ? 'active' : 'none';
+        $udb->prepare('UPDATE utiligo_users SET plan=?, subscription_status=? WHERE id=?')
+            ->execute([$plan, $status, $targetId]);
+        _admin_log('INFO', "Set plan={$plan} status={$status} for user_id={$targetId}");
         // Bust static cache if admin changed their own plan
         if ($targetId === (int)$admin['id']) {
-            $_SESSION['user_id']           = $targetId;
-            $GLOBALS['admin_user']['plan'] = $plan;
+            $_SESSION['user_id']                        = $targetId;
+            $GLOBALS['admin_user']['plan']              = $plan;
+            $GLOBALS['admin_user']['subscription_status'] = $status;
         }
         header('Location: ' . $base . '&flash=' . urlencode('Plan updated to ' . $plan . '.'));
         exit;
