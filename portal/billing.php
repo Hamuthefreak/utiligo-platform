@@ -13,7 +13,6 @@ $user    = current_user();
 $message = '';
 $error   = '';
 
-// Read plan from GET or POST (so errors re-render the right card)
 $_target_plan = 'pro';
 if (isset($_GET['plan']) && $_GET['plan'] === 'entrepreneur')                            $_target_plan = 'entrepreneur';
 elseif (isset($_POST['subscribe_plan']) && $_POST['subscribe_plan'] === 'entrepreneur') $_target_plan = 'entrepreneur';
@@ -85,7 +84,6 @@ $_ent_price_fmt = number_format($_ent_price, 2);
 
 if (isset($_GET['cancelled'])) $message = 'Checkout cancelled — you were not charged.';
 
-// Pre-compute class strings to avoid chained ternaries (fatal in PHP 8)
 if ($is_ent && $is_active) {
     $_plan_icon_bg   = 'bg-amber-500/15 border border-amber-500/30';
     $_plan_icon_col  = 'text-amber-400';
@@ -118,10 +116,31 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <style>
 @keyframes ent-shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
-.ent-badge{background:linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b);background-size:200% auto;animation:ent-shimmer 2.5s linear infinite;-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-.ent-glow-btn{background:linear-gradient(135deg,#f59e0b 0%,#f97316 60%,#ef4444 100%);box-shadow:0 4px 24px rgba(245,158,11,.4);transition:all .2s}
+/* ent-badge: animated gold gradient text. color: fallback for browsers that
+   don't clip background to text (e.g. Firefox without -webkit-background-clip). */
+.ent-badge{
+  background:linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b);
+  background-size:200% auto;
+  animation:ent-shimmer 2.5s linear infinite;
+  -webkit-background-clip:text;
+  -webkit-text-fill-color:transparent;
+  background-clip:text;
+  color:#fbbf24; /* fallback */
+}
+/* Inside buttons the shimmer clips awkwardly; just show solid gold */
+button .ent-badge, a .ent-badge {
+  -webkit-text-fill-color:#fbbf24;
+  animation:none;
+}
+.ent-glow-btn{
+  background:linear-gradient(135deg,#f59e0b 0%,#f97316 60%,#ef4444 100%);
+  box-shadow:0 4px 24px rgba(245,158,11,.4);
+  transition:all .2s;
+  color:#fff;  /* white text on amber/orange gradient */
+}
 .ent-glow-btn:hover{box-shadow:0 8px 40px rgba(245,158,11,.65);transform:translateY(-2px)}
 .ent-glow-btn:active{transform:scale(.97)}
+.ent-glow-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
 .ent-card-wrap{background:linear-gradient(#0d0d14,#0d0d14) padding-box,linear-gradient(135deg,#f59e0b66,#f9731633,transparent) border-box;border:1.5px solid transparent}
 .pro-card-wrap{background:linear-gradient(#0d0d0d,#0d0d0d) padding-box,linear-gradient(135deg,#ffffff22,#ffffff08,transparent) border-box;border:1.5px solid transparent}
 .pill-feature{display:inline-flex;align-items:center;gap:.35rem;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);color:#fcd34d;border-radius:9999px;padding:.3rem .75rem;font-size:.7rem;font-weight:700}
@@ -135,9 +154,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .plan-tab-active{background:#fff;color:#000}
 .plan-tab-inactive{background:rgba(255,255,255,.07);color:rgba(148,163,184,.9)}
 .plan-tab-inactive:hover{background:rgba(255,255,255,.12)}
-.plan-tab-ent-active{background:linear-gradient(135deg,#f59e0b,#f97316);color:#000;box-shadow:0 2px 12px rgba(245,158,11,.3)}
-.compare-check{color:#22c55e}.compare-cross{color:#1e293b}.compare-ent{color:#f59e0b}
-.ent-col{background:rgba(245,158,11,.05)}
+.plan-tab-ent-active{background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;box-shadow:0 2px 12px rgba(245,158,11,.3)}
+.compare-check{color:#22c55e}.compare-cross{color:#334155}.compare-ent{color:#f59e0b}
+.ent-col{background:rgba(245,158,11,.10)} /* bumped from .05 for visible contrast */
 </style>
 
 <div class="mb-8">
@@ -203,7 +222,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <p class="text-xs font-bold uppercase tracking-widest text-amber-400 mb-1"><i class="fa-solid fa-rocket mr-1"></i>Upgrade to Entrepreneur</p>
       <p class="text-white font-semibold text-sm">Unlimited leads, custom domains, team seats &amp; client reports</p>
     </div>
-    <a href="/portal/billing?plan=entrepreneur" class="shrink-0 ent-glow-btn text-black text-sm font-black px-7 py-3 rounded-xl whitespace-nowrap">
+    <a href="/portal/billing?plan=entrepreneur"
+       class="shrink-0 ent-glow-btn text-white text-sm font-black px-7 py-3 rounded-xl whitespace-nowrap inline-block text-center">
       Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
     </a>
   </div>
@@ -214,10 +234,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php if (!$is_paid || $is_cancelled): ?>
 
 <div class="flex gap-2 mb-5">
-  <a href="/portal/billing?plan=pro" class="plan-tab <?= $_target_plan==='pro' ? 'plan-tab-active' : 'plan-tab-inactive' ?>">
+  <a href="/portal/billing?plan=pro"
+     class="plan-tab <?= $_target_plan==='pro' ? 'plan-tab-active' : 'plan-tab-inactive' ?>">
     <i class="fa-solid fa-crown mr-1.5 text-xs"></i>Pro &mdash; $<?= $_pro_price_fmt ?>/mo
   </a>
-  <a href="/portal/billing?plan=entrepreneur" class="plan-tab <?= $_target_plan==='entrepreneur' ? 'plan-tab-ent-active' : 'plan-tab-inactive' ?>">
+  <a href="/portal/billing?plan=entrepreneur"
+     class="plan-tab <?= $_target_plan==='entrepreneur' ? 'plan-tab-ent-active' : 'plan-tab-inactive' ?>">
     <i class="fa-solid fa-rocket mr-1.5 text-xs"></i>Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
   </a>
 </div>
@@ -228,13 +250,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#08080f 0%,#0f0a02 60%,#160b00 100%)">
 
   <div class="relative px-7 pt-8 pb-7 border-b border-white/5 overflow-hidden">
-    <div class="absolute inset-0 pointer-events-none" style="background:radial-gradient(ellipse 70% 90% at 85% 10%,rgba(245,158,11,.13) 0%,transparent 65%)"></div>
+    <div class="absolute inset-0 pointer-events-none"
+         style="background:radial-gradient(ellipse 70% 90% at 85% 10%,rgba(245,158,11,.13) 0%,transparent 65%)"></div>
     <div class="relative flex flex-wrap gap-6 items-start justify-between">
       <div>
         <div class="flex flex-wrap items-center gap-2 mb-4">
           <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 border border-amber-500/35">
             <i class="fa-solid fa-rocket text-amber-400 text-[10px]"></i>
-            <span class="ent-badge tracking-widest">BEST VALUE</span>
+            <span style="color:#fbbf24;font-weight:900;letter-spacing:.05em">BEST VALUE</span>
           </span>
           <span class="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 font-bold">Most Popular</span>
         </div>
@@ -266,25 +289,39 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <thead><tr>
         <th class="text-left text-slate-500 font-semibold pb-2.5 pr-4">Feature</th>
         <th class="text-center text-slate-500 font-semibold pb-2.5 px-3">Pro</th>
-        <th class="text-center pb-2.5 px-3 ent-col rounded-t-lg"><span class="ent-badge font-black">Entrepreneur</span></th>
+        <th class="text-center pb-2.5 px-3 ent-col rounded-t-lg"><span class="font-black text-amber-400">Entrepreneur</span></th>
       </tr></thead>
       <tbody>
       <?php $rows=[
-        ['Leads','<span class="text-slate-400">'.number_format($_pro_leads).'</span>','<i class="fa-solid fa-infinity compare-ent"></i>'],
-        ['Active sites','<span class="text-slate-500">'.$_pro_sites.'</span>','<span class="text-amber-400 font-bold">'.$_ent_sites.'</span>'],
-        ['Custom domains','<i class="fa-solid fa-xmark compare-cross"></i>','<i class="fa-solid fa-check compare-ent"></i>'],
-        ['Client reports','<i class="fa-solid fa-xmark compare-cross"></i>','<i class="fa-solid fa-check compare-ent"></i>'],
-        ['Team seats','<i class="fa-solid fa-xmark compare-cross"></i>','<span class="text-amber-400 font-bold">'.$_ent_seats.' seats</span>'],
-        ['Revenue dash','<i class="fa-solid fa-check compare-check"></i>','<i class="fa-solid fa-check compare-ent"></i>'],
-        ['Price/mo','<span class="text-slate-400">$'.$_pro_price_fmt.'</span>','<span class="font-black text-amber-400">$'.$_ent_price_fmt.'</span>'],
+        ['Leads',
+          '<span class="text-slate-400">'.number_format($_pro_leads).'</span>',
+          '<i class="fa-solid fa-infinity compare-ent"></i>'],
+        ['Active sites',
+          '<span class="text-slate-500">'.$_pro_sites.'</span>',
+          '<span class="text-amber-400 font-bold">'.$_ent_sites.'</span>'],
+        ['Custom domains',
+          '<i class="fa-solid fa-xmark compare-cross"></i>',
+          '<i class="fa-solid fa-check compare-ent"></i>'],
+        ['Client reports',
+          '<i class="fa-solid fa-xmark compare-cross"></i>',
+          '<i class="fa-solid fa-check compare-ent"></i>'],
+        ['Team seats',
+          '<i class="fa-solid fa-xmark compare-cross"></i>',
+          '<span class="text-amber-400 font-bold">'.$_ent_seats.' seats</span>'],
+        ['Revenue dash',
+          '<i class="fa-solid fa-check compare-check"></i>',
+          '<i class="fa-solid fa-check compare-ent"></i>'],
+        ['Price/mo',
+          '<span class="text-slate-400">$'.$_pro_price_fmt.'</span>',
+          '<span class="font-black text-amber-400">$'.$_ent_price_fmt.'</span>'],
       ];
-      foreach($rows as $i=>[$f,$p,$e]):?>
-      <tr class="<?=$i%2?'bg-white/[.02]':''?>">
-        <td class="py-2 pr-4 text-slate-400"><?=$f?></td>
-        <td class="py-2 px-3 text-center text-slate-400"><?=$p?></td>
-        <td class="py-2 px-3 text-center ent-col <?=$i===count($rows)-1?'rounded-b-lg':''?>"><?=$e?></td>
+      foreach ($rows as $i => [$f, $p, $e]): ?>
+      <tr class="<?= $i % 2 ? 'bg-white/[.02]' : '' ?>">
+        <td class="py-2 pr-4 text-slate-400"><?= $f ?></td>
+        <td class="py-2 px-3 text-center text-slate-400"><?= $p ?></td>
+        <td class="py-2 px-3 text-center ent-col <?= $i === count($rows)-1 ? 'rounded-b-lg' : '' ?>"><?= $e ?></td>
       </tr>
-      <?php endforeach;?>
+      <?php endforeach; ?>
       </tbody>
     </table>
   </div>
@@ -301,7 +338,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <i class="fa-solid fa-flask text-amber-500/70"></i>
       <span><strong class="text-amber-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
     </div>
-    <form method="POST" action="/portal/billing?plan=entrepreneur" class="space-y-4" id="entForm">
+    <form method="POST" action="/portal/billing?plan=entrepreneur" class="space-y-4" id="entForm"
+          onsubmit="this.querySelector('#entSubmitBtn').disabled=true;this.querySelector('#entSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="entrepreneur">
@@ -333,7 +371,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </div>
         </div>
       </div>
-      <button type="submit" class="w-full ent-glow-btn text-black py-4 rounded-xl font-black text-base mt-1">
+      <button type="submit" id="entSubmitBtn"
+        class="w-full ent-glow-btn text-white py-4 rounded-xl font-black text-base mt-1">
         <i class="fa-solid fa-rocket mr-2"></i>Unlock Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
       </button>
       <div class="trust-row justify-center pt-1">
@@ -379,7 +418,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <i class="fa-solid fa-flask text-amber-500/70"></i>
       <span><strong class="text-amber-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
     </div>
-    <form method="POST" action="/portal/billing?plan=pro" class="space-y-4" id="billingForm">
+    <form method="POST" action="/portal/billing?plan=pro" class="space-y-4" id="billingForm"
+          onsubmit="this.querySelector('#proSubmitBtn').disabled=true;this.querySelector('#proSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="test_subscribe">
       <input type="hidden" name="subscribe_plan" value="pro">
@@ -411,7 +451,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           </div>
         </div>
       </div>
-      <button type="submit"
+      <button type="submit" id="proSubmitBtn"
         class="w-full bg-white hover:bg-slate-100 active:scale-[.98] text-black py-4 rounded-xl font-black text-base shadow-lg shadow-white/5 transition-all mt-1">
         <i class="fa-solid fa-lock mr-2 text-sm"></i>Subscribe to Pro &mdash; $<?= $_pro_price_fmt ?>/mo
       </button>
@@ -438,4 +478,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v318"></script>
+<script src="/assets/js/billing_card.js?v=v319"></script>
