@@ -76,7 +76,7 @@ $_has_logo  = file_exists($_logo_path);
     <a href="/admin/settings.php" class="nav-link admin-item <?= $adminPage==='settings' ? 'active' : '' ?>">
       <i class="fa-solid fa-sliders"></i> Settings
     </a>
-    <a href="/admin/db.php" class="nav-link admin-item <?= $adminPage==='db' ? 'active' : '' ?>">
+    <a href="/admin/database.php" class="nav-link admin-item <?= $adminPage==='database' ? 'active' : '' ?>">
       <i class="fa-solid fa-database"></i> Database
     </a>
 
