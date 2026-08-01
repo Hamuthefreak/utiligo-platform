@@ -2,12 +2,11 @@
 /**
  * includes/admin_layout.php
  * Shared sidebar + shell for all admin pages.
- * Matches portal_layout.php styling exactly.
  *
  * Requires before include:
  *   $pageTitle  (string)
  *   $admin      (array from require_admin())
- *   $adminPage  (string) e.g. 'dashboard' | 'users' | 'email' | 'config'
+ *   $adminPage  (string) e.g. 'dashboard' | 'users' | 'email' | 'config' | 'db'
  */
 if (!isset($pageTitle))  { $pageTitle  = 'Admin — Utiligo'; }
 if (!isset($adminPage))  { $adminPage  = ''; }
@@ -35,12 +34,10 @@ $_has_logo  = file_exists($_logo_path);
   .nav-link.active i { color:#ffffff; }
   .nav-link i { width:16px; text-align:center; font-size:.85rem; color:#64748b; transition:color .15s; }
   .nav-link:hover i { color:#e2e8f0; }
-  /* purple tint for admin nav items */
   .nav-link.admin-item { color:#c4b5fd; }
   .nav-link.admin-item i { color:#a78bfa; }
   .nav-link.admin-item:hover { background:rgba(139,92,246,.12); color:#ddd6fe; }
   .nav-link.admin-item.active { background:rgba(139,92,246,.18); color:#ddd6fe; }
-  /* back-to-portal link */
   .nav-link.back-link { color:#64748b; }
   .nav-link.back-link:hover { color:#94a3b8; }
   #sidebar { transition: transform .25s cubic-bezier(.4,0,.2,1); }
@@ -57,7 +54,6 @@ $_has_logo  = file_exists($_logo_path);
 
 <aside id="sidebar" class="w-64 h-screen bg-slate-900/95 border-r border-white/5 flex flex-col lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl">
 
-  <!-- Logo -->
   <div class="px-5 py-5 border-b border-white/5">
     <a href="/admin/index.php" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
@@ -74,7 +70,6 @@ $_has_logo  = file_exists($_logo_path);
     </a>
   </div>
 
-  <!-- Nav -->
   <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
     <p class="text-xs font-semibold text-purple-800 uppercase tracking-widest px-3 mb-2">Admin</p>
     <a href="/admin/index.php" class="nav-link admin-item <?= $adminPage==='dashboard' ? 'active' : '' ?>">
@@ -89,6 +84,9 @@ $_has_logo  = file_exists($_logo_path);
     <a href="/admin/config.php" class="nav-link admin-item <?= $adminPage==='config' ? 'active' : '' ?>">
       <i class="fa-solid fa-sliders"></i> Config Editor
     </a>
+    <a href="/admin/db.php" class="nav-link admin-item <?= $adminPage==='db' ? 'active' : '' ?>">
+      <i class="fa-solid fa-database"></i> Database
+    </a>
 
     <div class="pt-3 mt-3 border-t border-white/5">
       <a href="/portal/index.php" class="nav-link back-link">
@@ -100,7 +98,6 @@ $_has_logo  = file_exists($_logo_path);
     </div>
   </nav>
 
-  <!-- User footer -->
   <div class="px-4 py-4 border-t border-white/5 flex items-center gap-3">
     <div class="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0 text-sm font-bold text-purple-300">
       <?= $_initials ?>
@@ -116,7 +113,6 @@ $_has_logo  = file_exists($_logo_path);
 
 </aside>
 
-<!-- Mobile top bar -->
 <header class="lg:hidden sticky top-0 z-30 bg-slate-950/90 backdrop-blur border-b border-white/5 px-4 py-3 flex items-center justify-between">
   <button onclick="openSidebar()" class="text-slate-400 hover:text-white">
     <i class="fa-solid fa-bars text-lg"></i>
