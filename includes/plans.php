@@ -2,9 +2,14 @@
 /**
  * includes/plans.php
  * 3-plan system: free | pro | entrepreneur
+ *
+ * NOTE: auth.php is intentionally NOT required here at the top level.
+ * plans.php is included by portal pages that already load auth.php
+ * before plans.php. A top-level require_once auth.php here creates a
+ * circular boot chain (plans->auth->config->bootstrap->...->plans)
+ * that causes silent HTTP 500 on InfinityFree.
  */
 require_once __DIR__ . '/../config.php';
-require_once __DIR__ . '/auth.php';
 
 if (!defined('FREE_LEAD_LIMIT'))            define('FREE_LEAD_LIMIT',            3);
 if (!defined('FREE_SITE_LIMIT'))            define('FREE_SITE_LIMIT',            1);
@@ -27,43 +32,43 @@ if (!defined('ENTREPRENEUR_PLAN_PRICE'))    define('ENTREPRENEUR_PLAN_PRICE', 49
 function plan_config(): array {
     return [
         'free' => [
-            'label'              => 'Free',
-            'price'              => 0,
-            'lead_limit'         => FREE_LEAD_LIMIT,
-            'site_limit'         => FREE_SITE_LIMIT,
-            'search_daily'       => FREE_SEARCH_DAILY_LIMIT,
-            'generate_daily'     => FREE_GENERATE_DAILY_LIMIT,
-            'template_limit'     => FREE_TEMPLATE_LIMIT,
-            'team_seats'         => 0,
-            'custom_domain_limit'=> 0,
-            'features'           => ['basic_dashboard'],
+            'label'               => 'Free',
+            'price'               => 0,
+            'lead_limit'          => FREE_LEAD_LIMIT,
+            'site_limit'          => FREE_SITE_LIMIT,
+            'search_daily'        => FREE_SEARCH_DAILY_LIMIT,
+            'generate_daily'      => FREE_GENERATE_DAILY_LIMIT,
+            'template_limit'      => FREE_TEMPLATE_LIMIT,
+            'team_seats'          => 0,
+            'custom_domain_limit' => 0,
+            'features'            => ['basic_dashboard'],
         ],
         'pro' => [
-            'label'              => 'Pro',
-            'price'              => PRO_PLAN_PRICE,
-            'lead_limit'         => PRO_LEAD_LIMIT,
-            'site_limit'         => PRO_SITE_LIMIT,
-            'search_daily'       => -1,
-            'generate_daily'     => PRO_GENERATE_DAILY_LIMIT,
-            'template_limit'     => PRO_TEMPLATE_LIMIT,
-            'team_seats'         => 0,
-            'custom_domain_limit'=> 0,
-            'features'           => [
+            'label'               => 'Pro',
+            'price'               => PRO_PLAN_PRICE,
+            'lead_limit'          => PRO_LEAD_LIMIT,
+            'site_limit'          => PRO_SITE_LIMIT,
+            'search_daily'        => -1,
+            'generate_daily'      => PRO_GENERATE_DAILY_LIMIT,
+            'template_limit'      => PRO_TEMPLATE_LIMIT,
+            'team_seats'          => 0,
+            'custom_domain_limit' => 0,
+            'features'            => [
                 'basic_dashboard','website_generation','zip_export',
                 'revenue_dashboard','priority_support',
             ],
         ],
         'entrepreneur' => [
-            'label'              => 'Entrepreneur',
-            'price'              => ENTREPRENEUR_PLAN_PRICE,
-            'lead_limit'         => ENT_LEAD_LIMIT,
-            'site_limit'         => ENT_SITE_LIMIT,
-            'search_daily'       => -1,
-            'generate_daily'     => ENT_GENERATE_DAILY_LIMIT,
-            'template_limit'     => ENT_TEMPLATE_LIMIT,
-            'team_seats'         => ENT_TEAM_SEATS,
-            'custom_domain_limit'=> ENT_CUSTOM_DOMAIN_LIMIT,
-            'features'           => [
+            'label'               => 'Entrepreneur',
+            'price'               => ENTREPRENEUR_PLAN_PRICE,
+            'lead_limit'          => ENT_LEAD_LIMIT,
+            'site_limit'          => ENT_SITE_LIMIT,
+            'search_daily'        => -1,
+            'generate_daily'      => ENT_GENERATE_DAILY_LIMIT,
+            'template_limit'      => ENT_TEMPLATE_LIMIT,
+            'team_seats'          => ENT_TEAM_SEATS,
+            'custom_domain_limit' => ENT_CUSTOM_DOMAIN_LIMIT,
+            'features'            => [
                 'basic_dashboard','website_generation','zip_export',
                 'revenue_dashboard','priority_support',
                 'custom_domains','client_reports','team_seats',
@@ -111,6 +116,7 @@ function can_unlock_lead(string $plan, int $unlocked_count): bool {
     return $unlocked_count < $limit;
 }
 function require_paid(): void {
+    if (!function_exists('require_login')) require_once __DIR__ . '/auth.php';
     require_login();
     $user = current_user();
     if (!in_array($user['plan'] ?? 'free', ['pro', 'entrepreneur'], true)) {
@@ -119,6 +125,7 @@ function require_paid(): void {
     }
 }
 function require_entrepreneur(): void {
+    if (!function_exists('require_login')) require_once __DIR__ . '/auth.php';
     require_login();
     $user = current_user();
     if (($user['plan'] ?? 'free') !== 'entrepreneur') {
