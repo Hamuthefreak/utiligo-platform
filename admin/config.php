@@ -1,7 +1,6 @@
 <?php
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../userdb.php';
-require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/admin_auth.php';
 
 require_admin();
@@ -103,8 +102,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
         }
         $php = implode("\n", $lines) . "\n";
 
-        // Note: overrides file uses plain define() (no if(!defined()) guard)
-        // because it is loaded BEFORE all defaults, so it always wins.
         if (@file_put_contents($overrides_file, $php) !== false) {
             $saved = true;
             if (function_exists('opcache_invalidate')) {
@@ -129,7 +126,6 @@ $adminPage = 'config';
 require_once __DIR__ . '/../includes/admin_layout.php';
 ?>
 
-<!-- Page header -->
 <div class="mb-8 flex items-start justify-between flex-wrap gap-4">
   <div>
     <p class="text-slate-400 text-sm mb-0.5">Platform-wide settings</p>
@@ -157,7 +153,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
 <?php if ($saved): ?>
 <div class="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl px-5 py-4 mb-6 text-sm">
   <i class="fa-solid fa-circle-check"></i>
-  Config saved and opcache flushed — all changes are live across the whole platform.
+  Config saved and opcache flushed — all changes are live.
 </div>
 <?php endif; ?>
 <?php if ($save_error): ?>
@@ -172,7 +168,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
   <input type="hidden" name="save_config" value="1">
 
   <?php
-  // Group fields by section
   $sections = [];
   foreach ($fields as $f) $sections[$f[3]][] = $f;
 
@@ -192,7 +187,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       $icon = $section_icons[$section] ?? 'sliders';
   ?>
   <div class="group relative bg-white/[0.03] hover:bg-white/[0.045] border border-white/5 hover:border-white/10 rounded-2xl p-6 mb-4 transition-all">
-    <!-- Section header -->
     <div class="flex items-center gap-2 mb-5">
       <div class="w-7 h-7 rounded-lg bg-purple-500/15 flex items-center justify-center shrink-0">
         <i class="fa-solid fa-<?= $icon ?> text-purple-400 text-xs"></i>
@@ -229,7 +223,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                    class="w-full bg-slate-900/70 border border-white/10 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white rounded-xl pl-7 pr-3 py-2.5 text-sm outline-none transition">
           </div>
 
-        <?php else: /* int / intm1 */ ?>
+        <?php else: ?>
           <input type="number" step="1" <?= $type === 'int' ? 'min="0"' : 'min="-1"' ?>
                  name="cfg[<?= $key ?>]" value="<?= htmlspecialchars((string)$cur) ?>"
                  class="w-full bg-slate-900/70 border border-white/10 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white rounded-xl px-3 py-2.5 text-sm outline-none transition">
@@ -240,7 +234,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
   </div>
   <?php endforeach; ?>
 
-  <!-- Sticky save bar -->
   <div class="sticky bottom-4 z-20 flex items-center justify-between bg-slate-900/90 backdrop-blur border border-white/10 rounded-2xl px-6 py-4 mt-2 shadow-xl">
     <p class="text-xs text-slate-500 hidden sm:block">Saved values override all code defaults — billing page, portal limits, plan cards update instantly.</p>
     <button type="submit"
