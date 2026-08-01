@@ -12,8 +12,8 @@ $allowed_tables = [
     'users'        => ['Users',           'user',     'utiligo_users',           ['id','email','full_name','plan','subscription_status','email_verified','is_admin','created_at']],
     'sites'        => ['Sites',           'platform', 'utiligo_generated_sites', ['id','user_id','business_name','subdomain','link_active','created_at']],
     'leads'        => ['Lead searches',   'platform', 'utiligo_lead_searches',   ['id','user_id','query','results_count','created_at']],
-    'migrations_u' => ['Migrations (UDB)','user',     'schema_migrations',       ['id','filename','applied_at']],
-    'migrations_p' => ['Migrations (PDB)','platform', 'schema_migrations',       ['id','filename','applied_at']],
+    'migrations_u' => ['Migrations (UDB)','user',     'utiligo_migrations',      ['id','migration','ran_at']],
+    'migrations_p' => ['Migrations (PDB)','platform', 'utiligo_migrations',      ['id','migration','ran_at']],
 ];
 
 // Columns that must never be edited/written
@@ -48,23 +48,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && db_csrf_ok()) {
     $action   = $_POST['_action'] ?? '';
     $post_tab = $_POST['_tab']    ?? $tab;
     if (!array_key_exists($post_tab, $allowed_tables)) { $flash_err = 'Invalid table.'; goto render; }
-    [$, $post_db_key, $post_table] = $allowed_tables[$post_tab];
+    [$_unused, $post_db_key, $post_table] = $allowed_tables[$post_tab];
     $post_pdo = $post_db_key === 'user' ? get_user_db() : get_platform_db();
-    // Detect actual columns for safety
-    $actual = $post_pdo->query("DESCRIBE `$post_table`")->fetchAll(PDO::FETCH_ASSOC);
-    $col_map = []; // col_name => type
+    $actual   = $post_pdo->query("DESCRIBE `$post_table`")->fetchAll(PDO::FETCH_ASSOC);
+    $col_map  = [];
     foreach ($actual as $r) $col_map[$r['Field']] = $r['Type'];
 
     if ($action === 'edit') {
-        $row_id  = (int)($_POST['_id'] ?? 0);
-        $col     = $_POST['_col'] ?? '';
-        $val     = $_POST['_val'] ?? '';
+        $row_id = (int)($_POST['_id'] ?? 0);
+        $col    = $_POST['_col'] ?? '';
+        $val    = $_POST['_val'] ?? '';
         if (!$row_id || !$col || !array_key_exists($col, $col_map) || in_array($col, $readonly_cols)) {
             $flash_err = 'Invalid edit request.';
         } else {
             try {
                 $post_pdo->prepare("UPDATE `$post_table` SET `$col`=? WHERE id=?")->execute([$val, $row_id]);
-                $flash_ok = "Row #$row_id → <code>$col</code> updated.";
+                $flash_ok = "Row #$row_id &rarr; <code>$col</code> updated.";
             } catch (Throwable $e) { $flash_err = $e->getMessage(); }
         }
 
@@ -84,13 +83,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && db_csrf_ok()) {
             if (in_array($col, $readonly_cols)) continue;
             if (!isset($_POST['new'][$col])) continue;
             $v = $_POST['new'][$col];
-            // Hash password if provided
             if ($col === 'password_hash' && $v !== '') $v = password_hash($v, PASSWORD_BCRYPT);
             $data[$col] = $v === '' ? null : $v;
         }
         if (empty($data)) { $flash_err = 'No data provided.'; }
         else {
-            $cols_sql = implode(',', array_map(fn($c) => "`$c`", array_keys($data)));
+            $cols_sql     = implode(',', array_map(fn($c) => "`$c`", array_keys($data)));
             $placeholders = implode(',', array_fill(0, count($data), '?'));
             try {
                 $post_pdo->prepare("INSERT INTO `$post_table` ($cols_sql) VALUES ($placeholders)")->execute(array_values($data));
@@ -98,7 +96,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && db_csrf_ok()) {
             } catch (Throwable $e) { $flash_err = $e->getMessage(); }
         }
     }
-    // Redirect to avoid resubmit, carrying flash in session
     $_SESSION['db_flash_ok']  = $flash_ok;
     $_SESSION['db_flash_err'] = $flash_err;
     header("Location: /admin/database.php?t=$post_tab&p=$page&pp=$perPage&q=" . urlencode($search) . "&s=$sortCol&d=$sortDir");
@@ -117,21 +114,20 @@ try {
     if ($exists) {
         $described = $pdo->query("DESCRIBE `$table`")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($described as $r) {
-            $all_cols[]         = $r['Field'];
+            $all_cols[]            = $r['Field'];
             $col_meta[$r['Field']] = $r;
         }
         $cols = array_values(array_intersect($display_cols, $all_cols));
         if (empty($cols)) $cols = array_slice($all_cols, 0, 10);
 
-        // Validate sort col
         if (!in_array($sortCol, $all_cols)) $sortCol = 'id';
 
         $select = implode(',', array_map(fn($c) => "`$c`", $cols));
 
         $where = ''; $params = [];
         if ($search !== '') {
-            $parts = array_map(fn($c) => "`$c` LIKE ?", $cols);
-            $where = 'WHERE ' . implode(' OR ', $parts);
+            $parts  = array_map(fn($c) => "`$c` LIKE ?", $cols);
+            $where  = 'WHERE ' . implode(' OR ', $parts);
             $params = array_fill(0, count($cols), '%' . $search . '%');
         }
 
@@ -139,7 +135,7 @@ try {
         $count_stmt->execute($params);
         $total = (int)$count_stmt->fetchColumn();
 
-        $offset = ($page - 1) * $perPage;
+        $offset    = ($page - 1) * $perPage;
         $data_stmt = $pdo->prepare("SELECT $select FROM `$table` $where ORDER BY `$sortCol` $sortDir LIMIT $perPage OFFSET $offset");
         $data_stmt->execute($params);
         $rows = $data_stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -166,9 +162,8 @@ require_once __DIR__ . '/../includes/admin_layout.php';
 ?>
 
 <?php
-// ── Editable cols for this table ──────────────────────────────────────────────
 $editable_cols = array_values(array_filter($all_cols ?? [], fn($c) => !in_array($c, $readonly_cols)));
-$add_cols      = $editable_cols; // same set for add-row modal
+$add_cols      = $editable_cols;
 ?>
 
 <!-- Page header -->
@@ -266,7 +261,7 @@ $add_cols      = $editable_cols; // same set for add-row modal
       <thead>
         <tr class="border-b border-white/5">
           <?php foreach ($cols as $col):
-            $nextDir = ($sortCol === $col && $sortDir === 'ASC') ? 'DESC' : 'ASC';
+            $nextDir  = ($sortCol === $col && $sortDir === 'ASC') ? 'DESC' : 'ASC';
             $isSorted = $sortCol === $col;
           ?>
           <th class="px-4 py-3 text-left whitespace-nowrap">
@@ -288,9 +283,8 @@ $add_cols      = $editable_cols; // same set for add-row modal
         <?php foreach ($rows as $row): ?>
         <tr class="hover:bg-white/[0.025] transition group" data-id="<?= (int)($row['id'] ?? 0) ?>">
           <?php foreach ($cols as $col):
-            $val     = $row[$col] ?? null;
-            $is_ro   = in_array($col, $readonly_cols);
-            $display = '';
+            $val   = $row[$col] ?? null;
+            $is_ro = in_array($col, $readonly_cols);
 
             if ($col === 'is_admin') {
                 $display = $val ? '<span class="text-purple-400 font-bold">YES</span>' : '<span class="text-slate-600">no</span>';
@@ -354,20 +348,17 @@ $add_cols      = $editable_cols; // same set for add-row modal
 <?php endif; ?>
 <?php endif; ?>
 
-<!-- ═══════════════════════════════════════════════════════════════ MODALS ═══ -->
-
-<!-- Delete confirm modal -->
+<!-- DELETE MODAL -->
 <div id="deleteModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/70" onclick="closeDeleteModal()"></div>
   <div class="relative bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-sm shadow-2xl">
     <h3 class="text-lg font-bold mb-2">Delete row?</h3>
-    <p class="text-slate-400 text-sm mb-5">Row <strong id="deleteRowId" class="text-white"></strong> will be permanently deleted. This cannot be undone.</p>
-    <form method="POST" id="deleteForm">
+    <p class="text-slate-400 text-sm mb-5">Row <strong id="deleteRowId" class="text-white"></strong> will be permanently deleted.</p>
+    <form method="POST">
       <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf) ?>">
       <input type="hidden" name="_action" value="delete">
       <input type="hidden" name="_tab"    id="deleteTabInput">
       <input type="hidden" name="_id"     id="deleteIdInput">
-      <input type="hidden" name="_page"   value="<?= $page ?>">
       <div class="flex gap-3">
         <button type="button" onclick="closeDeleteModal()"
                 class="flex-1 bg-white/10 hover:bg-white/20 text-white py-2.5 rounded-xl font-semibold text-sm transition">Cancel</button>
@@ -380,7 +371,7 @@ $add_cols      = $editable_cols; // same set for add-row modal
   </div>
 </div>
 
-<!-- Inline edit modal -->
+<!-- EDIT MODAL -->
 <div id="editModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/70" onclick="closeEditModal()"></div>
   <div class="relative bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-md shadow-2xl">
@@ -389,7 +380,7 @@ $add_cols      = $editable_cols; // same set for add-row modal
       Row #<span id="editRowId" class="text-white font-semibold"></span>
       &rarr; <code id="editColName" class="text-purple-300 bg-purple-500/10 px-1.5 py-0.5 rounded"></code>
     </p>
-    <form method="POST" id="editForm">
+    <form method="POST">
       <input type="hidden" name="_csrf"   value="<?= htmlspecialchars($csrf) ?>">
       <input type="hidden" name="_action" value="edit">
       <input type="hidden" name="_tab"    value="<?= htmlspecialchars($tab) ?>">
@@ -409,7 +400,7 @@ $add_cols      = $editable_cols; // same set for add-row modal
   </div>
 </div>
 
-<!-- Add row modal -->
+<!-- ADD ROW MODAL -->
 <div id="addModal" class="fixed inset-0 z-50 hidden flex items-center justify-center p-4">
   <div class="absolute inset-0 bg-black/70" onclick="closeAddModal()"></div>
   <div class="relative bg-slate-900 border border-white/10 rounded-2xl p-6 w-full max-w-lg shadow-2xl max-h-[90vh] overflow-y-auto">
@@ -423,10 +414,8 @@ $add_cols      = $editable_cols; // same set for add-row modal
         <?php foreach ($add_cols as $ac): ?>
         <div>
           <label class="block text-xs font-semibold text-slate-400 mb-1"><?= htmlspecialchars($ac) ?></label>
-          <?php
-            $mt = strtolower($col_meta[$ac]['Type'] ?? '');
-            if (str_contains($mt, 'text') || str_contains($mt, 'json')):
-          ?>
+          <?php $mt = strtolower($col_meta[$ac]['Type'] ?? '');
+                if (str_contains($mt,'text') || str_contains($mt,'json')): ?>
             <textarea name="new[<?= htmlspecialchars($ac) ?>]" rows="2"
                       class="w-full bg-slate-800 border border-white/10 focus:border-purple-500/50 text-white rounded-xl px-3 py-2 text-sm outline-none transition resize-y"></textarea>
           <?php elseif ($ac === 'plan'): ?>
@@ -469,16 +458,14 @@ $add_cols      = $editable_cols; // same set for add-row modal
 </div>
 
 <script>
-// ── Delete ────────────────────────────────────────────────────────────────────
 function confirmDelete(id, tab) {
-  document.getElementById('deleteRowId').textContent  = '#' + id;
-  document.getElementById('deleteIdInput').value = id;
-  document.getElementById('deleteTabInput').value = tab;
+  document.getElementById('deleteRowId').textContent = '#' + id;
+  document.getElementById('deleteIdInput').value     = id;
+  document.getElementById('deleteTabInput').value    = tab;
   document.getElementById('deleteModal').classList.remove('hidden');
 }
 function closeDeleteModal() { document.getElementById('deleteModal').classList.add('hidden'); }
 
-// ── Inline edit ───────────────────────────────────────────────────────────────
 function inlineEdit(cell, id, col, currentVal) {
   document.getElementById('editRowId').textContent   = id;
   document.getElementById('editColName').textContent = col;
@@ -490,11 +477,9 @@ function inlineEdit(cell, id, col, currentVal) {
 }
 function closeEditModal() { document.getElementById('editModal').classList.add('hidden'); }
 
-// ── Add row ───────────────────────────────────────────────────────────────────
 function openAddModal()  { document.getElementById('addModal').classList.remove('hidden'); }
 function closeAddModal() { document.getElementById('addModal').classList.add('hidden'); }
 
-// Close modals on Escape
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') { closeDeleteModal(); closeEditModal(); closeAddModal(); }
 });
