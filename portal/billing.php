@@ -1,5 +1,21 @@
 <?php
 require_once __DIR__ . '/../config.php';
+
+// Force errors visible AFTER config.php (which sets display_errors=0 in production).
+// REMOVE these four lines once the 500 is fixed.
+ini_set('display_errors', '1');
+ini_set('display_startup_errors', '1');
+error_reporting(E_ALL);
+register_shutdown_function(function () {
+    $e = error_get_last();
+    if ($e && in_array($e['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        echo '<pre style="background:#1e1e2e;color:#f38ba8;padding:20px;margin:0;font-size:13px;">';
+        echo '<strong>FATAL ERROR (billing.php shutdown handler)</strong>' . "\n";
+        echo htmlspecialchars(print_r($e, true));
+        echo '</pre>';
+    }
+});
+
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../userdb.php';
 require_once __DIR__ . '/../includes/auth.php';
@@ -45,8 +61,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 brevo_upsert_contact($user['email'], ['FIRSTNAME' => $user['full_name']], $listIds);
                 send_welcome_email($user['email'], $user['full_name']);
                 header('Location: /portal/index?upgraded=1'); exit;
-            } catch (\Throwable $e) {
-                error_log('[billing] test_subscribe failed: ' . $e->getMessage() . ' in ' . $e->getFile() . ':' . $e->getLine());
+            } catch (\Throwable $ex) {
+                error_log('[billing] test_subscribe failed: ' . $ex->getMessage() . ' in ' . $ex->getFile() . ':' . $ex->getLine());
                 $error = 'Something went wrong while activating your plan. Please try again or contact support.';
             }
         }
@@ -56,8 +72,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $userdb->prepare("UPDATE utiligo_users SET subscription_status='cancelled' WHERE id=?")->execute([$user['id']]);
             $message = 'Subscription cancelled. Your plan features remain active until the end of your billing period.';
             $user['subscription_status'] = 'cancelled';
-        } catch (\Throwable $e) {
-            error_log('[billing] cancel failed: ' . $e->getMessage());
+        } catch (\Throwable $ex) {
+            error_log('[billing] cancel failed: ' . $ex->getMessage());
             $error = 'Could not cancel subscription right now. Please try again.';
         }
     }
@@ -413,4 +429,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v316"></script>
+<script src="/assets/js/billing_card.js?v=v317"></script>
