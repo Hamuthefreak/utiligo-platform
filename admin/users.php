@@ -21,7 +21,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $plan = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
         $udb->prepare('UPDATE utiligo_users SET plan=? WHERE id=?')->execute([$plan, $targetId]);
         _admin_log('INFO', "Set plan={$plan} for user_id={$targetId}");
-        $success = "Plan updated to <strong>" . htmlspecialchars($plan) . "</strong>.";
+        $success = 'Plan updated to <strong>' . htmlspecialchars($plan) . '</strong>.';
     } elseif ($action === 'ban' && $targetId > 0) {
         $udb->prepare("UPDATE utiligo_users SET subscription_status='banned' WHERE id=?")->execute([$targetId]);
         _admin_log('WARN', "Banned user_id={$targetId}");
@@ -49,6 +49,9 @@ $data    = admin_get_all_users($page, $perPage, $search);
 $users   = $data['users'];
 $total   = $data['total'];
 $pages   = max(1, (int)ceil($total / $perPage));
+
+// Generate ONE CSRF token for the whole page before rendering
+$csrf = admin_csrf_token('users');
 
 $pageTitle = 'Users — Admin — Utiligo';
 $adminPage = 'users';
@@ -121,19 +124,13 @@ require_once __DIR__ . '/../includes/admin_layout.php';
 
         <!-- Actions -->
         <td class="px-5 py-3">
-          <?php $csrf = admin_csrf_token('users'); ?>
           <div class="flex flex-wrap gap-1.5 items-center">
-
-            <?php
-            // ── Plan ladder ───────────────────────────────────────────────────
-            // Each direction is its own mini-form so buttons stay independent.
-            $plan = $u['plan'] ?? 'free';
-            ?>
+            <?php $plan = $u['plan'] ?? 'free'; ?>
 
             <?php if ($plan === 'free'): ?>
               <!-- FREE → PRO -->
               <form method="POST">
-                <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
                 <input type="hidden" name="action"     value="set_plan">
                 <input type="hidden" name="plan"       value="pro">
@@ -144,9 +141,9 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($plan === 'pro'): ?>
-              <!-- PRO → FREE (downgrade) -->
+              <!-- PRO → FREE -->
               <form method="POST">
-                <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
                 <input type="hidden" name="action"     value="set_plan">
                 <input type="hidden" name="plan"       value="free">
@@ -155,9 +152,9 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-down text-[10px] mr-1"></i>Free
                 </button>
               </form>
-              <!-- PRO → ENT (upgrade) -->
+              <!-- PRO → ENT -->
               <form method="POST">
-                <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
                 <input type="hidden" name="action"     value="set_plan">
                 <input type="hidden" name="plan"       value="entrepreneur">
@@ -168,9 +165,9 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($plan === 'entrepreneur'): ?>
-              <!-- ENT → PRO (downgrade) -->
+              <!-- ENT → PRO -->
               <form method="POST">
-                <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+                <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
                 <input type="hidden" name="action"     value="set_plan">
                 <input type="hidden" name="plan"       value="pro">
@@ -181,9 +178,9 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
             <?php endif; ?>
 
-            <?php // ── Ban / Unban ──────────────────────────────────────────── ?>
+            <!-- Ban / Unban -->
             <form method="POST">
-              <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+              <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
               <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
               <?php if (($u['subscription_status'] ?? '') === 'banned'): ?>
                 <button name="action" value="unban"
@@ -194,9 +191,9 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               <?php endif; ?>
             </form>
 
-            <?php // ── Promote / Demote admin ───────────────────────────────── ?>
+            <!-- Promote / Demote admin -->
             <form method="POST">
-              <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+              <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
               <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
               <?php if (empty($u['is_admin'])): ?>
                 <button name="action" value="promote_admin" onclick="return confirm('Promote to admin?')"
