@@ -1,8 +1,16 @@
 <?php
 // includes/plan_limits.php
 // THE ONE FILE TO EDIT FOR PLAN LIMITS.
-// Edit numbers here - they update everywhere automatically.
-// All defines are guarded with if(!defined()) so this file is safe to load multiple times.
+// Values here are defaults. To override without editing code, use
+// the Admin > Config Editor which writes to storage/config_overrides.php.
+// That file is loaded first, so its defines() win everywhere.
+
+// Load admin overrides first (written by admin/config.php)
+$_overrides_file = __DIR__ . '/../storage/config_overrides.php';
+if (file_exists($_overrides_file)) {
+    require_once $_overrides_file;
+}
+unset($_overrides_file);
 
 // FREE plan
 if (!defined('FREE_LEAD_LIMIT'))           define('FREE_LEAD_LIMIT',            3);
@@ -22,8 +30,8 @@ if (!defined('ENT_LEAD_LIMIT'))            define('ENT_LEAD_LIMIT',            -
 if (!defined('ENT_SITE_LIMIT'))            define('ENT_SITE_LIMIT',           500);
 if (!defined('ENT_GENERATE_DAILY_LIMIT'))  define('ENT_GENERATE_DAILY_LIMIT',  -1);
 if (!defined('ENT_TEMPLATE_LIMIT'))        define('ENT_TEMPLATE_LIMIT',        -1);
-if (!defined('ENT_TEAM_SEATS'))            define('ENT_TEAM_SEATS',             5); // team member seats
-if (!defined('ENT_CUSTOM_DOMAIN_LIMIT'))   define('ENT_CUSTOM_DOMAIN_LIMIT',   -1); // unlimited custom domains
+if (!defined('ENT_TEAM_SEATS'))            define('ENT_TEAM_SEATS',             5);
+if (!defined('ENT_CUSTOM_DOMAIN_LIMIT'))   define('ENT_CUSTOM_DOMAIN_LIMIT',   -1); // unlimited
 
 // Pricing
 if (!defined('PRO_PLAN_PRICE'))            define('PRO_PLAN_PRICE',          21.99);
