@@ -21,6 +21,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $plan = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
         $udb->prepare('UPDATE utiligo_users SET plan=? WHERE id=?')->execute([$plan, $targetId]);
         _admin_log('INFO', "Set plan={$plan} for user_id={$targetId}");
+        // If admin changed their OWN plan, bust the current_user() static cache
+        // so the next page-load re-reads from the DB instead of the stale value.
+        if ($targetId === (int)$admin['id']) {
+            // Re-set session user_id to force current_user() to re-query.
+            $_SESSION['user_id'] = $targetId;
+            // Also update the in-memory admin reference so the rest of THIS
+            // request reflects the new plan (prevents the wrong button showing
+            // on the redirect page before the session is fully refreshed).
+            $GLOBALS['admin_user']['plan'] = $plan;
+        }
         $success = 'Plan updated to <strong>' . htmlspecialchars($plan) . '</strong>.';
     } elseif ($action === 'ban' && $targetId > 0) {
         $udb->prepare("UPDATE utiligo_users SET subscription_status='banned' WHERE id=?")->execute([$targetId]);
@@ -128,7 +138,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
             <?php $plan = $u['plan'] ?? 'free'; ?>
 
             <?php if ($plan === 'free'): ?>
-              <!-- FREE → PRO -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -141,7 +150,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($plan === 'pro'): ?>
-              <!-- PRO → FREE -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -152,7 +160,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-down text-[10px] mr-1"></i>Free
                 </button>
               </form>
-              <!-- PRO → ENT -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -165,7 +172,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($plan === 'entrepreneur'): ?>
-              <!-- ENT → PRO -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">

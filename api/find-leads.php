@@ -1,32 +1,14 @@
 <?php
 /**
- * api/find-leads.php  v5.4
+ * api/find-leads.php  v5.5
  *
- * CHANGES FROM v5.3
+ * CHANGES FROM v5.4
  * =================
- * Reliability & observability hardening:
- *
- * 1. Dedicated leads logger — every stage calls leads_log_*() from
- *    includes/leads_logger.php. All lead activity isolated in
- *    storage/leads_log.txt, separate from error_log.txt.
- *
- * 2. DB connection retry — up to 3 attempts with 250 ms back-off.
- *
- * 3. Google Places timeout raised to 15 s; all status codes classified
- *    (INVALID_REQUEST, OVER_QUERY_LIMIT, REQUEST_DENIED, etc.).
- *
- * 4. Phone-detail lookup is individually try/caught — one slow call
- *    cannot hang the whole request.
- *
- * 5. Cache read/write failures logged as warn (not silently swallowed).
- *
- * 6. ID-resolution failures counted + logged; zero-id leads are skipped
- *    in the unlock loop rather than silently ignored.
- *
- * 7. Per-stage timing (google_ms, db_ms, unlock_ms, total_ms) in _debug.
- *
- * 8. Audit info entry always written on success — leads_log.txt doubles
- *    as a usage trail.
+ * 1. Free-tier quota table moved to USER DB (get_user_db()) so it shares
+ *    the same reliable connection used for auth — the platform DB on
+ *    InfinityFree can silently fail, causing the quota to never persist.
+ * 2. Quota errors are now surfaced (logged + returned as JSON error)
+ *    instead of being silently swallowed, so quota is never bypassed.
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -217,41 +199,53 @@ if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
     }
 }
 
-// ── 7. Free quota ─────────────────────────────────────────────────────────
+// ── 7. Free quota — stored in USER DB so it always persists ──────────────
+// NOTE: We intentionally use get_user_db() here, not get_platform_db().
+// The platform DB on shared hosting (InfinityFree) can silently drop writes;
+// the user DB is the same reliable connection used for authentication.
 $searches_used = 0; $searches_remaining = null;
 if (!$is_paid) {
     $daily_limit = (int)FREE_SEARCH_DAILY_LIMIT;
     $fingerprint = 'uid_' . $uid;
+    $quota_err   = null;
     try {
-        $pdo->exec('CREATE TABLE IF NOT EXISTS `lead_search_quota` (
-            `id` INT UNSIGNED NOT NULL AUTO_INCREMENT,`fingerprint` VARCHAR(80) NOT NULL,
-            `user_id` INT UNSIGNED NOT NULL,`count` INT UNSIGNED NOT NULL DEFAULT 0,
-            `window_start` DATETIME NOT NULL,PRIMARY KEY(`id`),
-            UNIQUE KEY`uq_fp`(`fingerprint`),KEY`idx_uid`(`user_id`)
+        $udb = get_user_db();
+        $udb->exec('CREATE TABLE IF NOT EXISTS `lead_search_quota` (
+            `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,
+            `fingerprint`  VARCHAR(80)  NOT NULL,
+            `user_id`      INT UNSIGNED NOT NULL,
+            `count`        INT UNSIGNED NOT NULL DEFAULT 0,
+            `window_start` DATETIME     NOT NULL,
+            PRIMARY KEY(`id`),
+            UNIQUE KEY `uq_fp`(`fingerprint`),
+            KEY `idx_uid`(`user_id`)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
         $cutoff = date('Y-m-d H:i:s', strtotime('-24 hours'));
-        $q = $pdo->prepare('SELECT id,count,window_start FROM lead_search_quota WHERE fingerprint=? LIMIT 1');
+        $q = $udb->prepare('SELECT id,count,window_start FROM lead_search_quota WHERE fingerprint=? LIMIT 1');
         $q->execute([$fingerprint]);
         $qrow = $q->fetch(PDO::FETCH_ASSOC);
         if (!$qrow) {
-            $pdo->prepare('INSERT INTO lead_search_quota (fingerprint,user_id,count,window_start) VALUES(?,?,1,NOW())')->execute([$fingerprint,$uid]);
-            $searches_used=1; $searches_remaining=$daily_limit-1;
+            $udb->prepare('INSERT INTO lead_search_quota (fingerprint,user_id,count,window_start) VALUES(?,?,1,NOW())')->execute([$fingerprint,$uid]);
+            $searches_used = 1; $searches_remaining = $daily_limit - 1;
         } elseif ($qrow['window_start'] < $cutoff) {
-            $pdo->prepare('UPDATE lead_search_quota SET count=1,window_start=NOW() WHERE id=?')->execute([$qrow['id']]);
-            $searches_used=1; $searches_remaining=$daily_limit-1;
+            $udb->prepare('UPDATE lead_search_quota SET count=1,window_start=NOW() WHERE id=?')->execute([$qrow['id']]);
+            $searches_used = 1; $searches_remaining = $daily_limit - 1;
         } else {
-            $searches_used=(int)$qrow['count'];
-            if ($searches_used>=$daily_limit) {
+            $searches_used = (int)$qrow['count'];
+            if ($searches_used >= $daily_limit) {
                 leads_log_info('quota_exhausted', ['uid'=>$uid]);
                 echo json_encode(['success'=>false,'error'=>'All '.$daily_limit.' free searches used today. Upgrade for unlimited.','rate_limited'=>true,'resets_at'=>strtotime($qrow['window_start'])+86400]);
                 exit;
             }
-            $pdo->prepare('UPDATE lead_search_quota SET count=count+1 WHERE id=?')->execute([$qrow['id']]);
-            $searches_used++; $searches_remaining=max(0,$daily_limit-$searches_used);
+            $udb->prepare('UPDATE lead_search_quota SET count=count+1 WHERE id=?')->execute([$qrow['id']]);
+            $searches_used++; $searches_remaining = max(0, $daily_limit - $searches_used);
         }
     } catch (\Throwable $e) {
+        $quota_err = $e->getMessage();
         leads_log_error('quota_check', $e, ['uid'=>$uid]);
         log_error('find_leads_quota', $e, ['uid'=>$uid]);
+        // Do NOT silently continue — fail closed so quota cannot be bypassed.
+        _leads_json_fail('Search quota unavailable. Please try again in a moment.');
     }
 }
 
@@ -424,7 +418,7 @@ try {
         ->execute([$uid,$city,$industry,$keywords,count($leads_to_return)]);
 } catch(\Throwable $e){ leads_log_warn('history_write',$e,['uid'=>$uid]); }
 
-// ── Audit log — always written on success ────────────────────────────────
+// ── Audit log ─────────────────────────────────────────────────────────────
 $_total_ms=_leads_ms($_t_start);
 leads_log_info('search_complete',[
     'uid'=>$uid,'plan'=>$plan,'city'=>$city,'industry'=>$industry,
@@ -436,7 +430,7 @@ leads_log_info('search_complete',[
 
 // ── 13. Payload ───────────────────────────────────────────────────────────
 $_debug_block=[
-    'v'=>'5.4','plan'=>$plan,'is_paid'=>$is_paid,'from_cache'=>$from_cache,
+    'v'=>'5.5','plan'=>$plan,'is_paid'=>$is_paid,'from_cache'=>$from_cache,
     'total_raw'=>count($all_leads),'req_count'=>$req_count,'returned'=>count($leads_to_return),
     'unlock_tried'=>$_unlock_attempted,'unlock_errors'=>$_unlock_errors,'pro_lead_count'=>$pro_lead_count,
     'id_fail_count'=>$_id_resolve_fails,'total_ms'=>$_total_ms,'google_ms'=>$_google_ms,
