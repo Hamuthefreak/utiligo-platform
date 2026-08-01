@@ -54,9 +54,14 @@ function require_admin(): void
         }
     }
     $_SESSION['admin_last_active'] = time();
+
+    // IP-bind the session on first admin access, but do NOT call
+    // session_regenerate_id() here — regenerating on every page load
+    // can orphan the session file on shared hosts (InfinityFree),
+    // silently wiping $_SESSION['admin_csrf'] and killing every POST.
+    // Session ID was already regenerated at login time.
     if (empty($_SESSION['admin_session_ip'])) {
         $_SESSION['admin_session_ip'] = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-        session_regenerate_id(true);
         _admin_log('INFO', 'Admin session started for user_id=' . $user['id']);
     } elseif ($_SESSION['admin_session_ip'] !== ($_SERVER['REMOTE_ADDR'] ?? '')) {
         session_unset();
@@ -81,7 +86,6 @@ function _admin_fetch_user(int $id): ?array
 function admin_get_all_users(int $page = 1, int $perPage = 25, string $search = ''): array
 {
     $pdo    = get_user_db();
-    // Cast to int — MariaDB rejects string-bound LIMIT/OFFSET
     $limit  = (int)$perPage;
     $offset = (int)(($page - 1) * $perPage);
 
@@ -125,8 +129,16 @@ function admin_csrf_verify(string $form, ?string $token): bool
 {
     $stored = $_SESSION['admin_csrf'][$form] ?? null;
     if (!$stored || !$token) return false;
-    if (time() - $stored['ts'] > 3600) return false;
-    $ok = hash_equals($stored['token'], $token);
+    if (time() - $stored['ts'] > 3600) {
+        unset($_SESSION['admin_csrf'][$form]);
+        return false;
+    }
+    if (!hash_equals($stored['token'], $token)) {
+        // Do NOT unset on failure — preserve the token so a bad
+        // double-submit or stale tab doesn't burn the valid token.
+        return false;
+    }
+    // Only consume the token on genuine success
     unset($_SESSION['admin_csrf'][$form]);
-    return $ok;
+    return true;
 }
