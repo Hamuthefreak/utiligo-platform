@@ -7,7 +7,7 @@
  * Requires before include:
  *   $pageTitle  (string)
  *   $admin      (array from require_admin())
- *   $adminPage  (string) e.g. 'dashboard' | 'users' | 'email'
+ *   $adminPage  (string) e.g. 'dashboard' | 'users' | 'email' | 'config'
  */
 if (!isset($pageTitle))  { $pageTitle  = 'Admin — Utiligo'; }
 if (!isset($adminPage))  { $adminPage  = ''; }
@@ -85,6 +85,9 @@ $_has_logo  = file_exists($_logo_path);
     </a>
     <a href="/admin/email.php" class="nav-link admin-item <?= $adminPage==='email' ? 'active' : '' ?>">
       <i class="fa-solid fa-envelope"></i> Email Blast
+    </a>
+    <a href="/admin/config.php" class="nav-link admin-item <?= $adminPage==='config' ? 'active' : '' ?>">
+      <i class="fa-solid fa-sliders"></i> Config Editor
     </a>
 
     <div class="pt-3 mt-3 border-t border-white/5">
