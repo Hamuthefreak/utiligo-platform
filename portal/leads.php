@@ -29,14 +29,16 @@ $site_limit_js = match($plan) {
     default        => 0,
 };
 
+// ── Quota read: MUST match find-leads.php exactly ────────────────────────
+// find-leads.php writes: fingerprint='uid_{uid}' on get_user_db()
+// This read must use the same DB and the same fingerprint format.
 $quota_used = 0; $quota_resets_at = null;
 if (!$is_paid) {
     try {
-        $pdo         = get_platform_db();
-        $ip_hash     = hash('sha256', $_SERVER['REMOTE_ADDR'] ?? 'unknown');
-        $fingerprint = 'u'.$user['id'].'_'.substr($ip_hash,0,16);
+        $udb         = get_user_db();                        // same DB as find-leads.php
+        $fingerprint = 'uid_' . (int)$user['id'];           // same format as find-leads.php
         $cutoff      = date('Y-m-d H:i:s', strtotime('-24 hours'));
-        $stmt = $pdo->prepare('SELECT count, window_start FROM lead_search_quota WHERE fingerprint = ? AND window_start > ? LIMIT 1');
+        $stmt = $udb->prepare('SELECT count, window_start FROM lead_search_quota WHERE fingerprint = ? AND window_start > ? LIMIT 1');
         $stmt->execute([$fingerprint, $cutoff]);
         $row = $stmt->fetch(PDO::FETCH_ASSOC);
         if ($row) { $quota_used = (int)$row['count']; $quota_resets_at = strtotime($row['window_start'])+86400; }
