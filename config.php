@@ -21,7 +21,19 @@ if (!defined('APP_ENV')) define('APP_ENV', getenv('APP_ENV') ?: 'production');
 if (APP_ENV === 'production') {
     ini_set('display_errors', '0');
     ini_set('log_errors', '1');
-    ini_set('error_log', __DIR__ . '/storage/php_errors.log');
+    // Try a few paths — InfinityFree may restrict open_basedir
+    $logCandidates = [
+        __DIR__ . '/storage/php_errors.log',
+        sys_get_temp_dir() . '/utiligo_errors.log',
+        '/tmp/utiligo_errors.log',
+    ];
+    foreach ($logCandidates as $_lc) {
+        if (@file_put_contents($_lc, '', FILE_APPEND) !== false) {
+            ini_set('error_log', $_lc);
+            break;
+        }
+    }
+    unset($logCandidates, $_lc);
 } else {
     ini_set('display_errors', '1');
 }
@@ -81,9 +93,6 @@ if (!defined('STRIPE_SECRET_KEY'))      define('STRIPE_SECRET_KEY',      getenv(
 if (!defined('STRIPE_PUBLISHABLE_KEY')) define('STRIPE_PUBLISHABLE_KEY', getenv('STRIPE_PUBLISHABLE_KEY') ?: 'YOUR_STRIPE_PUBLISHABLE_KEY');
 if (!defined('STRIPE_WEBHOOK_SECRET'))  define('STRIPE_WEBHOOK_SECRET',  getenv('STRIPE_WEBHOOK_SECRET')  ?: 'YOUR_STRIPE_WEBHOOK_SECRET');
 
-// Stripe Price IDs — set these env vars on your server:
-//   STRIPE_PRO_PRICE_ID=price_xxxxxxxxxxxxxxxx
-//   STRIPE_ENT_PRICE_ID=price_xxxxxxxxxxxxxxxx
 if (!defined('STRIPE_PRO_PRICE_ID')) define('STRIPE_PRO_PRICE_ID', getenv('STRIPE_PRO_PRICE_ID') ?: 'YOUR_STRIPE_PRO_PRICE_ID');
 if (!defined('STRIPE_ENT_PRICE_ID')) define('STRIPE_ENT_PRICE_ID', getenv('STRIPE_ENT_PRICE_ID') ?: 'YOUR_STRIPE_ENT_PRICE_ID');
 
@@ -141,16 +150,32 @@ if (!defined('ENABLE_ECOMMERCE'))      define('ENABLE_ECOMMERCE',      false);
 if (!defined('ENABLE_BLOG'))           define('ENABLE_BLOG',           false);
 if (!defined('ENABLE_CUSTOM_DOMAINS')) define('ENABLE_CUSTOM_DOMAINS', false);
 
+// ============================================================
+//  SESSION BOOTSTRAP
+//  Use the classic 6-argument form of session_set_cookie_params()
+//  which works on PHP 5.2+ (the array form requires PHP 7.3+ and
+//  the 'samesite' key within it requires PHP 7.3.0 exactly —
+//  on older InfinityFree builds it throws a warning that, combined
+//  with error_reporting(E_ALL), is promoted to a fatal and leaves
+//  session_status() === PHP_SESSION_DISABLED for the whole request).
+// ============================================================
 if (session_status() === PHP_SESSION_NONE) {
-    session_set_cookie_params([
-        'lifetime' => 0,
-        'path'     => '/',
-        'domain'   => '',
-        'secure'   => true,
-        'httponly' => true,
-        'samesite' => 'Lax',
-    ]);
-    session_start();
+    try {
+        $__secure  = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+                     || (($_SERVER['SERVER_PORT'] ?? 80) == 443);
+        // 6-arg form: (lifetime, path, domain, secure, httponly)
+        // SameSite is set via header() below because the 6-arg form
+        // has no samesite parameter on PHP < 7.3.
+        session_set_cookie_params(0, '/; SameSite=Lax', '', $__secure, true);
+        unset($__secure);
+        session_start();
+    } catch (\Throwable $__se) {
+        // Session start failed — log and continue without sessions.
+        // Pages that require login will redirect to /login.php via
+        // require_login() -> is_logged_in() -> $_SESSION check.
+        error_log('[config] session_start failed: ' . $__se->getMessage());
+        unset($__se);
+    }
 }
 
 require_once __DIR__ . '/includes/run_migrations.php';
@@ -160,4 +185,6 @@ require_once __DIR__ . '/includes/bootstrap_migrations.php';
 if (!function_exists('check_remember_me_cookie')) {
     require_once __DIR__ . '/includes/auth.php';
 }
-check_remember_me_cookie();
+if (function_exists('check_remember_me_cookie') && session_status() === PHP_SESSION_ACTIVE) {
+    check_remember_me_cookie();
+}

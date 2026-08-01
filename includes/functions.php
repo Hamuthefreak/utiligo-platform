@@ -31,6 +31,11 @@ function format_currency(float $amount): string
 
 function csrf_token(): string
 {
+    // If sessions are disabled or not started, return a dummy token.
+    // Pages using CSRF will redirect to login anyway if session is gone.
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        return 'no-session';
+    }
     if (empty($_SESSION['csrf_token'])) {
         $_SESSION['csrf_token'] = bin2hex(random_bytes(32));
     }
@@ -39,12 +44,16 @@ function csrf_token(): string
 
 function csrf_verify(?string $token): bool
 {
-    return $token !== null && !empty($_SESSION['csrf_token']) && hash_equals($_SESSION['csrf_token'], $token);
+    if (session_status() !== PHP_SESSION_ACTIVE) return false;
+    return $token !== null
+        && !empty($_SESSION['csrf_token'])
+        && hash_equals($_SESSION['csrf_token'], $token);
 }
 
 function rate_limit_check(string $key, int $maxPerMinute): bool
 {
-    $now = time();
+    if (session_status() !== PHP_SESSION_ACTIVE) return true; // can't rate-limit without session
+    $now    = time();
     $bucket = $_SESSION['rate_limit'][$key] ?? ['count' => 0, 'window_start' => $now];
     if ($now - $bucket['window_start'] >= 60) {
         $bucket = ['count' => 0, 'window_start' => $now];
@@ -97,9 +106,9 @@ function generate_zip(string $sourceDir, string $zipPath): bool
     );
     foreach ($iterator as $file) {
         if (!$file->isDir()) {
-            $filePath = $file->getRealPath();
+            $filePath     = $file->getRealPath();
             $relativePath = substr($filePath, strlen($realSource) + 1);
-            $fileList[] = ['path' => $filePath, 'name' => $relativePath];
+            $fileList[]   = ['path' => $filePath, 'name' => $relativePath];
         }
     }
 
@@ -109,15 +118,13 @@ function generate_zip(string $sourceDir, string $zipPath): bool
     }
 
     if (class_exists('ZipArchive')) {
-        $zip = new ZipArchive();
+        $zip    = new ZipArchive();
         $opened = $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
         if ($opened === true) {
             foreach ($fileList as $f) {
                 $zip->addFile($f['path'], $f['name']);
             }
-            if ($zip->close()) {
-                return true;
-            }
+            if ($zip->close()) return true;
             error_log('generate_zip: ZipArchive close() failed, falling back to SimpleZipWriter.');
         } else {
             error_log('generate_zip: ZipArchive open() failed (code ' . $opened . '), falling back to SimpleZipWriter.');
@@ -126,7 +133,6 @@ function generate_zip(string $sourceDir, string $zipPath): bool
         error_log('generate_zip: ZipArchive extension not available, using SimpleZipWriter fallback.');
     }
 
-    // Fallback: pure-PHP ZIP writer, no ext-zip required (common on free hosts).
     require_once __DIR__ . '/simple_zip_writer.php';
     $writer = new SimpleZipWriter();
     foreach ($fileList as $f) {
@@ -141,16 +147,6 @@ function generate_zip(string $sourceDir, string $zipPath): bool
 
 function api_bootstrap(): void
 {
-    // API endpoints must always return valid JSON. If display_errors is on
-    // (APP_ENV=development), a stray PHP warning/fatal gets printed as HTML
-    // before/after our JSON, which breaks response.json() on the frontend
-    // and surfaces as a generic "Something went wrong" to the user. So for
-    // API responses specifically, we always suppress inline error display
-    // and log instead, and catch fatals to still emit clean JSON.
-    //
-    // All errors caught here are also routed through log_error() into the
-    // centralized dump file (storage/error_log.txt) so failures can be
-    // diagnosed after the fact instead of vanishing silently.
     ini_set('display_errors', '0');
     ini_set('log_errors', '1');
 
@@ -169,7 +165,7 @@ function api_bootstrap(): void
             }
             echo json_encode([
                 'success' => false,
-                'error' => 'Server error. This has been logged — please try again or contact support.',
+                'error'   => 'Server error. This has been logged — please try again or contact support.',
             ]);
         }
     });
@@ -182,7 +178,7 @@ function api_bootstrap(): void
         }
         echo json_encode([
             'success' => false,
-            'error' => 'Server error. This has been logged — please try again or contact support.',
+            'error'   => 'Server error. This has been logged — please try again or contact support.',
         ]);
         exit;
     });
@@ -190,13 +186,9 @@ function api_bootstrap(): void
 
 function recursive_delete_directory(string $dir): bool
 {
-    if (!is_dir($dir)) {
-        return true;
-    }
+    if (!is_dir($dir)) return true;
     $items = scandir($dir);
-    if ($items === false) {
-        return false;
-    }
+    if ($items === false) return false;
     $ok = true;
     foreach ($items as $item) {
         if ($item === '.' || $item === '..') continue;
@@ -214,9 +206,7 @@ function db_table_has_column(PDO $pdo, string $table, string $column): bool
 {
     static $cache = [];
     $cacheKey = $table . '.' . $column;
-    if (isset($cache[$cacheKey])) {
-        return $cache[$cacheKey];
-    }
+    if (isset($cache[$cacheKey])) return $cache[$cacheKey];
     try {
         $stmt = $pdo->prepare("SHOW COLUMNS FROM `{$table}` LIKE ?");
         $stmt->execute([$column]);
