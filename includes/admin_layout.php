@@ -1,19 +1,12 @@
 <?php
 /**
  * includes/admin_layout.php
- * Shared sidebar + shell for all admin pages.
- *
- * Requires before include:
- *   $pageTitle  (string)
- *   $admin      (array from require_admin())
- *   $adminPage  (string) e.g. 'dashboard' | 'users' | 'email' | 'config' | 'db'
  */
 if (!isset($pageTitle))  { $pageTitle  = 'Admin — Utiligo'; }
 if (!isset($adminPage))  { $adminPage  = ''; }
 
 $_name     = htmlspecialchars(trim($admin['full_name'] ?? $admin['email'] ?? 'Admin'));
 $_initials = strtoupper(substr($_name, 0, 1));
-
 $_logo_path = __DIR__ . '/../assets/images/logo.png';
 $_logo_url  = '/assets/images/logo.png';
 $_has_logo  = file_exists($_logo_path);
@@ -53,7 +46,6 @@ $_has_logo  = file_exists($_logo_path);
 <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 z-40 hidden lg:hidden" onclick="closeSidebar()"></div>
 
 <aside id="sidebar" class="w-64 h-screen bg-slate-900/95 border-r border-white/5 flex flex-col lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl">
-
   <div class="px-5 py-5 border-b border-white/5">
     <a href="/admin/index.php" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
@@ -81,8 +73,8 @@ $_has_logo  = file_exists($_logo_path);
     <a href="/admin/email.php" class="nav-link admin-item <?= $adminPage==='email' ? 'active' : '' ?>">
       <i class="fa-solid fa-envelope"></i> Email Blast
     </a>
-    <a href="/admin/config.php" class="nav-link admin-item <?= $adminPage==='config' ? 'active' : '' ?>">
-      <i class="fa-solid fa-sliders"></i> Config Editor
+    <a href="/admin/settings.php" class="nav-link admin-item <?= $adminPage==='settings' ? 'active' : '' ?>">
+      <i class="fa-solid fa-sliders"></i> Settings
     </a>
     <a href="/admin/db.php" class="nav-link admin-item <?= $adminPage==='db' ? 'active' : '' ?>">
       <i class="fa-solid fa-database"></i> Database
@@ -110,7 +102,6 @@ $_has_logo  = file_exists($_logo_path);
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
     </a>
   </div>
-
 </aside>
 
 <header class="lg:hidden sticky top-0 z-30 bg-slate-950/90 backdrop-blur border-b border-white/5 px-4 py-3 flex items-center justify-between">
