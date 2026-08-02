@@ -20,10 +20,8 @@ $_has_logo  = file_exists($_logo_path);
 
 $_plan_label = $_is_ent ? 'Entrepreneur' : ($_is_pro ? 'Pro' : 'Free');
 
-// Guard against fatal redeclaration if layout is ever included twice
 if (!function_exists('_nav_active')) {
     function _nav_active(string $href, string $current): string {
-        // Match both clean URL (/portal/billing) and .php variant (/portal/billing.php)
         $clean_href    = preg_replace('/\.php$/', '', $href);
         $clean_current = preg_replace('/\.php$/', '', $current);
         return (rtrim($clean_current, '/') === rtrim($clean_href, '/')) ? 'active' : '';
@@ -85,6 +83,9 @@ if (!function_exists('_nav_active')) {
     <a href="/portal/leads"    class="nav-link <?= _nav_active('/portal/leads',    $_path) ?>"><i class="fa-solid fa-magnifying-glass"></i> Find Leads</a>
     <a href="/portal/generate" class="nav-link <?= _nav_active('/portal/generate', $_path) ?>"><i class="fa-solid fa-bolt"></i> Generate Site</a>
     <a href="/portal/my_sites" class="nav-link <?= _nav_active('/portal/my_sites', $_path) ?>"><i class="fa-solid fa-folder-open"></i> My Sites</a>
+    <a href="/portal/crm"      class="nav-link <?= _nav_active('/portal/crm',      $_path) ?>">
+      <i class="fa-solid fa-address-book"></i> Client CRM
+    </a>
 
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mt-5 mb-2">Account</p>
     <a href="/portal/billing"  class="nav-link <?= _nav_active('/portal/billing',  $_path) ?>"><i class="fa-solid fa-credit-card"></i> Billing</a>
