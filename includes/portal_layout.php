@@ -239,7 +239,7 @@ if (!function_exists('_nav_active')) {
 function openSidebar()  { document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.remove('hidden'); }
 function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.add('hidden'); }
 
-// ── Utiligo Portal Transition System (original) ─────────────────────────
+// ── Utiligo Portal Transition System ────────────────────────────────────
 (function () {
   var loader = document.getElementById('utl-loader');
   var bar    = document.getElementById('utl-progress-bar');
@@ -268,14 +268,13 @@ function closeSidebar() { document.getElementById('sidebar').classList.remove('o
   var done = false;
   function finish() { if (done) return; done = true; hideLoader(); }
 
-  // Hide on load — with a 600ms hard cap so it never gets stuck
+  // Hide once page is ready — 600ms hard cap so it never gets stuck
   window.addEventListener('load', finish);
-  document.addEventListener('DOMContentLoaded', function () {
-    setTimeout(finish, 60);
-  });
+  document.addEventListener('DOMContentLoaded', function () { setTimeout(finish, 60); });
   setTimeout(finish, 600);
 
-  // Intercept nav link clicks
+  // Only trigger on real anchor-click navigations (never on form submits —
+  // every in-portal form uses fetch and never causes a page navigation).
   document.addEventListener('click', function (e) {
     var anchor = e.target.closest('a');
     if (!anchor) return;
@@ -297,13 +296,7 @@ function closeSidebar() { document.getElementById('sidebar').classList.remove('o
     setTimeout(function () { location.href = href; }, 200);
   });
 
-  // Form submits
-  document.addEventListener('submit', function (e) {
-    if (e.target.dataset.noLoader) return;
-    showLoader();
-  });
-
-  // bfcache
+  // bfcache restore
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) hideLoader();
   });
