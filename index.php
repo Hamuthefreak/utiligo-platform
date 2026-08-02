@@ -3,7 +3,6 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
-// Config-driven plan limits — all guarded with defined() so older deployed configs don't fatal
 $FREE_LEAD_LIMIT   = defined('FREE_LEAD_LIMIT')          ? FREE_LEAD_LIMIT          : 3;
 $FREE_SEARCH_LIMIT = defined('FREE_SEARCH_DAILY_LIMIT')  ? FREE_SEARCH_DAILY_LIMIT  : 2;
 $FREE_SITE_LIMIT   = defined('FREE_SITE_LIMIT')          ? FREE_SITE_LIMIT          : 1;
@@ -14,7 +13,6 @@ $PRO_PRICE         = defined('PRO_PLAN_PRICE')           ? PRO_PLAN_PRICE       
 $ENT_PRICE         = defined('ENTREPRENEUR_PLAN_PRICE')  ? ENTREPRENEUR_PLAN_PRICE  : 49.99;
 $TMPL_COUNT        = defined('TEMPLATE_COUNT')           ? TEMPLATE_COUNT           : 25;
 
-// Inline FAQ helpers — also guarded
 $faq_pro_leads  = defined('PRO_LEAD_LIMIT')           ? PRO_LEAD_LIMIT          : 120;
 $faq_pro_sites  = defined('PRO_SITE_LIMIT')           ? PRO_SITE_LIMIT          : 200;
 $faq_ent_sites  = defined('ENT_SITE_LIMIT')           ? ENT_SITE_LIMIT          : 500;
@@ -140,12 +138,12 @@ require_once __DIR__ . '/includes/header.php';
   </div>
   <div class="grid md:grid-cols-3 gap-6">
     <?php foreach ([
-      ['fa-magnifying-glass', 'AI Lead Finder',         'Search any city, any industry. Find businesses with no website in seconds.'],
-      ['fa-bolt',             '60-Second Site Builder',  'Enter business info, get a complete, deployable website instantly.'],
-      ['fa-paintbrush',       'Site Designer',           'Edit text, images, colours and sections live — right inside the dashboard.'],
-      ['fa-file-zipper',      'No Lock-In',              'Every site exports as a clean ZIP. Deploy it anywhere, forever.'],
-      ['fa-chart-line',       'Revenue Dashboard',       'Track leads, sites generated, and money earned in one place.'],
-      ['fa-shield-halved',    'Secure by Default',       'CSRF protection, rate limiting, and 2FA on every account.'],
+      ['fa-magnifying-glass', 'AI Lead Finder',        'Search any city, any industry. Find businesses with no website in seconds.'],
+      ['fa-bolt',             '60-Second Site Builder', 'Enter business info, get a complete, deployable website instantly.'],
+      ['fa-paintbrush',       'Site Designer',          'Edit text, images, colours and sections live — right inside the dashboard.'],
+      ['fa-file-zipper',      'No Lock-In',             'Every site exports as a clean ZIP. Deploy it anywhere, forever.'],
+      ['fa-chart-line',       'Revenue Dashboard',      'Track leads, sites generated, and money earned in one place.'],
+      ['fa-shield-halved',    'Secure by Default',      'CSRF protection, rate limiting, and 2FA on every account.'],
     ] as [$icon,$title,$desc]): ?>
     <div class="glass rounded-xl p-6">
       <i class="fa-solid <?= $icon ?> text-2xl text-white mb-4"></i>
@@ -156,7 +154,7 @@ require_once __DIR__ . '/includes/header.php';
   </div>
 </section>
 
-<!-- PRICING — 100% config-driven -->
+<!-- PRICING -->
 <section id="pricing" class="max-w-6xl mx-auto px-6 py-20">
   <div class="text-center mb-14">
     <h2 class="text-3xl md:text-4xl font-bold">Simple Pricing. Real Value.</h2>
@@ -210,7 +208,11 @@ require_once __DIR__ . '/includes/header.php';
         <li><i class="fa-solid fa-check text-white mr-2"></i>ZIP export</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Full revenue dashboard</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Priority support</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>Custom domains</li>
+        <li class="flex items-center gap-2">
+          <i class="fa-solid fa-clock text-slate-500 mr-2"></i>
+          <span class="line-through text-slate-500">Custom domains</span>
+          <span class="text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2 py-0.5 ml-1">Coming Soon</span>
+        </li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Client reports</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Team seats</li>
       </ul>
@@ -233,7 +235,7 @@ require_once __DIR__ . '/includes/header.php';
       ['What happens to the websites I generate?',
        'Every site exports as a clean, standalone ZIP file. You can host it anywhere — there\'s no lock-in to our platform.'],
       ["What's the difference between Pro and Entrepreneur?",
-       'Pro gives you '.$faq_pro_leads.' lead unlocks and '.$faq_pro_sites.' active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and '.$faq_ent_sites.' active websites, plus custom domains, client reports, and team seats for agencies running at scale.'],
+       'Pro gives you '.$faq_pro_leads.' lead unlocks and '.$faq_pro_sites.' active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and '.$faq_ent_sites.' active websites, plus client reports and team seats for agencies running at scale.'],
       ['Is the free plan actually usable, or just a teaser?',
        'The free plan lets you run searches, see '.$faq_free_leads.' leads per search, and generate '.$faq_free_sites.' site per day with 2 templates. ZIP export and all templates require a paid plan.'],
       ['How does billing work?',

@@ -3,7 +3,6 @@
     <div>
       <a href="/" class="text-lg font-bold flex items-center gap-2 mb-3"><i class="fa-solid fa-bolt text-emerald-400"></i>Utiligo</a>
       <p class="text-slate-400 text-sm leading-relaxed">Find clients without a website. Build them one in 60 seconds. Get paid.</p>
-      <!-- Replace each [INSERT LINK HERE] below with your actual social profile URL. -->
       <div class="flex gap-3 mt-5">
         <a href="[INSERT LINK HERE]" class="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition text-slate-400 hover:text-white" title="X / Twitter — add link"><i class="fa-brands fa-x-twitter"></i></a>
         <a href="[INSERT LINK HERE]" class="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition text-slate-400 hover:text-white" title="Instagram — add link"><i class="fa-brands fa-instagram"></i></a>
@@ -58,17 +57,22 @@
 <script src="/assets/js/main.js?v=v163"></script>
 
 <script>
-// ─── Utiligo Page Transition System ───────────────────────────────────────────
+// ─── Utiligo Page Transition System ───────────────────────────────────────────────────────
 (function () {
-  const loader   = document.getElementById('utl-loader');
-  const bar      = document.getElementById('utl-progress-bar');
+  const loader = document.getElementById('utl-loader');
+  const bar    = document.getElementById('utl-progress-bar');
   if (!loader || !bar) return;
 
-  // ── Helpers ──
+  // CRITICAL FIX: loader must NEVER block pointer-events except when
+  // actively navigating. Previously pointer-events:all while .visible
+  // was swallowing clicks on pricing buttons before hideLoader() ran.
+  loader.style.pointerEvents = 'none';
+
   function showLoader() {
     bar.style.width = '0%';
     loader.classList.add('visible');
-    // Animate bar: quick jump to 70%, then stall waiting for page load
+    // Only block input while actively loading a new page
+    loader.style.pointerEvents = 'all';
     requestAnimationFrame(() => {
       bar.style.transition = 'width 0.35s cubic-bezier(0.4,0,0.2,1)';
       bar.style.width = '72%';
@@ -78,15 +82,17 @@
   function hideLoader() {
     bar.style.transition = 'width 0.15s ease';
     bar.style.width = '100%';
+    // Release pointer-events immediately so buttons under the
+    // fading overlay are clickable right away
+    loader.style.pointerEvents = 'none';
     setTimeout(() => {
       loader.classList.remove('visible');
       document.body.classList.add('page-ready');
     }, 160);
   }
 
-  // ── On page arrival: brief loader then fade in ──
+  // On page arrival: brief loader then fade in
   showLoader();
-  // Use 'load' for full page, but cap at 600ms so it never feels slow
   let done = false;
   function finish() {
     if (done) return;
@@ -94,17 +100,14 @@
     hideLoader();
   }
   window.addEventListener('load', finish);
-  setTimeout(finish, 600); // safety cap
+  setTimeout(finish, 600);
 
-  // ── On link click: show loader before navigating ──
+  // On link click: show loader before navigating
   document.addEventListener('click', function (e) {
     const anchor = e.target.closest('a');
     if (!anchor) return;
-
     const href = anchor.getAttribute('href');
     if (!href) return;
-
-    // Skip: new tab, external, anchor-only, JS, mailto, tel, download
     if (
       anchor.target === '_blank' ||
       anchor.hasAttribute('download') ||
@@ -114,29 +117,23 @@
       href.startsWith('tel') ||
       (href.startsWith('http') && !href.includes(location.hostname))
     ) return;
-
     e.preventDefault();
     showLoader();
-    // Small delay so the loader renders before browser unloads
     setTimeout(() => { location.href = href; }, 220);
   });
 
-  // ── On form submit: show loader ──
+  // On form submit: show loader
   document.addEventListener('submit', function (e) {
-    // Don't trigger on resend/inline forms that POST to the same page (they handle their own state)
     const form = e.target;
     if (form.dataset.noLoader) return;
     showLoader();
   });
 
-  // ── Browser back/forward: show loader ──
+  // Browser back/forward
   window.addEventListener('pageshow', function (e) {
-    if (e.persisted) {
-      // Came from bfcache — immediately hide loader
-      hideLoader();
-    }
+    if (e.persisted) hideLoader();
   });
-})();
+}());
 </script>
 
 </body>
