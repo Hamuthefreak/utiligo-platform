@@ -1,14 +1,17 @@
 <?php
 /**
- * api/find-leads.php  v5.5
+ * api/find-leads.php  v5.6
  *
- * CHANGES FROM v5.4
+ * CHANGES FROM v5.5
  * =================
- * 1. Free-tier quota table moved to USER DB (get_user_db()) so it shares
- *    the same reliable connection used for auth — the platform DB on
- *    InfinityFree can silently fail, causing the quota to never persist.
- * 2. Quota errors are now surfaced (logged + returned as JSON error)
- *    instead of being silently swallowed, so quota is never bypassed.
+ * 1. Pagetoken sleep bumped 2s -> 3s. Google requires the pagetoken to
+ *    "activate" server-side before it can be used; 2s was right on the
+ *    edge and intermittently produced INVALID_REQUEST on pages 2-3, which
+ *    was surfaced to the user as "Search query was invalid".
+ * 2. Pages 2-3: on INVALID_REQUEST, retry once after an extra 3s before
+ *    giving up — catches any remaining timing race without impacting p.1.
+ * 3. Page 1 INVALID_REQUEST still hard-fails (it genuinely means a bad
+ *    query on the first request where no pagetoken is involved).
  */
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
@@ -200,14 +203,10 @@ if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
 }
 
 // ── 7. Free quota — stored in USER DB so it always persists ──────────────
-// NOTE: We intentionally use get_user_db() here, not get_platform_db().
-// The platform DB on shared hosting (InfinityFree) can silently drop writes;
-// the user DB is the same reliable connection used for authentication.
 $searches_used = 0; $searches_remaining = null;
 if (!$is_paid) {
     $daily_limit = (int)FREE_SEARCH_DAILY_LIMIT;
     $fingerprint = 'uid_' . $uid;
-    $quota_err   = null;
     try {
         $udb = get_user_db();
         $udb->exec('CREATE TABLE IF NOT EXISTS `lead_search_quota` (
@@ -241,10 +240,8 @@ if (!$is_paid) {
             $searches_used++; $searches_remaining = max(0, $daily_limit - $searches_used);
         }
     } catch (\Throwable $e) {
-        $quota_err = $e->getMessage();
         leads_log_error('quota_check', $e, ['uid'=>$uid]);
         log_error('find_leads_quota', $e, ['uid'=>$uid]);
-        // Do NOT silently continue — fail closed so quota cannot be bypassed.
         _leads_json_fail('Search quota unavailable. Please try again in a moment.');
     }
 }
@@ -275,6 +272,9 @@ if (!$force) {
 }
 
 // ── 9. Google Places — paginate up to 3 pages ────────────────────────────
+// IMPORTANT: Google's pagetoken requires ~2-3s to become active server-side.
+// Using sleep(3) + one retry on INVALID_REQUEST for pages 2-3 prevents the
+// token-not-ready race from surfacing as a user-visible error.
 $_t_google = microtime(true); $_google_ms = 0;
 if (!$from_cache) {
     $api_key = defined('GOOGLE_PLACES_API_KEY') ? GOOGLE_PLACES_API_KEY : '';
@@ -288,11 +288,15 @@ if (!$from_cache) {
 
     do {
         if ($next_token) {
-            sleep(2);
+            // Wait 3s for the pagetoken to become valid on Google's side.
+            // This was 2s in v5.5 — right on the edge, causing intermittent
+            // INVALID_REQUEST responses that were shown to users as errors.
+            sleep(3);
             $url='https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken='.urlencode($next_token).'&key='.urlencode($api_key);
         } else {
             $url='https://maps.googleapis.com/maps/api/place/textsearch/json?query='.urlencode($industry.' in '.$city).'&key='.urlencode($api_key);
         }
+
         $resp = @file_get_contents($url, false, $ctx);
         if ($resp===false) {
             leads_log_error('google_http_fail', ['page'=>$pages_fetched+1,'uid'=>$uid]);
@@ -300,10 +304,34 @@ if (!$from_cache) {
         }
         $places = json_decode($resp, true);
         $status = $places['status'] ?? 'UNKNOWN';
+
+        // On pages 2-3, INVALID_REQUEST almost always means the pagetoken
+        // isn't ready yet despite the sleep. Retry once after 3 more seconds.
+        if ($status === 'INVALID_REQUEST' && $pages_fetched > 0) {
+            leads_log_warn('google_pagetoken_retry', ['page'=>$pages_fetched+1,'uid'=>$uid]);
+            sleep(3);
+            $resp = @file_get_contents($url, false, $ctx);
+            if ($resp !== false) {
+                $places = json_decode($resp, true);
+                $status = $places['status'] ?? 'UNKNOWN';
+            }
+        }
+
         leads_log_debug('google_page', ['page'=>$pages_fetched+1,'status'=>$status,'results'=>count($places['results']??[])]);
-        if ($status==='REQUEST_DENIED')  { leads_log_error('google_denied',           ['uid'=>$uid]); _leads_json_fail('Google API key issue.'); }
-        if ($status==='OVER_QUERY_LIMIT'){ leads_log_error('google_over_quota',       ['uid'=>$uid]); _leads_json_fail('Google daily quota reached.'); }
-        if ($status==='INVALID_REQUEST') { leads_log_warn('google_invalid_request',   ['city'=>$city,'industry'=>$industry]); _leads_json_fail('Search query was invalid. Try different terms.'); }
+
+        if ($status==='REQUEST_DENIED')  { leads_log_error('google_denied',         ['uid'=>$uid]); _leads_json_fail('Google API key issue.'); }
+        if ($status==='OVER_QUERY_LIMIT'){ leads_log_error('google_over_quota',     ['uid'=>$uid]); _leads_json_fail('Google daily quota reached.'); }
+        if ($status==='INVALID_REQUEST') {
+            if ($pages_fetched === 0) {
+                // True bad query on the first request — surface it
+                leads_log_warn('google_invalid_request', ['city'=>$city,'industry'=>$industry]);
+                _leads_json_fail('Search query was invalid. Try different terms.');
+            } else {
+                // Still invalid after retry — skip remaining pages gracefully
+                leads_log_warn('google_pagetoken_invalid_after_retry', ['page'=>$pages_fetched+1,'uid'=>$uid]);
+                break;
+            }
+        }
         if (!in_array($status,['OK','ZERO_RESULTS'],true)) { leads_log_warn('google_unexpected_status',['status'=>$status]); _leads_json_fail('Search failed ('.$status.').'); }
 
         foreach ($places['results']??[] as $place) {
@@ -430,7 +458,7 @@ leads_log_info('search_complete',[
 
 // ── 13. Payload ───────────────────────────────────────────────────────────
 $_debug_block=[
-    'v'=>'5.5','plan'=>$plan,'is_paid'=>$is_paid,'from_cache'=>$from_cache,
+    'v'=>'5.6','plan'=>$plan,'is_paid'=>$is_paid,'from_cache'=>$from_cache,
     'total_raw'=>count($all_leads),'req_count'=>$req_count,'returned'=>count($leads_to_return),
     'unlock_tried'=>$_unlock_attempted,'unlock_errors'=>$_unlock_errors,'pro_lead_count'=>$pro_lead_count,
     'id_fail_count'=>$_id_resolve_fails,'total_ms'=>$_total_ms,'google_ms'=>$_google_ms,
