@@ -85,11 +85,11 @@ $_ent_price_fmt = number_format($_ent_price, 2);
 if (isset($_GET['cancelled'])) $message = 'Checkout cancelled — you were not charged.';
 
 if ($is_ent && $is_active) {
-    $_plan_icon_bg   = 'bg-amber-500/15 border border-amber-500/30';
-    $_plan_icon_col  = 'text-amber-400';
-    $_plan_icon_name = 'rocket';
-    $_plan_badge_cls = 'bg-amber-500/15 text-amber-400 border border-amber-500/25';
-    $_plan_badge_txt = '🚀 Entrepreneur';
+    $_plan_icon_bg   = 'bg-violet-500/15 border border-violet-500/30';
+    $_plan_icon_col  = 'text-violet-400';
+    $_plan_icon_name = 'bolt';
+    $_plan_badge_cls = 'bg-violet-500/15 text-violet-300 border border-violet-500/25';
+    $_plan_badge_txt = 'Entrepreneur';
 } elseif ($is_pro && $is_active) {
     $_plan_icon_bg   = 'bg-white/10 border border-white/10';
     $_plan_icon_col  = 'text-white';
@@ -100,7 +100,7 @@ if ($is_ent && $is_active) {
     $_plan_icon_bg   = 'bg-white/5';
     $_plan_icon_col  = 'text-slate-500';
     $_plan_icon_name = 'user';
-    $_plan_badge_cls = 'bg-amber-500/15 text-amber-400';
+    $_plan_badge_cls = 'bg-slate-500/15 text-slate-400';
     $_plan_badge_txt = 'Cancelled';
 } else {
     $_plan_icon_bg   = 'bg-white/5';
@@ -110,7 +110,6 @@ if ($is_ent && $is_active) {
     $_plan_badge_txt = 'Free';
 }
 
-// A Pro-active user visiting ?plan=entrepreneur should see the Ent checkout
 $_pro_upgrading_to_ent = ($is_pro && $is_active && $_target_plan === 'entrepreneur');
 
 $pageTitle = 'Billing — Utiligo';
@@ -118,45 +117,55 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
+/* ── Entrepreneur violet theme ────────────────────────────────────────────── */
 @keyframes ent-shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
 .ent-badge{
-  background:linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b);
+  background:linear-gradient(90deg,#a78bfa,#c4b5fd,#818cf8,#a78bfa);
   background-size:200% auto;
-  animation:ent-shimmer 2.5s linear infinite;
+  animation:ent-shimmer 3s linear infinite;
   -webkit-background-clip:text;
   -webkit-text-fill-color:transparent;
   background-clip:text;
-  color:#fbbf24;
-}
-button .ent-badge, a .ent-badge {
-  -webkit-text-fill-color:#fbbf24;
-  animation:none;
 }
 .ent-glow-btn{
-  background:linear-gradient(135deg,#f59e0b 0%,#f97316 60%,#ef4444 100%);
-  box-shadow:0 4px 24px rgba(245,158,11,.4);
+  background:linear-gradient(135deg,#7c3aed 0%,#6366f1 60%,#4f46e5 100%);
+  box-shadow:0 4px 24px rgba(124,58,237,.35);
   transition:all .2s;
   color:#fff;
 }
-.ent-glow-btn:hover{box-shadow:0 8px 40px rgba(245,158,11,.65);transform:translateY(-2px)}
+.ent-glow-btn:hover{box-shadow:0 8px 40px rgba(124,58,237,.55);transform:translateY(-2px)}
 .ent-glow-btn:active{transform:scale(.97)}
 .ent-glow-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
-.ent-card-wrap{background:linear-gradient(#0d0d14,#0d0d14) padding-box,linear-gradient(135deg,#f59e0b66,#f9731633,transparent) border-box;border:1.5px solid transparent}
-.pro-card-wrap{background:linear-gradient(#0d0d0d,#0d0d0d) padding-box,linear-gradient(135deg,#ffffff22,#ffffff08,transparent) border-box;border:1.5px solid transparent}
-.pill-feature{display:inline-flex;align-items:center;gap:.35rem;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.2);color:#fcd34d;border-radius:9999px;padding:.3rem .75rem;font-size:.7rem;font-weight:700}
+.ent-card-wrap{
+  background:linear-gradient(#0d0d14,#0d0d14) padding-box,
+             linear-gradient(135deg,rgba(124,58,237,.5),rgba(99,102,241,.2),transparent) border-box;
+  border:1.5px solid transparent;
+}
+.pro-card-wrap{
+  background:linear-gradient(#0d0d0d,#0d0d0d) padding-box,
+             linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.05),transparent) border-box;
+  border:1.5px solid transparent;
+}
+.pill-feature{
+  display:inline-flex;align-items:center;gap:.35rem;
+  background:rgba(124,58,237,.12);
+  border:1px solid rgba(124,58,237,.25);
+  color:#c4b5fd;
+  border-radius:9999px;padding:.3rem .75rem;font-size:.7rem;font-weight:700;
+}
 .card-input{width:100%;background:rgba(15,23,42,.7);border:1.5px solid rgba(255,255,255,.1);color:#fff;border-radius:.875rem;padding:.875rem 1rem;font-size:.95rem;outline:none;transition:border-color .2s,box-shadow .2s}
 .card-input::placeholder{color:rgba(148,163,184,.5)}
 .card-input:focus{border-color:rgba(255,255,255,.35);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
-.card-input-ent:focus{border-color:rgba(245,158,11,.5);box-shadow:0 0 0 3px rgba(245,158,11,.08)}
+.card-input-ent:focus{border-color:rgba(124,58,237,.5);box-shadow:0 0 0 3px rgba(124,58,237,.1)}
 .input-label{display:block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.45rem;color:rgba(148,163,184,.8)}
 .trust-row{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem;font-size:.7rem;color:rgba(100,116,139,.8)}
 .plan-tab{padding:.5rem 1.25rem;border-radius:9999px;font-size:.8rem;font-weight:700;transition:all .2s;cursor:pointer;text-decoration:none}
 .plan-tab-active{background:#fff;color:#000}
 .plan-tab-inactive{background:rgba(255,255,255,.07);color:rgba(148,163,184,.9)}
 .plan-tab-inactive:hover{background:rgba(255,255,255,.12)}
-.plan-tab-ent-active{background:linear-gradient(135deg,#f59e0b,#f97316);color:#fff;box-shadow:0 2px 12px rgba(245,158,11,.3)}
-.compare-check{color:#22c55e}.compare-cross{color:#334155}.compare-ent{color:#f59e0b}
-.ent-col{background:rgba(245,158,11,.10)}
+.plan-tab-ent-active{background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;box-shadow:0 2px 12px rgba(124,58,237,.3)}
+.compare-check{color:#22c55e}.compare-cross{color:#334155}.compare-ent{color:#a78bfa}
+.ent-col{background:rgba(124,58,237,.10)}
 </style>
 
 <div class="mb-8">
@@ -214,12 +223,12 @@ button .ent-badge, a .ent-badge {
   <?php endif; ?>
 </div>
 
-<!-- PRO -> ENT UPSELL BAR (only when NOT already on the upgrade checkout) -->
+<!-- PRO -> ENT UPSELL BAR -->
 <?php if ($is_pro && $is_active && !$_pro_upgrading_to_ent): ?>
-<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(135deg,#0f0f1a,#140f05)">
+<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(135deg,#0d0d18,#0f0d1a)">
   <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div>
-      <p class="text-xs font-bold uppercase tracking-widest text-amber-400 mb-1"><i class="fa-solid fa-rocket mr-1"></i>Upgrade to Entrepreneur</p>
+      <p class="text-xs font-bold uppercase tracking-widest text-violet-400 mb-1"><i class="fa-solid fa-bolt mr-1"></i>Upgrade to Entrepreneur</p>
       <p class="text-white font-semibold text-sm">Unlimited leads, custom domains, team seats &amp; client reports</p>
     </div>
     <a href="/portal/billing?plan=entrepreneur"
@@ -231,7 +240,6 @@ button .ent-badge, a .ent-badge {
 <?php endif; ?>
 
 <!-- UPGRADE SECTION -->
-<!-- Show to: free/cancelled users, OR a Pro-active user explicitly upgrading to Ent -->
 <?php if (!$is_paid || $is_cancelled || $_pro_upgrading_to_ent): ?>
 
 <?php if (!$_pro_upgrading_to_ent): ?>
@@ -242,7 +250,7 @@ button .ent-badge, a .ent-badge {
   </a>
   <a href="/portal/billing?plan=entrepreneur"
      class="plan-tab <?= $_target_plan==='entrepreneur' ? 'plan-tab-ent-active' : 'plan-tab-inactive' ?>">
-    <i class="fa-solid fa-rocket mr-1.5 text-xs"></i>Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
+    <i class="fa-solid fa-bolt mr-1.5 text-xs"></i>Entrepreneur &mdash; $<?= $_ent_price_fmt ?>/mo
   </a>
 </div>
 <?php endif; ?>
@@ -251,24 +259,24 @@ button .ent-badge, a .ent-badge {
 
 <!-- ENTREPRENEUR PAYMENT CARD -->
 <?php if ($_pro_upgrading_to_ent): ?>
-<div class="flex items-center gap-3 bg-amber-500/10 border border-amber-500/20 text-amber-300 rounded-2xl px-5 py-3 mb-5 text-sm">
-  <i class="fa-solid fa-rocket shrink-0"></i>
-  <span>You’re upgrading from <strong>Pro</strong> to <strong>Entrepreneur</strong>. Enter your card to activate instantly.</span>
+<div class="flex items-center gap-3 bg-violet-500/10 border border-violet-500/20 text-violet-300 rounded-2xl px-5 py-3 mb-5 text-sm">
+  <i class="fa-solid fa-bolt shrink-0"></i>
+  <span>You're upgrading from <strong>Pro</strong> to <strong>Entrepreneur</strong>. Enter your card to activate instantly.</span>
   <a href="/portal/billing" class="ml-auto text-xs text-slate-500 hover:text-slate-300 transition shrink-0">Cancel</a>
 </div>
 <?php endif; ?>
 
-<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#08080f 0%,#0f0a02 60%,#160b00 100%)">
+<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#09090f 0%,#0e0d18 60%,#0d0c1a 100%)">
 
   <div class="relative px-7 pt-8 pb-7 border-b border-white/5 overflow-hidden">
     <div class="absolute inset-0 pointer-events-none"
-         style="background:radial-gradient(ellipse 70% 90% at 85% 10%,rgba(245,158,11,.13) 0%,transparent 65%)"></div>
+         style="background:radial-gradient(ellipse 70% 90% at 85% 10%,rgba(124,58,237,.12) 0%,transparent 65%)"></div>
     <div class="relative flex flex-wrap gap-6 items-start justify-between">
       <div>
         <div class="flex flex-wrap items-center gap-2 mb-4">
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-amber-500/20 border border-amber-500/35">
-            <i class="fa-solid fa-rocket text-amber-400 text-[10px]"></i>
-            <span style="color:#fbbf24;font-weight:900;letter-spacing:.05em">BEST VALUE</span>
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-violet-500/15 border border-violet-500/25">
+            <i class="fa-solid fa-bolt text-violet-400 text-[10px]"></i>
+            <span style="color:#c4b5fd;font-weight:900;letter-spacing:.05em">BEST VALUE</span>
           </span>
           <span class="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 font-bold">Most Popular</span>
         </div>
@@ -281,14 +289,14 @@ button .ent-badge, a .ent-badge {
       <div class="text-xs text-slate-500 space-y-1.5">
         <p><i class="fa-solid fa-rotate text-slate-600 mr-1.5"></i>Billed monthly</p>
         <p><i class="fa-solid fa-ban text-slate-600 mr-1.5"></i>Cancel any time</p>
-        <p><i class="fa-solid fa-shield-halved text-amber-500/50 mr-1.5"></i>No lock-in</p>
+        <p><i class="fa-solid fa-shield-halved text-violet-500/50 mr-1.5"></i>No lock-in</p>
       </div>
     </div>
     <div class="mt-5 flex flex-wrap gap-1.5">
       <span class="pill-feature"><i class="fa-solid fa-infinity"></i>Unlimited leads</span>
       <span class="pill-feature"><i class="fa-solid fa-globe"></i>Custom domains</span>
       <span class="pill-feature"><i class="fa-solid fa-users"></i><?= $_ent_seats ?> team seats</span>
-      <span class="pill-feature"><i class="fa-solid fa-file-chart-column"></i>Client reports</span>
+      <span class="pill-feature"><i class="fa-solid fa-chart-line"></i>Client reports</span>
       <span class="pill-feature"><i class="fa-solid fa-server"></i><?= $_ent_sites ?> sites</span>
       <span class="pill-feature"><i class="fa-solid fa-headset"></i>Priority support</span>
     </div>
@@ -300,7 +308,7 @@ button .ent-badge, a .ent-badge {
       <thead><tr>
         <th class="text-left text-slate-500 font-semibold pb-2.5 pr-4">Feature</th>
         <th class="text-center text-slate-500 font-semibold pb-2.5 px-3">Pro</th>
-        <th class="text-center pb-2.5 px-3 ent-col rounded-t-lg"><span class="font-black text-amber-400">Entrepreneur</span></th>
+        <th class="text-center pb-2.5 px-3 ent-col rounded-t-lg"><span class="font-black text-violet-300">Entrepreneur</span></th>
       </tr></thead>
       <tbody>
       <?php $rows=[
@@ -309,7 +317,7 @@ button .ent-badge, a .ent-badge {
           '<i class="fa-solid fa-infinity compare-ent"></i>'],
         ['Active sites',
           '<span class="text-slate-500">'.$_pro_sites.'</span>',
-          '<span class="text-amber-400 font-bold">'.$_ent_sites.'</span>'],
+          '<span class="text-violet-300 font-bold">'.$_ent_sites.'</span>'],
         ['Custom domains',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
           '<i class="fa-solid fa-check compare-ent"></i>'],
@@ -318,13 +326,13 @@ button .ent-badge, a .ent-badge {
           '<i class="fa-solid fa-check compare-ent"></i>'],
         ['Team seats',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
-          '<span class="text-amber-400 font-bold">'.$_ent_seats.' seats</span>'],
+          '<span class="text-violet-300 font-bold">'.$_ent_seats.' seats</span>'],
         ['Revenue dash',
           '<i class="fa-solid fa-check compare-check"></i>',
           '<i class="fa-solid fa-check compare-ent"></i>'],
         ['Price/mo',
           '<span class="text-slate-400">$'.$_pro_price_fmt.'</span>',
-          '<span class="font-black text-amber-400">$'.$_ent_price_fmt.'</span>'],
+          '<span class="font-black text-violet-300">$'.$_ent_price_fmt.'</span>'],
       ];
       foreach ($rows as $i => [$f, $p, $e]): ?>
       <tr class="<?= $i % 2 ? 'bg-white/[.02]' : '' ?>">
@@ -338,16 +346,16 @@ button .ent-badge, a .ent-badge {
   </div>
 
   <div class="px-7 py-3 border-b border-white/5 trust-row">
-    <span><i class="fa-solid fa-star text-amber-500/60 mr-1"></i>200+ agencies</span>
-    <span><i class="fa-solid fa-bolt text-amber-500/60 mr-1"></i>Instant activation</span>
-    <span><i class="fa-solid fa-shield-halved text-amber-500/60 mr-1"></i>Cancel any time</span>
-    <span><i class="fa-solid fa-headset text-amber-500/60 mr-1"></i>Priority support</span>
+    <span><i class="fa-solid fa-star text-violet-500/60 mr-1"></i>200+ agencies</span>
+    <span><i class="fa-solid fa-bolt text-violet-500/60 mr-1"></i>Instant activation</span>
+    <span><i class="fa-solid fa-shield-halved text-violet-500/60 mr-1"></i>Cancel any time</span>
+    <span><i class="fa-solid fa-headset text-violet-500/60 mr-1"></i>Priority support</span>
   </div>
 
   <div class="px-7 py-7">
-    <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
-      <i class="fa-solid fa-flask text-amber-500/70"></i>
-      <span><strong class="text-amber-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
+    <div class="flex items-center gap-2 bg-violet-500/8 border border-violet-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-violet-400/80">
+      <i class="fa-solid fa-flask text-violet-500/70"></i>
+      <span><strong class="text-violet-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
     </div>
     <form method="POST" action="/portal/billing?plan=entrepreneur" class="space-y-4" id="entForm"
           onsubmit="this.querySelector('#entSubmitBtn').disabled=true;this.querySelector('#entSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
@@ -384,7 +392,7 @@ button .ent-badge, a .ent-badge {
       </div>
       <button type="submit" id="entSubmitBtn"
         class="w-full ent-glow-btn text-white py-4 rounded-xl font-black text-base mt-1">
-        <i class="fa-solid fa-rocket mr-2"></i><?= $_pro_upgrading_to_ent ? 'Upgrade to Entrepreneur' : 'Unlock Entrepreneur' ?> &mdash; $<?= $_ent_price_fmt ?>/mo
+        <i class="fa-solid fa-bolt mr-2"></i><?= $_pro_upgrading_to_ent ? 'Upgrade to Entrepreneur' : 'Unlock Entrepreneur' ?> &mdash; $<?= $_ent_price_fmt ?>/mo
       </button>
       <div class="trust-row justify-center pt-1">
         <i class="fa-solid fa-lock"></i><span>Secured by</span>
@@ -480,7 +488,7 @@ button .ent-badge, a .ent-badge {
 
 <div class="text-center text-xs text-slate-500 mb-6">
   Want unlimited leads, custom domains &amp; team seats?
-  <a href="/portal/billing?plan=entrepreneur" class="text-amber-400 hover:text-amber-300 font-semibold ml-1 transition">
+  <a href="/portal/billing?plan=entrepreneur" class="text-violet-400 hover:text-violet-300 font-semibold ml-1 transition">
     See Entrepreneur plan <i class="fa-solid fa-arrow-right text-[10px]"></i>
   </a>
 </div>
