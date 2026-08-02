@@ -11,7 +11,18 @@ $udb   = get_user_db();
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!admin_csrf_verify('users', $_POST['csrf_token'] ?? null)) {
         _admin_log('WARN', 'CSRF failure on users action');
-        die('Invalid CSRF token.');
+        // DEBUG: show exactly what went wrong so we can diagnose
+        $submitted = htmlspecialchars($_POST['csrf_token'] ?? '(none)');
+        $stored    = htmlspecialchars(json_encode($_SESSION['admin_csrf']['users'] ?? null));
+        $sid       = htmlspecialchars(session_id());
+        die('<pre style="background:#0f172a;color:#f87171;padding:2rem;font-family:monospace;font-size:13px;">'.
+            "CSRF FAILURE DEBUG\n".
+            "Session ID : {$sid}\n".
+            "Submitted  : {$submitted}\n".
+            "Stored     : {$stored}\n".
+            "\nIf Stored is null, the session is not persisting between GET and POST.\n".
+            "If Stored is set but tokens don\'t match, a stale token was submitted.\n".
+            '</pre>');
     }
     $action   = $_POST['action'] ?? '';
     $targetId = (int)($_POST['user_id'] ?? 0);
@@ -26,15 +37,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'set_plan' && $targetId > 0) {
         $plan   = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
-        // Also sync subscription_status so billing.php $is_active works correctly
         $status = in_array($plan, ['pro','entrepreneur']) ? 'active' : 'none';
         $udb->prepare('UPDATE utiligo_users SET plan=?, subscription_status=? WHERE id=?')
             ->execute([$plan, $status, $targetId]);
         _admin_log('INFO', "Set plan={$plan} status={$status} for user_id={$targetId}");
-        // Bust static cache if admin changed their own plan
         if ($targetId === (int)$admin['id']) {
-            $_SESSION['user_id']                        = $targetId;
-            $GLOBALS['admin_user']['plan']              = $plan;
+            $_SESSION['user_id']                          = $targetId;
+            $GLOBALS['admin_user']['plan']                = $plan;
             $GLOBALS['admin_user']['subscription_status'] = $status;
         }
         header('Location: ' . $base . '&flash=' . urlencode('Plan updated to ' . $plan . '.'));
@@ -64,7 +73,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ' . $base . '&flash=' . urlencode('Admin rights removed.'));
         exit;
     }
-    // Unknown action — just redirect back
     header('Location: ' . $base);
     exit;
 }
@@ -73,7 +81,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $success = isset($_GET['flash'])       ? htmlspecialchars($_GET['flash'])       : '';
 $error   = isset($_GET['flash_error']) ? htmlspecialchars($_GET['flash_error']) : '';
 
-// ── Fetch (always after POST block so table reflects current DB state) ────────
+// ── Fetch ──────────────────────────────────────────────────────────────────────────────
 $search  = trim($_GET['q'] ?? '');
 $page    = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 25;
@@ -82,7 +90,6 @@ $users   = $data['users'];
 $total   = $data['total'];
 $pages   = max(1, (int)ceil($total / $perPage));
 
-// Generate CSRF token AFTER fetch, just before rendering forms
 $csrf = admin_csrf_token('users');
 
 $pageTitle = 'Users — Admin — Utiligo';
@@ -160,7 +167,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
           <div class="flex flex-wrap gap-1.5 items-center">
 
             <?php if ($uplan === 'free'): ?>
-              <!-- Free → Pro -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -171,7 +177,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-up text-[10px] mr-1"></i>Pro
                 </button>
               </form>
-              <!-- Free → ENT -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -184,7 +189,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($uplan === 'pro'): ?>
-              <!-- Pro → Free -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -195,7 +199,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-down text-[10px] mr-1"></i>Free
                 </button>
               </form>
-              <!-- Pro → ENT -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -208,7 +211,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($uplan === 'entrepreneur'): ?>
-              <!-- ENT → Pro -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -219,7 +221,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-down text-[10px] mr-1"></i>Pro
                 </button>
               </form>
-              <!-- ENT → Free -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -267,7 +268,6 @@ require_once __DIR__ . '/../includes/admin_layout.php';
   </div>
 </div>
 
-<!-- Pagination -->
 <?php if ($pages > 1): ?>
 <div class="flex gap-2">
   <?php for ($i = 1; $i <= $pages; $i++): ?>
