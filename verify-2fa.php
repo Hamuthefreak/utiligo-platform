@@ -15,8 +15,10 @@ if (!$pendingUserId) {
     exit;
 }
 
-$method     = $_SESSION['pending_2fa_method'] ?? 'email';
-$rememberMe = !empty($_SESSION['pending_2fa_remember']);
+$method = $_SESSION['pending_2fa_method'] ?? 'email';
+// pending_2fa_remember is set from login.php "Remember me" checkbox;
+// the user can also tick the trust-device checkbox on this page
+$rememberMeFromLogin = !empty($_SESSION['pending_2fa_remember']);
 
 $totpSecret = null;
 if ($method === 'totp') {
@@ -47,16 +49,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['resend'])) {
         }
 
         if ($verified) {
+            // Trust device: either ticked on login page OR on this page
+            $trustDevice = $rememberMeFromLogin || !empty($_POST['trust_device']);
+
             unset(
                 $_SESSION['pending_2fa_user_id'],
                 $_SESSION['pending_2fa_method'],
                 $_SESSION['pending_2fa_remember']
             );
             login_user($pendingUserId);
-            // Set persistent cookie if the user ticked "Remember me"
-            if ($rememberMe) {
+
+            if ($trustDevice) {
                 set_remember_me_cookie($pendingUserId);
             }
+
             header('Location: /portal/index.php');
             exit;
         }
@@ -136,6 +142,7 @@ require_once __DIR__ . '/includes/header.php';
 
       <form method="POST" class="space-y-4" autocomplete="off">
         <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+
         <div>
           <label for="code" class="block text-xs text-slate-400 font-medium mb-2 text-center uppercase tracking-wider">Verification Code</label>
           <input
@@ -153,15 +160,25 @@ require_once __DIR__ . '/includes/header.php';
           >
         </div>
 
-        <?php if ($rememberMe): ?>
-        <!-- Preserve remember-me choice through the 2FA form submission -->
-        <p class="text-xs text-emerald-400/70 text-center flex items-center justify-center gap-1.5">
-          <svg xmlns="http://www.w3.org/2000/svg" class="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
-            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
-          </svg>
-          This device will be remembered for 30 days after verification.
-        </p>
-        <?php endif; ?>
+        <!-- Trust this device checkbox -->
+        <label class="flex items-center gap-3 cursor-pointer select-none group py-1">
+          <div class="relative shrink-0">
+            <input type="checkbox" name="trust_device" value="1" id="trustDevice"
+                   class="sr-only peer"
+                   <?= $rememberMeFromLogin ? 'checked' : '' ?>>
+            <div class="w-4 h-4 rounded border border-slate-500 bg-slate-800
+                        peer-checked:bg-emerald-500 peer-checked:border-emerald-500
+                        transition-colors"></div>
+            <svg class="absolute inset-0 w-4 h-4 text-white opacity-0 peer-checked:opacity-100 pointer-events-none transition-opacity"
+                 viewBox="0 0 16 16" fill="none">
+              <path d="M3 8l3.5 3.5L13 5" stroke="currentColor" stroke-width="2"
+                    stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <span class="text-sm text-slate-400 group-hover:text-slate-300 transition-colors leading-tight">
+            Trust this device for 30 days
+          </span>
+        </label>
 
         <button
           type="submit"
