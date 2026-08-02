@@ -63,15 +63,11 @@
   const bar    = document.getElementById('utl-progress-bar');
   if (!loader || !bar) return;
 
-  // CRITICAL FIX: loader must NEVER block pointer-events except when
-  // actively navigating. Previously pointer-events:all while .visible
-  // was swallowing clicks on pricing buttons before hideLoader() ran.
   loader.style.pointerEvents = 'none';
 
   function showLoader() {
     bar.style.width = '0%';
     loader.classList.add('visible');
-    // Only block input while actively loading a new page
     loader.style.pointerEvents = 'all';
     requestAnimationFrame(() => {
       bar.style.transition = 'width 0.35s cubic-bezier(0.4,0,0.2,1)';
@@ -82,8 +78,6 @@
   function hideLoader() {
     bar.style.transition = 'width 0.15s ease';
     bar.style.width = '100%';
-    // Release pointer-events immediately so buttons under the
-    // fading overlay are clickable right away
     loader.style.pointerEvents = 'none';
     setTimeout(() => {
       loader.classList.remove('visible');
@@ -94,11 +88,7 @@
   // On page arrival: brief loader then fade in
   showLoader();
   let done = false;
-  function finish() {
-    if (done) return;
-    done = true;
-    hideLoader();
-  }
+  function finish() { if (done) return; done = true; hideLoader(); }
   window.addEventListener('load', finish);
   setTimeout(finish, 600);
 
@@ -108,15 +98,31 @@
     if (!anchor) return;
     const href = anchor.getAttribute('href');
     if (!href) return;
+
+    // Skip: new tab, download, pure JS, mailto, tel, external
     if (
       anchor.target === '_blank' ||
       anchor.hasAttribute('download') ||
-      href.startsWith('#') ||
       href.startsWith('javascript') ||
       href.startsWith('mailto') ||
       href.startsWith('tel') ||
       (href.startsWith('http') && !href.includes(location.hostname))
     ) return;
+
+    // Skip: plain same-page anchor (#section)
+    if (href.startsWith('#')) return;
+
+    // Skip: hash-anchor links that point to the current page
+    // e.g. /#features, /#pricing, /index.php#faq
+    // These should scroll, not trigger a full page load + loader.
+    if (href.includes('#')) {
+      const linkPath  = href.split('#')[0] || '/';
+      const thisPath  = location.pathname;
+      // Treat '/' and '/index.php' as the same page
+      const normalize = p => p.replace(/\/index\.php$/, '/').replace(/\/$/, '') || '/';
+      if (normalize(linkPath) === normalize(thisPath)) return;
+    }
+
     e.preventDefault();
     showLoader();
     setTimeout(() => { location.href = href; }, 220);
@@ -124,8 +130,7 @@
 
   // On form submit: show loader
   document.addEventListener('submit', function (e) {
-    const form = e.target;
-    if (form.dataset.noLoader) return;
+    if (e.target.dataset.noLoader) return;
     showLoader();
   });
 
