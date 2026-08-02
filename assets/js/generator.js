@@ -6,10 +6,15 @@ document.addEventListener('DOMContentLoaded', function () {
   const downloadWrap = document.getElementById('genDownloadWrap');
   const downloadLink = document.getElementById('genDownloadLink');
   const previewLink = document.getElementById('genPreviewLink');
-  const csrfToken = document.body.dataset.csrf;
+  const errBoundary = document.getElementById('genErrorBoundary');
+  const errMsg = document.getElementById('genErrorMsg');
   const templateInput = document.getElementById('selectedTemplateInput');
   const templateLabel = document.getElementById('selectedTemplateLabel');
   const templateCards = document.querySelectorAll('.template-card');
+
+  // Read CSRF from the <meta name="csrf-token"> tag set by portal_layout / header
+  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
+  const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
 
   function selectTemplate(card) {
     templateCards.forEach((c) => c.classList.remove('border-emerald-400', 'ring-2', 'ring-emerald-400/40'));
@@ -34,9 +39,25 @@ document.addEventListener('DOMContentLoaded', function () {
     { pct: 100, label: 'Done!' },
   ];
 
+  function showError(msg) {
+    if (progressWrap) progressWrap.classList.add('hidden');
+    if (downloadWrap)  downloadWrap.classList.add('hidden');
+    if (errMsg)        errMsg.textContent = msg || 'Something went wrong. Please try again.';
+    if (errBoundary)   errBoundary.classList.remove('hidden');
+  }
+
+  const retryBtn = document.getElementById('genRetryBtn');
+  if (retryBtn) {
+    retryBtn.addEventListener('click', () => {
+      if (errBoundary) errBoundary.classList.add('hidden');
+      if (form)        form.classList.remove('hidden');
+    });
+  }
+
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     form.classList.add('hidden');
+    if (errBoundary) errBoundary.classList.add('hidden');
     progressWrap.classList.remove('hidden');
 
     let stepIndex = 0;
@@ -58,12 +79,15 @@ document.addEventListener('DOMContentLoaded', function () {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (!r.ok) throw new Error('Server returned ' + r.status);
+        return r.json();
+      })
       .then((data) => {
         clearInterval(interval);
-        progressFill.style.width = '100%';
-        progressLabel.textContent = data.success ? 'Done!' : 'Error';
         if (data.success) {
+          progressFill.style.width = '100%';
+          progressLabel.textContent = 'Done!';
           setTimeout(() => {
             progressWrap.classList.add('hidden');
             downloadWrap.classList.remove('hidden');
@@ -71,11 +95,9 @@ document.addEventListener('DOMContentLoaded', function () {
             if (downloadLink) downloadLink.href = data.zip_url;
             if (previewLink && data.preview_url) previewLink.href = data.preview_url;
 
-            // Edit link
             const editLink = document.getElementById('genEditLink');
             if (editLink && data.site_id) editLink.href = '/portal/site_editor.php?site_id=' + data.site_id;
 
-            // My Sites CTA button
             const mySitesBtn = document.getElementById('genMySitesBtn');
             if (mySitesBtn) mySitesBtn.href = '/portal/my_sites.php';
 
@@ -88,13 +110,11 @@ document.addEventListener('DOMContentLoaded', function () {
               shareInput.value = fullUrl;
               shareWrap.classList.remove('hidden');
 
-              // QR code (api.qrserver.com — free, no API key needed)
               const qrWrap = document.getElementById('genQrWrap');
               const qrImg  = document.getElementById('genQrImg');
               if (qrWrap && qrImg) {
-                const qrSrc = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&format=png&ecc=M&data='
+                qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=160x160&format=png&ecc=M&data='
                   + encodeURIComponent(fullUrl);
-                qrImg.src = qrSrc;
                 qrImg.alt = 'QR code for ' + fullUrl;
                 qrWrap.classList.remove('hidden');
               }
@@ -102,21 +122,21 @@ document.addEventListener('DOMContentLoaded', function () {
               if (shareCopyBtn) {
                 shareCopyBtn.addEventListener('click', function () {
                   navigator.clipboard.writeText(fullUrl).then(() => {
-                    const original = shareCopyBtn.textContent;
+                    const orig = shareCopyBtn.textContent;
                     shareCopyBtn.textContent = 'Copied!';
-                    setTimeout(() => { shareCopyBtn.textContent = original; }, 1500);
+                    setTimeout(() => { shareCopyBtn.textContent = orig; }, 1500);
                   });
                 });
               }
             }
           }, 400);
         } else {
-          progressLabel.textContent = data.error || 'Generation failed.';
+          showError(data.error || 'Generation failed. Please try again.');
         }
       })
-      .catch(() => {
+      .catch((err) => {
         clearInterval(interval);
-        progressLabel.textContent = 'Something went wrong. Please try again.';
+        showError('Connection error — please check your internet and try again.');
       });
   });
 });
