@@ -48,6 +48,8 @@ $all_templates       = get_all_site_templates();
 $template_keys       = array_keys($all_templates);
 $free_keys           = array_slice($template_keys, 0, $free_template_limit);
 
+// Pre-fill from regenerate link (?name=&category=&city=&phone=&email=)
+// or from a lead (?lead_id=)
 $prefill = ['business_name'=>'','business_category'=>'','business_city'=>'','business_phone'=>'','business_email'=>''];
 
 if (!empty($_GET['name']) || !empty($_GET['city'])) {
@@ -55,6 +57,7 @@ if (!empty($_GET['name']) || !empty($_GET['city'])) {
     $prefill['business_category'] = trim($_GET['category'] ?? '');
     $prefill['business_city']     = trim($_GET['city']     ?? '');
     $prefill['business_phone']    = trim($_GET['phone']    ?? '');
+    $prefill['business_email']    = trim($_GET['email']    ?? '');  // ← was missing
 } elseif (!empty($_GET['lead_id'])) {
     try {
         $stmt = $pdo->prepare('SELECT * FROM utiligo_leads WHERE id = ? LIMIT 1');
@@ -65,6 +68,7 @@ if (!empty($_GET['name']) || !empty($_GET['city'])) {
             $prefill['business_category'] = $lead['business_category'] ?? '';
             $prefill['business_city']     = $lead['business_city']     ?? '';
             $prefill['business_phone']    = $lead['business_phone']    ?? '';
+            $prefill['business_email']    = $lead['business_email']    ?? '';
         }
     } catch (\Throwable $e) {}
 }
@@ -366,7 +370,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <div class="md:col-span-2">
         <label class="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Contact Email</label>
-        <input type="email" name="business_email" value="<?= htmlspecialchars($prefill['business_email'] ?? '') ?>"
+        <input type="email" name="business_email" value="<?= htmlspecialchars($prefill['business_email']) ?>"
                class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-2.5 focus:outline-none focus:border-white/40 transition">
       </div>
     </div>
@@ -398,7 +402,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         $locked      = !$is_paid && !$is_free_tpl;
       ?>
       <div role="button" tabindex="0"
-           class="template-card relative text-left rounded-xl overflow-hidden border-2 <?= $locked ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-transparent hover:border-white/40 cursor-pointer' ?> transition glass group"
+           class="template-card relative text-left rounded-xl overflow-hidden border-2 <?= $locked ? 'border-white/5 opacity-60 cursor-not-allowed' : 'border-transparent hover:border-white/40 cursor-pointer' ?> transition group"
            data-template="<?= $key ?>"
            data-label="<?= htmlspecialchars($tpl['label']) ?>"
            data-primary="<?= htmlspecialchars($tpl['primary']) ?>"
@@ -426,13 +430,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </button>
         <?php endif; ?>
 
-        <div class="h-20 flex flex-col justify-center px-4 pointer-events-none"
+        <!-- Gradient thumbnail — no glass/backdrop so true colours show -->
+        <div class="template-thumb h-20 flex flex-col justify-center px-4"
              style="background:linear-gradient(135deg,<?= $tpl['secondary'] ?> 0%,<?= $tpl['primary'] ?> 100%);">
           <div class="w-10 h-2 rounded-full mb-2" style="background:<?= $tpl['primary'] ?>;opacity:0.6;"></div>
-          <div class="w-full h-1.5 rounded-full mb-1" style="background:rgba(255,255,255,0.15);"></div>
-          <div class="w-2/3 h-1.5 rounded-full" style="background:rgba(255,255,255,0.1);"></div>
+          <div class="w-full h-1.5 rounded-full mb-1" style="background:rgba(255,255,255,0.25);"></div>
+          <div class="w-2/3 h-1.5 rounded-full" style="background:rgba(255,255,255,0.18);"></div>
         </div>
-        <div class="p-3 pointer-events-none">
+        <div class="p-3" style="background:#0f172a;">
           <p class="font-semibold text-xs flex items-center gap-1.5">
             <?= htmlspecialchars($tpl['label']) ?>
             <?php if (!$locked && $is_free_tpl): ?>
@@ -500,11 +505,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </form>
 <?php endif; /* gen_locked */ ?>
 
-<!-- ========================================================
-     FULL LIVE PREVIEW MODAL
-     Renders an iframe srcdoc with real template styles + all
-     5 page sections. Page tabs scroll to anchors inside.
-======================================================== -->
+<!-- FULL LIVE PREVIEW MODAL -->
 <div id="fullPreviewModal" role="dialog" aria-modal="true" aria-label="Template preview">
   <div id="fullPreviewInner">
     <div id="previewTopBar">
@@ -585,7 +586,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <script>
-// Template data from PHP
 const TEMPLATES = <?= $tpl_json ?>;
 
 document.addEventListener('DOMContentLoaded', function () {
@@ -594,7 +594,6 @@ document.addEventListener('DOMContentLoaded', function () {
   if (skeleton) skeleton.remove();
   if (form)     form.classList.remove('hidden');
 
-  // Error boundary
   const errBoundary  = document.getElementById('genErrorBoundary');
   const errMsg       = document.getElementById('genErrorMsg');
   const retryBtn     = document.getElementById('genRetryBtn');
@@ -617,7 +616,6 @@ document.addEventListener('DOMContentLoaded', function () {
     if (form)        form.classList.remove('hidden');
   });
 
-  // Template card selection
   const cards    = document.querySelectorAll('.template-card');
   const tplInput = document.getElementById('selectedTemplateInput');
   const tplLabel = document.getElementById('selectedTemplateLabel');
@@ -642,21 +640,18 @@ document.addEventListener('DOMContentLoaded', function () {
   const first = document.querySelector('.template-card:not([data-locked])');
   if (first) selectCard(first);
 
-  // ================================================================
   // FULL LIVE PREVIEW MODAL
-  // ================================================================
   const fullModal      = document.getElementById('fullPreviewModal');
   const previewFrame   = document.getElementById('previewFrame');
   const previewLabel   = document.getElementById('previewModalLabel');
   const previewSelBtn  = document.getElementById('previewSelectBtn');
   const previewClsBtn  = document.getElementById('previewCloseBtn');
   const pageTabs       = document.querySelectorAll('.preview-tab');
-  let   activePreviewKey = null;
+  let   currentPreviewKey = null;
 
   function buildPreviewHTML(key) {
     const t = TEMPLATES[key];
     if (!t) return '<p>Template not found.</p>';
-
     const isDark   = t.dark;
     const bg       = isDark ? t.secondary : (t.accent || '#ffffff');
     const fg       = t.text;
@@ -665,59 +660,40 @@ document.addEventListener('DOMContentLoaded', function () {
     const radius   = t.radius;
     const fontFamily = t.font;
     const fontLink = t.font_url ? `<link rel="stylesheet" href="${t.font_url}">` : '';
-
     const navBg    = isDark ? secondary : primary;
-    const navFg    = '#ffffff';
     const btnBg    = primary;
     const btnFg    = '#ffffff';
     const cardBg   = isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
     const borderC  = isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)';
     const mutedFg  = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)';
     const heroGrad = `linear-gradient(135deg, ${secondary} 0%, ${primary} 100%)`;
-
-    // Helper: pill badge
     const pill = (txt) => `<span style="display:inline-block;background:${isDark?'rgba(255,255,255,0.12)':'rgba(0,0,0,0.07)'};color:${fg};padding:3px 12px;border-radius:999px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;">${txt}</span>`;
-
-    // Helper: button
     const btn = (txt, outline=false) => outline
       ? `<button style="background:transparent;border:2px solid ${primary};color:${primary};padding:11px 28px;border-radius:${radius};font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;">${txt}</button>`
       : `<button style="background:${btnBg};color:${btnFg};border:none;padding:12px 32px;border-radius:${radius};font-weight:700;font-size:14px;cursor:pointer;font-family:inherit;box-shadow:0 4px 16px rgba(0,0,0,.2);">${txt}</button>`;
-
-    // Helper: section wrapper
     const section = (id, bgOverride, content) =>
       `<section id="${id}" style="background:${bgOverride||bg};padding:80px 40px;">${content}</section>`;
-
-    // Helper: heading
     const h2 = (txt) => `<h2 style="font-size:clamp(24px,4vw,38px);font-weight:800;color:${fg};margin:0 0 12px;line-height:1.15;">${txt}</h2>`;
     const h3 = (txt) => `<h3 style="font-size:18px;font-weight:700;color:${fg};margin:0 0 8px;">${txt}</h3>`;
     const p  = (txt) => `<p style="color:${mutedFg};font-size:15px;line-height:1.7;margin:0 0 16px;">${txt}</p>`;
-
-    // Service card
     const svcCard = (icon, title, desc) =>
       `<div style="background:${cardBg};border:1px solid ${borderC};border-radius:${radius};padding:28px 24px;">
         <div style="font-size:28px;margin-bottom:12px;">${icon}</div>
         ${h3(title)}
         <p style="color:${mutedFg};font-size:14px;margin:0;line-height:1.6;">${desc}</p>
        </div>`;
-
-    // Gallery tile
-    const galTile = (hue) =>
+    const galTile = () =>
       `<div style="aspect-ratio:1;border-radius:${radius};background:linear-gradient(135deg,${primary}66,${secondary}aa);display:flex;align-items:center;justify-content:center;font-size:28px;">&#128247;</div>`;
-
-    // Stats row
     const stat = (num, label) =>
       `<div style="text-align:center;">
         <div style="font-size:32px;font-weight:900;color:${primary};">${num}</div>
         <div style="font-size:12px;font-weight:600;color:${mutedFg};text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">${label}</div>
        </div>`;
-
-    // Testimonial card
     const testimonial = (quote, author) =>
       `<div style="background:${cardBg};border:1px solid ${borderC};border-radius:${radius};padding:24px;">
         <p style="color:${fg};font-size:14px;font-style:italic;margin:0 0 12px;line-height:1.7;">&ldquo;${quote}&rdquo;</p>
         <div style="font-size:13px;font-weight:700;color:${primary};">&mdash; ${author}</div>
        </div>`;
-
     const heroSection = `
       <section id="home" style="background:${heroGrad};padding:100px 40px 80px;text-align:center;position:relative;">
         <nav style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 40px;background:rgba(0,0,0,0.15);">
@@ -737,7 +713,6 @@ document.addEventListener('DOMContentLoaded', function () {
           </div>
         </div>
       </section>`;
-
     const whyUsSection = section('why-us', bg,
       `<div style="max-width:900px;margin:0 auto;text-align:center;">
         ${pill('Why Us')}
@@ -747,20 +722,16 @@ document.addEventListener('DOMContentLoaded', function () {
           ${[['&#9889;','Fast Turnaround','We get the job done on time, every time.'],['&#127941;','Quality First','No shortcuts — only premium workmanship.'],['&#128179;','Transparent Pricing','Clear quotes with zero hidden fees.'],['&#127775;','5-Star Rated','Hundreds of happy customers vouch for us.']].map(([icon,t,d])=>svcCard(icon,t,d)).join('')}
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-top:48px;padding:32px;background:${cardBg};border-radius:${radius};border:1px solid ${borderC};">
-          ${stat('500+','Projects Done')}
-          ${stat('12+','Years Experience')}
-          ${stat('98%','Satisfaction Rate')}
-          ${stat('24/7','Support')}
+          ${stat('500+','Projects Done')}${stat('12+','Years Experience')}${stat('98%','Satisfaction Rate')}${stat('24/7','Support')}
         </div>
        </div>`);
-
     const aboutSection = section('about', isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.02)',
       `<div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;">
         <div>
           ${pill('Our Story')}
           <div style="margin-top:12px;">${h2('About Our Business')}</div>
-          ${p('Founded with a passion for quality, we have been serving our community for over a decade. Our team brings expertise, dedication, and a genuine commitment to every project.')}
-          ${p('We believe in building long-term relationships — not just completing jobs. Every client is treated like family.')}
+          ${p('Founded with a passion for quality, we have been serving our community for over a decade.')}
+          ${p('We believe in building long-term relationships — not just completing jobs.')}
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;">
             ${['Licensed & Insured','Free Estimates','Locally Owned','Award Winning'].map(f=>`<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:${fg};"><span style="color:${primary};font-size:18px;">&#10003;</span>${f}</div>`).join('')}
           </div>
@@ -772,24 +743,22 @@ document.addEventListener('DOMContentLoaded', function () {
           <div style="aspect-ratio:1;border-radius:${radius};background:${cardBg};border:1px solid ${borderC};display:flex;align-items:center;justify-content:center;font-size:32px;">&#128205;</div>
         </div>
        </div>`);
-
     const servicesSection = section('services', bg,
       `<div style="max-width:900px;margin:0 auto;text-align:center;">
         ${pill('What We Do')}
         <div style="margin-top:12px;">${h2('Our Services')}</div>
         ${p('Everything you need, handled by our expert team.')}
         <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:40px;">
-          ${[['&#128295;','Core Service','Our flagship offering, delivered with precision and care to every client.'],
-            ['&#128640;','Premium Package','The complete solution for clients who want the absolute best results.'],
-            ['&#128200;','Consultation','Expert advice and planning to ensure your project succeeds from day one.'],
-            ['&#128274;','Maintenance Plan','Ongoing support and care to keep everything running smoothly long-term.'],
-            ['&#128241;','Emergency Support','24/7 rapid response for urgent needs — we are always available.'],
-            ['&#127881;','Custom Solutions','Bespoke services designed around your exact requirements and goals.']
+          ${[['&#128295;','Core Service','Our flagship offering, delivered with precision and care.'],
+            ['&#128640;','Premium Package','The complete solution for clients who want the best.'],
+            ['&#128200;','Consultation','Expert advice to ensure your project succeeds.'],
+            ['&#128274;','Maintenance Plan','Ongoing support to keep everything running smoothly.'],
+            ['&#128241;','Emergency Support','24/7 rapid response for urgent needs.'],
+            ['&#127881;','Custom Solutions','Bespoke services designed around your exact requirements.']
           ].map(([icon,t,d])=>svcCard(icon,t,d)).join('')}
         </div>
         <div style="margin-top:40px;">${btn('View All Services')}</div>
        </div>`);
-
     const gallerySection = section('gallery', isDark ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.02)',
       `<div style="max-width:900px;margin:0 auto;">
         <div style="text-align:center;">
@@ -802,33 +771,28 @@ document.addEventListener('DOMContentLoaded', function () {
         </div>
         <div style="margin-top:32px;text-align:center;">
           <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:32px;">
-            ${[testimonial('Absolutely incredible work. We could not be happier with the results!','Sarah M.'),
-               testimonial('Professional, fast, and fairly priced. Will definitely hire again.','James K.'),
-               testimonial('From start to finish — a seamless and impressive experience.','Linda R.')].join('')}
+            ${[testimonial('Absolutely incredible work. We could not be happier!','Sarah M.'),
+               testimonial('Professional, fast, and fairly priced. Will hire again.','James K.'),
+               testimonial('From start to finish — a seamless experience.','Linda R.')].join('')}
           </div>
           ${btn('See Full Portfolio')}
         </div>
        </div>`);
-
     const contactSection = `
       <section id="contact" style="background:${heroGrad};padding:80px 40px;">
         <div style="max-width:800px;margin:0 auto;">
           <div style="text-align:center;margin-bottom:48px;">
             ${pill('Get In Touch')}
-            <h2 style="font-size:clamp(24px,4vw,38px);font-weight:800;color:#fff;margin:12px 0;line-height:1.15;">Ready to Get Started?</h2>
-            <p style="color:rgba(255,255,255,0.7);font-size:16px;max-width:480px;margin:0 auto;">Fill in the form below and we will get back to you within 24 hours.</p>
+            <h2 style="font-size:clamp(24px,4vw,38px);font-weight:800;color:#fff;margin:12px 0;">Ready to Get Started?</h2>
+            <p style="color:rgba(255,255,255,0.7);font-size:16px;max-width:480px;margin:0 auto;">Fill in the form and we will get back to you within 24 hours.</p>
           </div>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;">
             <div style="background:rgba(255,255,255,0.1);border-radius:${radius};padding:32px;backdrop-filter:blur(8px);">
               ${[['Your Name','text'],['Email Address','email'],['Phone Number','tel']].map(([lbl,type])=>`
-                <div style="margin-bottom:16px;">
-                  <label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">${lbl}</label>
-                  <input type="${type}" placeholder="${lbl}" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;font-family:inherit;" />
-                </div>`).join('')}
-              <div style="margin-bottom:20px;">
-                <label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Message</label>
-                <textarea rows="4" placeholder="Tell us about your project" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea>
-              </div>
+                <div style="margin-bottom:16px;"><label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">${lbl}</label>
+                <input type="${type}" placeholder="${lbl}" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;font-family:inherit;"/></div>`).join('')}
+              <div style="margin-bottom:20px;"><label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Message</label>
+              <textarea rows="4" placeholder="Tell us about your project" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;resize:vertical;font-family:inherit;"></textarea></div>
               <button style="width:100%;background:#fff;color:${primary};border:none;padding:13px;border-radius:${radius};font-weight:800;font-size:15px;cursor:pointer;font-family:inherit;">Send Message &#8594;</button>
             </div>
             <div style="display:flex;flex-direction:column;gap:20px;justify-content:center;">
@@ -841,41 +805,12 @@ document.addEventListener('DOMContentLoaded', function () {
                   <div style="width:42px;height:42px;border-radius:${radius};background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">${icon}</div>
                   <div><div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase;letter-spacing:.06em;">${lbl}</div><div style="font-size:14px;color:#fff;margin-top:3px;">${val}</div></div>
                 </div>`).join('')}
-              <div style="margin-top:8px;padding:20px;background:rgba(255,255,255,0.1);border-radius:${radius};">
-                <div style="font-size:32px;text-align:center;margin-bottom:8px;">&#127757;</div>
-                <div style="background:rgba(255,255,255,0.15);height:120px;border-radius:${radius};display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,0.6);font-size:12px;">Map Preview</div>
-              </div>
             </div>
           </div>
         </div>
       </section>`;
-
-    const footer = `
-      <footer style="background:${secondary};padding:32px 40px;text-align:center;border-top:1px solid ${borderC};">
-        <p style="color:${mutedFg};font-size:13px;margin:0;">&#169; 2025 YourBusiness. All rights reserved. &nbsp;|&nbsp; Built with Utiligo</p>
-      </footer>`;
-
-    return `<!DOCTYPE html><html lang="en"><head>
-      <meta charset="UTF-8">
-      <meta name="viewport" content="width=device-width,initial-scale=1">
-      ${fontLink}
-      <style>
-        *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
-        html{scroll-behavior:smooth;}
-        body{font-family:${fontFamily};color:${fg};background:${bg};}
-        input,textarea,button{font-family:${fontFamily};}
-        a{color:inherit;}
-        ::-webkit-scrollbar{width:6px;} ::-webkit-scrollbar-track{background:transparent;} ::-webkit-scrollbar-thumb{background:rgba(128,128,128,.4);border-radius:3px;}
-      </style>
-    </head><body>
-      ${heroSection}
-      ${whyUsSection}
-      ${aboutSection}
-      ${servicesSection}
-      ${gallerySection}
-      ${contactSection}
-      ${footer}
-    </body></html>`;
+    const footer = `<footer style="background:${secondary};padding:32px 40px;text-align:center;border-top:1px solid ${borderC};"><p style="color:${mutedFg};font-size:13px;margin:0;">&#169; 2025 YourBusiness. All rights reserved. &nbsp;|&nbsp; Built with Utiligo</p></footer>`;
+    return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${fontLink}<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}html{scroll-behavior:smooth;}body{font-family:${fontFamily};color:${fg};background:${bg};}input,textarea,button{font-family:${fontFamily};}a{color:inherit;}::-webkit-scrollbar{width:6px;}::-webkit-scrollbar-track{background:transparent;}::-webkit-scrollbar-thumb{background:rgba(128,128,128,.4);border-radius:3px;}</style></head><body>${heroSection}${whyUsSection}${aboutSection}${servicesSection}${gallerySection}${contactSection}${footer}</body></html>`;
   }
 
   let currentPreviewKey = null;
@@ -885,11 +820,8 @@ document.addEventListener('DOMContentLoaded', function () {
     if (!t) return;
     currentPreviewKey = key;
     previewLabel.textContent = t.label + ' — Full Preview';
-    // Reset to Home tab
     pageTabs.forEach(tb => tb.classList.toggle('active', tb.dataset.section === 'home'));
-    // Inject HTML into iframe srcdoc
-    const html = buildPreviewHTML(key);
-    previewFrame.srcdoc = html;
+    previewFrame.srcdoc = buildPreviewHTML(key);
     fullModal.classList.add('open');
     document.body.style.overflow = 'hidden';
   }
@@ -901,18 +833,13 @@ document.addEventListener('DOMContentLoaded', function () {
     currentPreviewKey = null;
   }
 
-  // Tab switching — scroll the iframe's inner document to the section
   pageTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       pageTabs.forEach(tb => tb.classList.remove('active'));
       tab.classList.add('active');
-      const sectionId = tab.dataset.section;
       try {
         const iDoc = previewFrame.contentDocument || previewFrame.contentWindow?.document;
-        if (iDoc) {
-          const el = iDoc.getElementById(sectionId);
-          if (el) el.scrollIntoView({ behavior: 'smooth' });
-        }
+        if (iDoc) { const el = iDoc.getElementById(tab.dataset.section); if (el) el.scrollIntoView({ behavior: 'smooth' }); }
       } catch(e) {}
     });
   });
@@ -923,12 +850,9 @@ document.addEventListener('DOMContentLoaded', function () {
     if (card) selectCard(card);
     closeFullPreview();
   });
-
   previewClsBtn.addEventListener('click', closeFullPreview);
   fullModal.addEventListener('click', e => { if (e.target === fullModal) closeFullPreview(); });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFullPreview(); });
-
-  // Hook eye buttons on template cards
   document.addEventListener('click', function (e) {
     const btn = e.target.closest('.preview-tpl-btn');
     if (!btn) return;
