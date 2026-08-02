@@ -38,6 +38,7 @@ if (!function_exists('_nav_active')) {
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="/assets/css/style.css">
 <style>
+  /* ── Nav ── */
   .nav-link { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; font-size:.875rem; font-weight:500; color:#94a3b8; transition:all .15s; white-space:nowrap; }
   .nav-link:hover  { background:rgba(255,255,255,.06); color:#fff; }
   .nav-link.active { background:rgba(255,255,255,.1); color:#ffffff; }
@@ -54,9 +55,98 @@ if (!function_exists('_nav_active')) {
   }
   #sidebar::before { content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%); width:200px; height:200px; background:radial-gradient(circle,rgba(255,255,255,.03) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
   ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+
+  /* ── Page transition loader ── */
+  #page-loader {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: #020617;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    transition: opacity .35s ease, visibility .35s ease;
+  }
+  #page-loader.fade-out {
+    opacity: 0;
+    visibility: hidden;
+  }
+  .loader-logo {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    animation: loader-pop .4s cubic-bezier(.34,1.56,.64,1) both;
+  }
+  .loader-logo span {
+    font-size: 1.5rem;
+    font-weight: 900;
+    letter-spacing: -.03em;
+    color: #fff;
+  }
+  @keyframes loader-pop {
+    from { opacity:0; transform:scale(.88) translateY(8px); }
+    to   { opacity:1; transform:scale(1)   translateY(0);   }
+  }
+  .loader-bar-track {
+    width: 160px;
+    height: 3px;
+    background: rgba(255,255,255,.08);
+    border-radius: 99px;
+    overflow: hidden;
+  }
+  .loader-bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 99px;
+    background: #fff;
+    animation: loader-bar 0.7s cubic-bezier(.4,0,.2,1) forwards;
+    animation-delay: .1s;
+  }
+  @keyframes loader-bar {
+    0%   { width:0%;   opacity:1; }
+    70%  { width:85%;  opacity:1; }
+    100% { width:100%; opacity:0; }
+  }
+
+  /* ── Page-leave flash (nav clicks) ── */
+  #page-leave {
+    position: fixed;
+    inset: 0;
+    z-index: 9998;
+    background: #020617;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .18s ease;
+  }
+  #page-leave.flash {
+    opacity: 1;
+    pointer-events: all;
+  }
 </style>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
+
+<!-- Page entry loader -->
+<div id="page-loader">
+  <div class="loader-logo">
+    <?php if ($_has_logo): ?>
+      <img src="<?= $_logo_url ?>" alt="Utiligo" style="height:32px;width:auto;">
+    <?php else: ?>
+      <div style="width:32px;height:32px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;">
+        <i class="fa-solid fa-bolt" style="color:#000;font-size:14px;"></i>
+      </div>
+    <?php endif; ?>
+    <span>Utiligo</span>
+  </div>
+  <div class="loader-bar-track">
+    <div class="loader-bar-fill"></div>
+  </div>
+</div>
+
+<!-- Page-leave overlay (flashes when navigating away) -->
+<div id="page-leave"></div>
 
 <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 z-40 hidden lg:hidden" onclick="closeSidebar()"></div>
 
