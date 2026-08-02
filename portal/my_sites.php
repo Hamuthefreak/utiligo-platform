@@ -12,7 +12,6 @@ $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 $pdo     = get_platform_db();
 
-// Fetch all sites regardless of status — status filter was causing 0-site bug
 $stmt = $pdo->prepare("SELECT * FROM utiligo_generated_sites WHERE user_id = ? ORDER BY created_at DESC");
 $stmt->execute([$user['id']]);
 $sites = $stmt->fetchAll();
@@ -42,6 +41,27 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   background: linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 75%);
   background-size: 600px 100%;
   animation: shimmer 1.4s infinite linear;
+}
+/* Live preview thumbnail */
+.site-preview-wrap {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  overflow: hidden;
+  flex-shrink: 0;
+  background: #0f172a;
+}
+.site-preview-wrap iframe {
+  width: 1280px;
+  height: 900px;
+  border: none;
+  transform-origin: top left;
+  transform: scale(0.034375); /* 44/1280 */
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  left: 0;
 }
 </style>
 
@@ -152,17 +172,32 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   else                       $exLabel = 'Expires ' . date('M j', $expiresTs);
 
   $fullPublicUrl = $isLive && $publicUrl ? 'https://utiligo.ca' . $publicUrl : null;
+
+  // Regenerate URL — pre-fills generate form with this site’s business info
+  $regenUrl = '/portal/generate.php?'
+    . 'name='     . urlencode($site['business_name']     ?? '')
+    . '&category=' . urlencode($site['business_category'] ?? '')
+    . '&city='    . urlencode($site['business_city']     ?? '')
+    . '&phone='   . urlencode($site['business_phone']    ?? '')
+    . '&email='   . urlencode($site['business_email']    ?? '');
 ?>
 
   <div class="group glass rounded-2xl border <?= $isLive ? 'border-white/15' : 'border-white/5' ?> hover:border-white/20 transition-all"
        data-site-id="<?= (int)$site['id'] ?>">
     <div class="flex items-center gap-4 p-4 flex-wrap sm:flex-nowrap">
 
-      <!-- Template colour dot -->
+      <!-- Live preview thumbnail (scaled-down iframe if site is live, fallback colour dot) -->
+      <?php if ($isLive && $publicUrl): ?>
+      <div class="site-preview-wrap">
+        <iframe src="<?= htmlspecialchars($publicUrl) ?>" loading="lazy" scrolling="no"
+                title="Preview of <?= htmlspecialchars($site['business_name']) ?>"></iframe>
+      </div>
+      <?php else: ?>
       <div class="w-11 h-11 rounded-xl shrink-0 flex items-center justify-center"
            style="background:linear-gradient(135deg,<?= $tpl['secondary'] ?> 0%,<?= $tpl['primary'] ?> 100%);">
         <i class="fa-solid fa-globe text-white/70 text-sm"></i>
       </div>
+      <?php endif; ?>
 
       <!-- Main info -->
       <div class="flex-1 min-w-0">
@@ -206,6 +241,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
       <!-- Actions -->
       <div class="flex items-center gap-2 shrink-0 flex-wrap">
+
+        <!-- Regenerate -->
+        <a href="<?= htmlspecialchars($regenUrl) ?>"
+           class="inline-flex items-center gap-1.5 text-xs bg-white/6 hover:bg-white/12 text-slate-300 hover:text-white px-3 py-1.5 rounded-lg font-semibold transition"
+           title="Regenerate this site with updated info or a different template">
+          <i class="fa-solid fa-rotate text-[10px]"></i> Regenerate
+        </a>
+
         <a href="/portal/site_editor.php?site_id=<?= (int)$site['id'] ?>"
            class="inline-flex items-center gap-1.5 text-xs bg-white/6 hover:bg-white/12 text-slate-300 px-3 py-1.5 rounded-lg font-semibold transition">
           <i class="fa-solid fa-pen text-[10px]"></i> Edit
@@ -289,4 +332,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<script src="/assets/js/my_sites.js?v=v601"></script>
+<script src="/assets/js/my_sites.js?v=v602"></script>
