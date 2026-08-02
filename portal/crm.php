@@ -105,7 +105,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
                 exit;
             }
 
-            // BUG FIX #1: Pro cap — use a single clean prepared statement, no raw interpolation
             if ($is_pro) {
                 $cap_stmt = $pdo->prepare('SELECT COUNT(*) FROM crm_clients WHERE user_id = ?');
                 $cap_stmt->execute([$uid]);
@@ -142,11 +141,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
         }
 
         // ── Delete client ───────────────────────────────────────────────────────
-        // BUG FIX #7: Also clean up orphaned tasks & notes for this client
         elseif ($action === 'delete_client') {
             $id = (int)($_POST['client_id'] ?? 0);
             if (!$id) { echo json_encode(['ok'=>false,'error'=>'Invalid client.']); exit; }
-            // Verify ownership before cascading
             $chk = $pdo->prepare('SELECT id FROM crm_clients WHERE id=? AND user_id=?');
             $chk->execute([$id, $uid]);
             if (!$chk->fetch()) { echo json_encode(['ok'=>false,'error'=>'Not found.']); exit; }
@@ -159,7 +156,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
         // ── Add task ────────────────────────────────────────────────────────────
         elseif ($action === 'add_task') {
             $title = trim($_POST['title'] ?? '');
-            // BUG FIX #5: Store NULL instead of empty string for due_date
             $due_raw = trim($_POST['due_date'] ?? '');
             $due     = ($due_raw !== '' && strtotime($due_raw)) ? $due_raw : null;
             $pri     = in_array($_POST['priority'] ?? '', ['low','medium','high']) ? $_POST['priority'] : 'medium';
@@ -170,7 +166,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
                 echo json_encode(['ok'=>false,'error'=>'Task title is required.']);
                 exit;
             }
-            // Verify client belongs to user if provided
             if ($cid !== null) {
                 $cc = $pdo->prepare('SELECT id FROM crm_clients WHERE id=? AND user_id=?');
                 $cc->execute([$cid, $uid]);
@@ -252,7 +247,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
 
     } catch (\Throwable $e) {
         echo json_encode(['ok'=>false,'error'=>'Server error — please try again.']);
-        // Log real error server-side only
         error_log('[CRM] ' . $e->getMessage());
     }
     exit;
@@ -280,7 +274,6 @@ if ($is_paid) {
             $notes = $s3->fetchAll(PDO::FETCH_ASSOC);
         }
 
-        // Stats
         $stats['total'] = count($clients);
         foreach ($clients as $c) {
             if ($c['stage'] === 'won')  { $stats['won']++;  $stats['won_value']  += (float)$c['deal_value']; }
@@ -298,13 +291,11 @@ if ($is_paid) {
     }
 }
 
-// Group clients by stage
 $by_stage = array_fill_keys($valid_stages, []);
 foreach ($clients as $c) {
     $by_stage[$c['stage'] ?? 'lead'][] = $c;
 }
 
-// Revenue by month (last 6 months, won deals only)
 $monthly_rev = [];
 for ($i = 5; $i >= 0; $i--) {
     $monthly_rev[date('M Y', strtotime("-$i months"))] = 0;
@@ -332,7 +323,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .stage-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; flex-shrink:0; }
 .prob-bar { height:3px; border-radius:2px; background:rgba(255,255,255,.08); }
 .prob-fill { height:100%; border-radius:2px; transition:width .4s; }
-/* BUG FIX #8: Revenue bar — overflow visible so tooltip isn't clipped */
 .rev-bar-wrap { display:flex; align-items:flex-end; gap:6px; height:80px; overflow:visible; }
 .rev-bar { flex:1; border-radius:4px 4px 0 0; background:rgba(255,255,255,.15); transition:height .5s cubic-bezier(.4,0,.2,1); min-height:4px; position:relative; cursor:default; overflow:visible; }
 .rev-bar:hover { background:rgba(255,255,255,.3); }
@@ -378,7 +368,6 @@ select.crm-input option { background:#0f172a; }
   <?php endif; ?>
 </div>
 
-<!-- PLAN GATE: free users see upgrade wall -->
 <?php if (!$is_paid): ?>
 <div class="upgrade-wall">
   <div class="w-16 h-16 rounded-2xl bg-white/5 border border-white/8 flex items-center justify-center mx-auto mb-5">
@@ -413,9 +402,6 @@ select.crm-input option { background:#0f172a; }
 </div>
 
 <?php else: ?>
-<!-- ═══════════════════════════════════════════════════════════════════════════
-     PAID-PLAN CONTENT
-     ══════════════════════════════════════════════════════════════════════════ -->
 
 <!-- STAT TILES -->
 <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
@@ -508,9 +494,7 @@ select.crm-input option { background:#0f172a; }
           </div>
           <?php endforeach;?>
           <?php if (empty($col_clients)):?>
-          <div class="text-center py-8 text-[11px] text-slate-700 border border-dashed border-white/5 rounded-xl">
-            No clients
-          </div>
+          <div class="text-center py-8 text-[11px] text-slate-700 border border-dashed border-white/5 rounded-xl">No clients</div>
           <?php endif;?>
         </div>
       </div>
@@ -551,9 +535,9 @@ select.crm-input option { background:#0f172a; }
     ));
     $avg_deal = $stats['won'] > 0 ? $stats['won_value'] / $stats['won'] : 0;
     foreach ([
-      ['fa-sack-dollar', 'Total Won',          '$'.number_format($stats['won_value'],2), 'Closed revenue'],
-      ['fa-chart-line',  'Avg Deal Size',       '$'.number_format($avg_deal,0),          $stats['won'].' won deal'.($stats['won']!==1?'s':'')],
-      ['fa-filter',      'Weighted Pipeline',  '$'.number_format($total_pipeline,0),     'Probability-adjusted'],
+      ['fa-sack-dollar', 'Total Won',         '$'.number_format($stats['won_value'],2), 'Closed revenue'],
+      ['fa-chart-line',  'Avg Deal Size',      '$'.number_format($avg_deal,0),          $stats['won'].' won deal'.($stats['won']!==1?'s':'')],
+      ['fa-filter',      'Weighted Pipeline', '$'.number_format($total_pipeline,0),     'Probability-adjusted'],
     ] as [$ic,$lbl,$rval,$sub]):?>
     <div class="glass rounded-2xl p-4">
       <i class="fa-solid <?=$ic?> text-slate-500 text-sm mb-3"></i>
@@ -565,9 +549,7 @@ select.crm-input option { background:#0f172a; }
   </div>
 
   <div class="glass rounded-2xl overflow-hidden">
-    <div class="px-5 py-3 border-b border-white/5">
-      <h3 class="text-sm font-bold">Deals by Stage</h3>
-    </div>
+    <div class="px-5 py-3 border-b border-white/5"><h3 class="text-sm font-bold">Deals by Stage</h3></div>
     <table class="w-full text-sm">
       <thead><tr class="text-[10px] text-slate-600 uppercase tracking-wide border-b border-white/5">
         <th class="px-5 py-2.5 text-left">Stage</th>
@@ -732,72 +714,43 @@ select.crm-input option { background:#0f172a; }
 <?php endif;?>
 
 
-<!-- BUG FIX #3: Modals are inside the $is_paid gate — no JS errors for free users -->
-
 <!-- Add Client Modal -->
 <div id="modalAddClient" class="modal-backdrop">
   <div class="modal-box">
     <div class="flex items-center justify-between mb-6">
       <h3 class="text-lg font-bold">Add Client</h3>
-      <button onclick="closeModal('modalAddClient')" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
-        <i class="fa-solid fa-xmark text-xs"></i>
-      </button>
+      <button onclick="closeModal('modalAddClient')" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-xs"></i></button>
     </div>
     <form id="formAddClient" class="space-y-3">
       <input type="hidden" name="crm_action" value="add_client">
       <input type="hidden" name="csrf_token" value="<?=htmlspecialchars($csrf,ENT_QUOTES)?>">
       <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Name *</label>
-          <input type="text" name="name" required class="crm-input" placeholder="Jane Smith">
-        </div>
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Business</label>
-          <input type="text" name="business" class="crm-input" placeholder="Smith Plumbing">
-        </div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Name *</label><input type="text" name="name" required class="crm-input" placeholder="Jane Smith"></div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Business</label><input type="text" name="business" class="crm-input" placeholder="Smith Plumbing"></div>
       </div>
       <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Email</label>
-          <input type="email" name="email" class="crm-input" placeholder="jane@example.com">
-        </div>
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Phone</label>
-          <input type="text" name="phone" class="crm-input" placeholder="+1 555 000 0000">
-        </div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Email</label><input type="email" name="email" class="crm-input" placeholder="jane@example.com"></div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Phone</label><input type="text" name="phone" class="crm-input" placeholder="+1 555 000 0000"></div>
       </div>
       <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">City</label>
-          <input type="text" name="city" class="crm-input" placeholder="Calgary">
-        </div>
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Industry</label>
-          <input type="text" name="industry" class="crm-input" placeholder="Plumber">
-        </div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">City</label><input type="text" name="city" class="crm-input" placeholder="Calgary"></div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Industry</label><input type="text" name="industry" class="crm-input" placeholder="Plumber"></div>
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
           <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Stage</label>
           <select name="stage" class="crm-input">
-            <?php foreach ($stages as $sk => $sd):?>
-            <option value="<?=$sk?>"><?=$sd['label']?></option>
-            <?php endforeach;?>
+            <?php foreach ($stages as $sk => $sd):?><option value="<?=$sk?>"><?=$sd['label']?></option><?php endforeach;?>
           </select>
         </div>
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Deal Value ($)</label>
-          <input type="number" name="deal_value" min="0" step="0.01" class="crm-input" placeholder="500">
-        </div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Deal Value ($)</label><input type="number" name="deal_value" min="0" step="0.01" class="crm-input" placeholder="500"></div>
       </div>
       <div>
         <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Win Probability (%): <span id="probDisplay">50</span></label>
         <input type="range" name="probability" min="0" max="100" value="50" oninput="document.getElementById('probDisplay').textContent=this.value" class="w-full accent-white">
       </div>
       <div id="addClientError" class="hidden text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-3 py-2"></div>
-      <button type="submit" class="w-full bg-white hover:bg-slate-200 text-black py-3 rounded-xl font-bold text-sm transition">
-        <span id="addClientBtnLabel">Add Client</span>
-      </button>
+      <button type="submit" class="w-full bg-white hover:bg-slate-200 text-black py-3 rounded-xl font-bold text-sm transition"><span id="addClientBtnLabel">Add Client</span></button>
     </form>
   </div>
 </div>
@@ -807,38 +760,24 @@ select.crm-input option { background:#0f172a; }
   <div class="modal-box">
     <div class="flex items-center justify-between mb-6">
       <h3 class="text-lg font-bold">Add Task</h3>
-      <button onclick="closeModal('modalAddTask')" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
-        <i class="fa-solid fa-xmark text-xs"></i>
-      </button>
+      <button onclick="closeModal('modalAddTask')" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-xs"></i></button>
     </div>
     <form id="formAddTask" class="space-y-3">
       <input type="hidden" name="crm_action" value="add_task">
       <input type="hidden" name="csrf_token" value="<?=htmlspecialchars($csrf,ENT_QUOTES)?>">
-      <div>
-        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Task *</label>
-        <input type="text" name="title" required class="crm-input" placeholder="Follow up with Jane Smith">
-      </div>
+      <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Task *</label><input type="text" name="title" required class="crm-input" placeholder="Follow up with Jane Smith"></div>
       <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Due Date</label>
-          <input type="date" name="due_date" class="crm-input">
-        </div>
+        <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Due Date</label><input type="date" name="due_date" class="crm-input"></div>
         <div>
           <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Priority</label>
-          <select name="priority" class="crm-input">
-            <option value="low">Low</option>
-            <option value="medium" selected>Medium</option>
-            <option value="high">High</option>
-          </select>
+          <select name="priority" class="crm-input"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select>
         </div>
       </div>
       <div>
         <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Link to Client (optional)</label>
         <select name="client_id" class="crm-input">
           <option value="">-- None --</option>
-          <?php foreach ($clients as $c):?>
-          <option value="<?=(int)$c['id']?>"><?=htmlspecialchars($c['name'])?></option>
-          <?php endforeach;?>
+          <?php foreach ($clients as $c):?><option value="<?=(int)$c['id']?>"><?=htmlspecialchars($c['name'])?></option><?php endforeach;?>
         </select>
       </div>
       <button type="submit" class="w-full bg-white hover:bg-slate-200 text-black py-3 rounded-xl font-bold text-sm transition">Add Task</button>
@@ -852,30 +791,20 @@ select.crm-input option { background:#0f172a; }
   <div class="modal-box">
     <div class="flex items-center justify-between mb-6">
       <h3 class="text-lg font-bold">New Note</h3>
-      <button onclick="closeModal('modalAddNote')" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition">
-        <i class="fa-solid fa-xmark text-xs"></i>
-      </button>
+      <button onclick="closeModal('modalAddNote')" class="w-8 h-8 rounded-full bg-white/5 hover:bg-white/10 flex items-center justify-center text-slate-400 hover:text-white transition"><i class="fa-solid fa-xmark text-xs"></i></button>
     </div>
     <form id="formAddNote" class="space-y-3">
       <input type="hidden" name="crm_action" value="add_note">
       <input type="hidden" name="csrf_token" value="<?=htmlspecialchars($csrf,ENT_QUOTES)?>">
-      <div>
-        <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Note *</label>
-        <textarea name="body" required rows="4" class="crm-input resize-none" placeholder="Write anything about a deal, client, or idea..."></textarea>
-      </div>
+      <div><label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Note *</label><textarea name="body" required rows="4" class="crm-input resize-none" placeholder="Write anything about a deal, client, or idea..."></textarea></div>
       <div>
         <label class="block text-[10px] font-semibold text-slate-600 uppercase tracking-wide mb-1">Link to Client (optional)</label>
         <select name="client_id" class="crm-input">
           <option value="">-- None --</option>
-          <?php foreach ($clients as $c):?>
-          <option value="<?=(int)$c['id']?>"><?=htmlspecialchars($c['name'])?></option>
-          <?php endforeach;?>
+          <?php foreach ($clients as $c):?><option value="<?=(int)$c['id']?>"><?=htmlspecialchars($c['name'])?></option><?php endforeach;?>
         </select>
       </div>
-      <label class="flex items-center gap-2 cursor-pointer">
-        <input type="checkbox" name="pinned" value="1" class="accent-white">
-        <span class="text-sm text-slate-400">Pin this note</span>
-      </label>
+      <label class="flex items-center gap-2 cursor-pointer"><input type="checkbox" name="pinned" value="1" class="accent-white"><span class="text-sm text-slate-400">Pin this note</span></label>
       <button type="submit" class="w-full bg-white hover:bg-slate-200 text-black py-3 rounded-xl font-bold text-sm transition">Save Note</button>
     </form>
   </div>
@@ -900,7 +829,6 @@ function openAddClient() { openModal('modalAddClient'); }
 function openAddTask()   { openModal('modalAddTask'); }
 <?php if ($is_ent):?>function openAddNote() { openModal('modalAddNote'); }<?php endif;?>
 
-// Close modals on backdrop click
 document.querySelectorAll('.modal-backdrop').forEach(function(m) {
   m.addEventListener('click', function(e) { if (e.target === m) closeModal(m.id); });
 });
@@ -913,7 +841,6 @@ async function crmPost(data) {
   return r.json();
 }
 
-// Add client
 const formAddClient = document.getElementById('formAddClient');
 if (formAddClient) {
   formAddClient.addEventListener('submit', async function(e) {
@@ -930,7 +857,6 @@ if (formAddClient) {
   });
 }
 
-// Add task
 const formAddTask = document.getElementById('formAddTask');
 if (formAddTask) {
   formAddTask.addEventListener('submit', async function(e) {
@@ -943,7 +869,6 @@ if (formAddTask) {
 }
 
 <?php if ($is_ent):?>
-// Add note
 const formAddNote = document.getElementById('formAddNote');
 if (formAddNote) {
   formAddNote.addEventListener('submit', async function(e) {
@@ -970,24 +895,20 @@ async function exportCSV() {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'utiligo_clients_' + new Date().toISOString().slice(0,10) + '.csv';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(a.href);
   } catch(ex) { alert('Export failed — please try again.'); }
 }
 <?php endif;?>
 
 function updateStage(id, stage) {
-  crmPost({crm_action:'update_stage', client_id:id, stage:stage, csrf_token:CRM_CSRF})
-    .catch(() => {});
+  crmPost({crm_action:'update_stage', client_id:id, stage:stage, csrf_token:CRM_CSRF}).catch(() => {});
 }
 
 function deleteClient(id) {
   if (!confirm('Delete this client and all their tasks/notes?')) return;
   crmPost({crm_action:'delete_client', client_id:id, csrf_token:CRM_CSRF})
-    .then(j => { if (j.ok) location.reload(); })
-    .catch(() => {});
+    .then(j => { if (j.ok) location.reload(); }).catch(() => {});
 }
 
 function toggleTask(id, el) {
@@ -1003,21 +924,16 @@ function toggleTask(id, el) {
         text.classList.toggle('text-slate-600', isDone);
         text.classList.toggle('text-white', !isDone);
       }
-      el.innerHTML = el.classList.contains('done')
-        ? '<i class="fa-solid fa-check text-white text-[9px]"></i>'
-        : '';
-    })
-    .catch(() => {});
+      el.innerHTML = el.classList.contains('done') ? '<i class="fa-solid fa-check text-white text-[9px]"></i>' : '';
+    }).catch(() => {});
 }
 
 function deleteTask(id) {
   if (!confirm('Delete this task?')) return;
   crmPost({crm_action:'delete_task', task_id:id, csrf_token:CRM_CSRF})
-    .then(j => { if (j.ok) { const el=document.getElementById('task-'+id); if(el) el.remove(); } })
-    .catch(() => {});
+    .then(j => { if (j.ok) { const el=document.getElementById('task-'+id); if(el) el.remove(); } }).catch(() => {});
 }
 
-// BUG FIX #6: Guard filterClients — only runs when search elements exist
 function filterClients() {
   const searchEl = document.getElementById('clientSearch');
   const filterEl = document.getElementById('stageFilter');
@@ -1033,4 +949,4 @@ function filterClients() {
 </script>
 
 <?php endif; // end $is_paid ?>
-<?php require_once __DIR__ . '/../includes/portal_layout_footer.php'; ?>
+<?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
