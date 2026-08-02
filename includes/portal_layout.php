@@ -56,89 +56,76 @@ if (!function_exists('_nav_active')) {
   #sidebar::before { content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%); width:200px; height:200px; background:radial-gradient(circle,rgba(255,255,255,.03) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
   ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
 
-  /* ── Page transition loader ── */
-  #page-loader {
+  /* ── Portal Page Transition Loader ── */
+  #utl-loader {
     position: fixed;
     inset: 0;
     z-index: 9999;
-    background: #020617;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 20px;
-    opacity: 1;
-    visibility: visible;
-    /* no transition here — JS sets it dynamically when dismissing */
-  }
-  .loader-logo {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    animation: loader-pop .38s cubic-bezier(.34,1.56,.64,1) both;
-  }
-  .loader-logo span {
-    font-size: 1.5rem;
-    font-weight: 900;
-    letter-spacing: -.03em;
-    color: #fff;
-  }
-  @keyframes loader-pop {
-    from { opacity:0; transform:scale(.88) translateY(8px); }
-    to   { opacity:1; transform:scale(1)   translateY(0);   }
-  }
-  .loader-bar-track {
-    width: 160px;
-    height: 3px;
-    background: rgba(255,255,255,.10);
-    border-radius: 99px;
-    overflow: hidden;
-  }
-  /* Fill starts at 0 — width + transition set entirely by JS for variable timing */
-  #loader-fill {
-    height: 100%;
-    width: 0%;
-    border-radius: 99px;
-    background: #fff;
-  }
-
-  /* ── Page-leave flash ── */
-  #page-leave {
-    position: fixed;
-    inset: 0;
-    z-index: 9998;
-    background: #020617;
+    gap: 18px;
+    background: #020817;
     opacity: 0;
     pointer-events: none;
-    transition: opacity .18s ease;
+    transition: opacity 0.18s ease;
   }
-  #page-leave.flash {
+  #utl-loader.visible {
     opacity: 1;
     pointer-events: all;
+  }
+  #utl-progress-track {
+    position: absolute;
+    top: 0; left: 0;
+    width: 100%; height: 2px;
+    background: rgba(255,255,255,0.05);
+  }
+  #utl-progress-bar {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, #10b981, #34d399);
+    border-radius: 0 2px 2px 0;
+    box-shadow: 0 0 12px #10b98166;
+    transition: width 0.38s cubic-bezier(0.4,0,0.2,1);
+  }
+  .utl-ring {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: 2.5px solid rgba(255,255,255,0.07);
+    border-top-color: #10b981;
+    animation: utl-spin 0.65s linear infinite;
+  }
+  @keyframes utl-spin { to { transform: rotate(360deg); } }
+  .utl-brand {
+    font-size: 0.8rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: rgba(255,255,255,0.2);
+  }
+  body.page-ready main > div {
+    animation: utl-fadein 0.2s ease forwards;
+  }
+  @keyframes utl-fadein {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .nav-link-loading {
+    opacity: 0.5;
+    pointer-events: none;
   }
 </style>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
 
-<!-- Page entry loader -->
-<div id="page-loader">
-  <div class="loader-logo">
-    <?php if ($_has_logo): ?>
-      <img src="<?= $_logo_url ?>" alt="Utiligo" style="height:32px;width:auto;">
-    <?php else: ?>
-      <div style="width:32px;height:32px;border-radius:8px;background:#fff;display:flex;align-items:center;justify-content:center;">
-        <i class="fa-solid fa-bolt" style="color:#000;font-size:14px;"></i>
-      </div>
-    <?php endif; ?>
-    <span>Utiligo</span>
-  </div>
-  <div class="loader-bar-track">
-    <div id="loader-fill"></div>
-  </div>
+<!-- Transition Loader Overlay -->
+<div id="utl-loader" role="status" aria-label="Loading">
+  <div id="utl-progress-track"><div id="utl-progress-bar"></div></div>
+  <div class="utl-ring"></div>
+  <span class="utl-brand">Utiligo</span>
 </div>
-
-<!-- Page-leave overlay -->
-<div id="page-leave"></div>
 
 <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 z-40 hidden lg:hidden" onclick="closeSidebar()"></div>
 
@@ -251,4 +238,74 @@ if (!function_exists('_nav_active')) {
 <script>
 function openSidebar()  { document.getElementById('sidebar').classList.add('open'); document.getElementById('sidebarOverlay').classList.remove('hidden'); }
 function closeSidebar() { document.getElementById('sidebar').classList.remove('open'); document.getElementById('sidebarOverlay').classList.add('hidden'); }
+
+// ── Utiligo Portal Transition System (original) ─────────────────────────
+(function () {
+  var loader = document.getElementById('utl-loader');
+  var bar    = document.getElementById('utl-progress-bar');
+  if (!loader || !bar) return;
+
+  function showLoader() {
+    bar.style.width = '0%';
+    loader.classList.add('visible');
+    requestAnimationFrame(function () {
+      bar.style.transition = 'width 0.38s cubic-bezier(0.4,0,0.2,1)';
+      bar.style.width = '70%';
+    });
+  }
+
+  function hideLoader() {
+    bar.style.transition = 'width 0.14s ease';
+    bar.style.width = '100%';
+    setTimeout(function () {
+      loader.classList.remove('visible');
+      document.body.classList.add('page-ready');
+    }, 150);
+  }
+
+  // Show on page arrival
+  showLoader();
+  var done = false;
+  function finish() { if (done) return; done = true; hideLoader(); }
+
+  // Hide on load — with a 600ms hard cap so it never gets stuck
+  window.addEventListener('load', finish);
+  document.addEventListener('DOMContentLoaded', function () {
+    setTimeout(finish, 60);
+  });
+  setTimeout(finish, 600);
+
+  // Intercept nav link clicks
+  document.addEventListener('click', function (e) {
+    var anchor = e.target.closest('a');
+    if (!anchor) return;
+    var href = anchor.getAttribute('href');
+    if (!href) return;
+    if (
+      anchor.target === '_blank' ||
+      anchor.hasAttribute('download') ||
+      href.startsWith('#') ||
+      href.startsWith('javascript') ||
+      href.startsWith('mailto') ||
+      href.startsWith('tel') ||
+      (href.startsWith('http') && !href.includes(location.hostname))
+    ) return;
+    var navLink = anchor.closest('.nav-link');
+    if (navLink) navLink.classList.add('nav-link-loading');
+    e.preventDefault();
+    showLoader();
+    setTimeout(function () { location.href = href; }, 200);
+  });
+
+  // Form submits
+  document.addEventListener('submit', function (e) {
+    if (e.target.dataset.noLoader) return;
+    showLoader();
+  });
+
+  // bfcache
+  window.addEventListener('pageshow', function (e) {
+    if (e.persisted) hideLoader();
+  });
+})();
 </script>
