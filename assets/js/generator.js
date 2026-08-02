@@ -1,20 +1,19 @@
 document.addEventListener('DOMContentLoaded', function () {
-  const form = document.getElementById('generateForm');
+  const form         = document.getElementById('generateForm');
   const progressWrap = document.getElementById('genProgressWrap');
   const progressLabel = document.getElementById('genProgressLabel');
-  const progressFill = document.getElementById('genProgressFill');
-  const downloadWrap = document.getElementById('genDownloadWrap');
-  const downloadLink = document.getElementById('genDownloadLink');
-  const previewLink = document.getElementById('genPreviewLink');
-  const errBoundary = document.getElementById('genErrorBoundary');
-  const errMsg = document.getElementById('genErrorMsg');
+  const progressFill  = document.getElementById('genProgressFill');
+  const downloadWrap  = document.getElementById('genDownloadWrap');
+  const downloadLink  = document.getElementById('genDownloadLink');
+  const previewLink   = document.getElementById('genPreviewLink');
+  const errBoundary   = document.getElementById('genErrorBoundary');
+  const errMsg        = document.getElementById('genErrorMsg');
   const templateInput = document.getElementById('selectedTemplateInput');
   const templateLabel = document.getElementById('selectedTemplateLabel');
   const templateCards = document.querySelectorAll('.template-card');
 
-  // Read CSRF from the <meta name="csrf-token"> tag set by portal_layout / header
-  const csrfMeta = document.querySelector('meta[name="csrf-token"]');
-  const csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+  // CSRF lives on data-csrf of <body> (set by portal_layout.php)
+  const csrfToken = document.body.dataset.csrf || '';
 
   function selectTemplate(card) {
     templateCards.forEach((c) => c.classList.remove('border-emerald-400', 'ring-2', 'ring-emerald-400/40'));
@@ -29,6 +28,9 @@ document.addEventListener('DOMContentLoaded', function () {
   if (templateCards.length) selectTemplate(templateCards[0]);
 
   if (!form) return;
+
+  // Tell the portal transition system NOT to show the page loader on this form
+  form.dataset.noLoader = '1';
 
   const steps = [
     { pct: 15, label: 'Analyzing business info...' },
@@ -70,7 +72,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }, 450);
 
     const formData = new FormData(form);
-    const payload = {};
+    const payload  = {};
     formData.forEach((value, key) => { payload[key] = value; });
     payload.csrf_token = csrfToken;
 
@@ -80,7 +82,7 @@ document.addEventListener('DOMContentLoaded', function () {
       body: JSON.stringify(payload),
     })
       .then((r) => {
-        if (!r.ok) throw new Error('Server returned ' + r.status);
+        if (!r.ok) throw new Error('Server error ' + r.status);
         return r.json();
       })
       .then((data) => {
@@ -134,7 +136,7 @@ document.addEventListener('DOMContentLoaded', function () {
           showError(data.error || 'Generation failed. Please try again.');
         }
       })
-      .catch((err) => {
+      .catch(() => {
         clearInterval(interval);
         showError('Connection error — please check your internet and try again.');
       });
