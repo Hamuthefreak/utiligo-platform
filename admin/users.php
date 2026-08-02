@@ -7,22 +7,11 @@ require_admin();
 $admin = $GLOBALS['admin_user'];
 $udb   = get_user_db();
 
-// ── POST actions (PRG: always redirect after POST) ────────────────────────────
+// ── POST actions ──────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!admin_csrf_verify('users', $_POST['csrf_token'] ?? null)) {
         _admin_log('WARN', 'CSRF failure on users action');
-        // DEBUG: show exactly what went wrong so we can diagnose
-        $submitted = htmlspecialchars($_POST['csrf_token'] ?? '(none)');
-        $stored    = htmlspecialchars(json_encode($_SESSION['admin_csrf']['users'] ?? null));
-        $sid       = htmlspecialchars(session_id());
-        die('<pre style="background:#0f172a;color:#f87171;padding:2rem;font-family:monospace;font-size:13px;">'.
-            "CSRF FAILURE DEBUG\n".
-            "Session ID : {$sid}\n".
-            "Submitted  : {$submitted}\n".
-            "Stored     : {$stored}\n".
-            "\nIf Stored is null, the session is not persisting between GET and POST.\n".
-            "If Stored is set but tokens don\'t match, a stale token was submitted.\n".
-            '</pre>');
+        die('Invalid CSRF token.');
     }
     $action   = $_POST['action'] ?? '';
     $targetId = (int)($_POST['user_id'] ?? 0);
@@ -77,11 +66,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     exit;
 }
 
-// ── Flash messages from redirect ──────────────────────────────────────────────
+// ── Flash messages ────────────────────────────────────────────────────────────
 $success = isset($_GET['flash'])       ? htmlspecialchars($_GET['flash'])       : '';
 $error   = isset($_GET['flash_error']) ? htmlspecialchars($_GET['flash_error']) : '';
 
-// ── Fetch ──────────────────────────────────────────────────────────────────────────────
+// ── Fetch ─────────────────────────────────────────────────────────────────────
 $search  = trim($_GET['q'] ?? '');
 $page    = max(1, (int)($_GET['page'] ?? 1));
 $perPage = 25;
@@ -135,7 +124,11 @@ require_once __DIR__ . '/../includes/admin_layout.php';
         <tr><td colspan="6" class="px-6 py-12 text-center text-slate-500">No users found.</td></tr>
       <?php endif; ?>
       <?php foreach ($users as $u): ?>
-      <?php $uplan = $u['plan'] ?? 'free'; ?>
+      <?php
+        // trim + lowercase so whitespace or case differences never break button logic
+        $uplan = strtolower(trim($u['plan'] ?? 'free'));
+        if (!in_array($uplan, ['free','pro','entrepreneur'])) $uplan = 'free';
+      ?>
       <tr class="hover:bg-white/[.02] transition">
         <td class="px-5 py-3 font-medium text-white">
           <?= htmlspecialchars($u['full_name']) ?>
@@ -146,7 +139,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
         <td class="px-5 py-3 text-slate-400"><?= htmlspecialchars($u['email']) ?></td>
         <td class="px-5 py-3">
           <?php if ($uplan==='entrepreneur'): ?>
-            <span class="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">&#x1F680; ENT</span>
+            <span class="text-[10px] bg-amber-500/15 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded-full font-bold">🚀 ENT</span>
           <?php elseif ($uplan==='pro'): ?>
             <span class="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 px-2 py-0.5 rounded-full font-semibold">PRO</span>
           <?php else: ?>
@@ -167,6 +160,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
           <div class="flex flex-wrap gap-1.5 items-center">
 
             <?php if ($uplan === 'free'): ?>
+              <!-- Free → Pro -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -177,6 +171,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-up text-[10px] mr-1"></i>Pro
                 </button>
               </form>
+              <!-- Free → ENT -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -189,6 +184,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($uplan === 'pro'): ?>
+              <!-- Pro → Free -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -199,6 +195,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-down text-[10px] mr-1"></i>Free
                 </button>
               </form>
+              <!-- Pro → ENT -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -211,6 +208,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               </form>
 
             <?php elseif ($uplan === 'entrepreneur'): ?>
+              <!-- ENT → Pro -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
@@ -221,6 +219,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                   <i class="fa-solid fa-circle-down text-[10px] mr-1"></i>Pro
                 </button>
               </form>
+              <!-- ENT → Free -->
               <form method="POST">
                 <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
                 <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
