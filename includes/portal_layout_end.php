@@ -9,7 +9,7 @@
 </main>
 
 <script>
-// ── Teleport fixed overlays to <body> ────────────────────────────────────────
+// ── Teleport fixed overlays to <body> ────────────────────────────────────
 document.addEventListener('DOMContentLoaded', function () {
   ['leadsRail', 'leadsRailDrawer', 'leadsRailOverlay'].forEach(function (id) {
     var el = document.getElementById(id);
@@ -17,40 +17,66 @@ document.addEventListener('DOMContentLoaded', function () {
   });
 });
 
-// ── Page entry: dismiss loader once page is fully painted ────────────────────
+// ── Page entry loader ────────────────────────────────────────────────────
 (function () {
   var loader = document.getElementById('page-loader');
-  if (!loader) return;
+  var fill   = document.getElementById('loader-fill');
+  if (!loader || !fill) return;
+
+  // Random duration between 480ms and 900ms so it never feels mechanical
+  var dur = 480 + Math.floor(Math.random() * 420);
+  fill.style.transition = 'width ' + dur + 'ms cubic-bezier(.4,0,.2,1)';
+
+  // Kick the bar to 100% on next paint (transition needs a frame to register)
+  requestAnimationFrame(function () {
+    requestAnimationFrame(function () {
+      fill.style.width = '100%';
+    });
+  });
 
   function dismiss() {
-    loader.classList.add('fade-out');
-    // Remove from DOM after transition so it never blocks clicks
-    setTimeout(function () { loader.remove(); }, 400);
+    loader.style.transition = 'opacity .32s ease, visibility .32s ease';
+    loader.style.opacity    = '0';
+    loader.style.visibility = 'hidden';
+    setTimeout(function () {
+      if (loader.parentNode) loader.parentNode.removeChild(loader);
+    }, 360);
   }
 
+  // Dismiss after the bar finishes — fire whichever comes last: bar OR load event
+  var barDone  = false;
+  var pageDone = false;
+
+  function tryDismiss() {
+    if (barDone && pageDone) dismiss();
+  }
+
+  // Bar timer
+  setTimeout(function () { barDone = true;  tryDismiss(); }, dur + 60);
+
+  // Page load (handles all cases: already loaded, DOMContentLoaded, window.load)
+  function markPageDone() { pageDone = true; tryDismiss(); }
+
   if (document.readyState === 'complete') {
-    // Already fully loaded (e.g. bfcache restore)
-    setTimeout(dismiss, 120);
+    markPageDone();
   } else {
-    window.addEventListener('load', function () {
-      setTimeout(dismiss, 120);
-    });
+    // Use DOMContentLoaded as a fallback so heavy pages don't hang forever
+    document.addEventListener('DOMContentLoaded', markPageDone, { once: true });
+    window.addEventListener('load', markPageDone, { once: true });
   }
 })();
 
-// ── Page leave: flash dark overlay when navigating away ─────────────────────
+// ── Page leave: flash dark overlay when navigating away ──────────────────
 (function () {
   var overlay = document.getElementById('page-leave');
   if (!overlay) return;
 
   document.addEventListener('click', function (e) {
-    // Find closest <a> with a same-origin href that isn't a hash or download
     var anchor = e.target.closest('a[href]');
     if (!anchor) return;
 
     var href = anchor.getAttribute('href') || '';
 
-    // Skip: hash links, external links, target=_blank, download, javascript:
     if (
       href.startsWith('#') ||
       href.startsWith('javascript') ||
@@ -59,17 +85,14 @@ document.addEventListener('DOMContentLoaded', function () {
       (href.startsWith('http') && !href.startsWith(location.origin))
     ) return;
 
-    // Skip: links that open modals or trigger JS (data attributes present)
     if (anchor.hasAttribute('data-modal') || anchor.hasAttribute('data-action')) return;
 
     e.preventDefault();
     var dest = anchor.href;
-
     overlay.classList.add('flash');
     setTimeout(function () { window.location.href = dest; }, 180);
   });
 
-  // On back/forward (bfcache), make sure overlay is hidden
   window.addEventListener('pageshow', function (e) {
     if (e.persisted) overlay.classList.remove('flash');
   });

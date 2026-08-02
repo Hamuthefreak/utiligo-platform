@@ -67,17 +67,15 @@ if (!function_exists('_nav_active')) {
     align-items: center;
     justify-content: center;
     gap: 20px;
-    transition: opacity .35s ease, visibility .35s ease;
-  }
-  #page-loader.fade-out {
-    opacity: 0;
-    visibility: hidden;
+    opacity: 1;
+    visibility: visible;
+    /* no transition here — JS sets it dynamically when dismissing */
   }
   .loader-logo {
     display: flex;
     align-items: center;
     gap: 10px;
-    animation: loader-pop .4s cubic-bezier(.34,1.56,.64,1) both;
+    animation: loader-pop .38s cubic-bezier(.34,1.56,.64,1) both;
   }
   .loader-logo span {
     font-size: 1.5rem;
@@ -92,25 +90,19 @@ if (!function_exists('_nav_active')) {
   .loader-bar-track {
     width: 160px;
     height: 3px;
-    background: rgba(255,255,255,.08);
+    background: rgba(255,255,255,.10);
     border-radius: 99px;
     overflow: hidden;
   }
-  .loader-bar-fill {
+  /* Fill starts at 0 — width + transition set entirely by JS for variable timing */
+  #loader-fill {
     height: 100%;
     width: 0%;
     border-radius: 99px;
     background: #fff;
-    animation: loader-bar 0.7s cubic-bezier(.4,0,.2,1) forwards;
-    animation-delay: .1s;
-  }
-  @keyframes loader-bar {
-    0%   { width:0%;   opacity:1; }
-    70%  { width:85%;  opacity:1; }
-    100% { width:100%; opacity:0; }
   }
 
-  /* ── Page-leave flash (nav clicks) ── */
+  /* ── Page-leave flash ── */
   #page-leave {
     position: fixed;
     inset: 0;
@@ -141,11 +133,11 @@ if (!function_exists('_nav_active')) {
     <span>Utiligo</span>
   </div>
   <div class="loader-bar-track">
-    <div class="loader-bar-fill"></div>
+    <div id="loader-fill"></div>
   </div>
 </div>
 
-<!-- Page-leave overlay (flashes when navigating away) -->
+<!-- Page-leave overlay -->
 <div id="page-leave"></div>
 
 <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 z-40 hidden lg:hidden" onclick="closeSidebar()"></div>
