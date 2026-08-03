@@ -105,13 +105,9 @@ if (!function_exists('_nav_active')) {
     text-transform: uppercase;
     color: rgba(255,255,255,0.2);
   }
-  body.page-ready main > div {
-    animation: utl-fadein 0.2s ease forwards;
-  }
-  @keyframes utl-fadein {
-    from { opacity: 0; transform: translateY(5px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+  /* Removed the utl-fadein animation that started at opacity:0 —
+     it caused the entire page content to be invisible if page-ready
+     was delayed or never applied (slow load / JS error). */
   .nav-link-loading {
     opacity: 0.5;
     pointer-events: none;
@@ -259,7 +255,6 @@ function closeSidebar() { document.getElementById('sidebar').classList.remove('o
     bar.style.width = '100%';
     setTimeout(function () {
       loader.classList.remove('visible');
-      document.body.classList.add('page-ready');
     }, 150);
   }
 
@@ -273,8 +268,7 @@ function closeSidebar() { document.getElementById('sidebar').classList.remove('o
   document.addEventListener('DOMContentLoaded', function () { setTimeout(finish, 60); });
   setTimeout(finish, 600);
 
-  // Only trigger on real anchor-click navigations (never on form submits —
-  // every in-portal form uses fetch and never causes a page navigation).
+  // Only trigger on real anchor-click navigations
   document.addEventListener('click', function (e) {
     var anchor = e.target.closest('a');
     if (!anchor) return;
