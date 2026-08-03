@@ -31,7 +31,7 @@ $_has_logo  = file_exists($_logo_path);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Site Editor — <?= htmlspecialchars($site['business_name']) ?></title>
+<title>Site Editor &mdash; <?= htmlspecialchars($site['business_name']) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="/assets/css/style.css">
@@ -41,14 +41,13 @@ html, body {
   height: 100%; margin: 0;
   background: #080c14; color: #fff;
   font-family: 'Inter', system-ui, sans-serif;
-  /* allow body scroll on mobile so the iframe fills properly */
   overflow: hidden;
 }
 
 /* ===================== SHELL ===================== */
 #editorShell {
   display: flex;
-  height: 100dvh; /* dynamic viewport height — avoids mobile browser chrome issues */
+  height: 100dvh;
   width: 100vw;
   overflow: hidden;
   position: relative;
@@ -103,7 +102,7 @@ html, body {
 .sb-action.secondary:hover { background: rgba(255,255,255,.12); color: #fff; }
 
 /* ===================== MAIN PANEL ===================== */
-#editorMain { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #111827; min-width: 0; }
+#editorMain { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #0d1117; min-width: 0; }
 
 /* Top bar */
 #editorTopBar {
@@ -117,7 +116,7 @@ html, body {
   gap: 6px;
 }
 #menuToggleBtn {
-  display: none; /* shown on mobile */
+  display: none;
   width: 36px; height: 36px;
   border-radius: 9px;
   background: rgba(255,255,255,.07);
@@ -163,12 +162,23 @@ html, body {
 
 /* ===================== VIEWPORT ===================== */
 #editorViewport { flex: 1; overflow: hidden; position: relative; display: flex; align-items: stretch; }
-#iframeWrap { flex: 1; display: flex; justify-content: center; align-items: flex-start; overflow: auto; padding: 12px; background: #111827; -webkit-overflow-scrolling: touch; }
+/* Neutral mid-grey — not pitch-black, so the iframe doesn't look dimmed */
+#iframeWrap {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow: auto;
+  padding: 12px;
+  background: #1e2533;
+  -webkit-overflow-scrolling: touch;
+}
 #iframeInner {
   width: 100%; max-width: 100%;
   height: calc(100dvh - 48px - 24px);
   border-radius: 10px; overflow: hidden;
-  box-shadow: 0 0 0 1px rgba(255,255,255,.05), 0 24px 64px rgba(0,0,0,.6);
+  /* subtle border only — no heavy dark shadow that bleeds over the content */
+  box-shadow: 0 0 0 1px rgba(255,255,255,.08);
   background: #fff;
   transition: max-width .25s ease;
 }
@@ -195,7 +205,7 @@ html, body {
 
 /* ===================== MOBILE BOTTOM NAV ===================== */
 #mobileBottomNav {
-  display: none; /* shown on mobile */
+  display: none;
   height: 56px;
   flex-shrink: 0;
   background: rgba(8,12,20,.98);
@@ -250,7 +260,6 @@ html, body {
 
 /* ===================== RESPONSIVE BREAKPOINTS ===================== */
 @media (max-width: 768px) {
-  /* Hide desktop sidebar, show as drawer */
   #editorSidebar {
     position: fixed;
     top: 0; left: 0; bottom: 0;
@@ -259,43 +268,25 @@ html, body {
     z-index: 40;
     box-shadow: 4px 0 32px rgba(0,0,0,.6);
   }
-  #editorSidebar.drawer-open {
-    transform: translateX(0);
-  }
-
-  /* Show hamburger & Done in top bar */
+  #editorSidebar.drawer-open { transform: translateX(0); }
   #menuToggleBtn { display: flex; }
   #topDoneBtn    { display: flex; align-items: center; }
-
-  /* Shrink top bar text */
   #editorTopBar .site-label { max-width: 90px; font-size: 11px; }
   #editorTopBar .page-label { display: none; }
-
-  /* Show mobile bottom nav */
   #mobileBottomNav { display: flex; }
-
-  /* Shrink iframe padding */
   #iframeWrap { padding: 6px; }
   #iframeInner {
     border-radius: 6px;
-    /* account for top bar (48px) + bottom nav (56px) + padding (12px) */
     height: calc(100dvh - 48px - 56px - 12px);
   }
-
-  /* Move preview bar up above bottom nav */
   #previewBar { bottom: 66px; }
-
-  /* Make floating toolbars full-width on very small screens */
   #imageToolbar { width: min(210px, calc(100vw - 32px)); }
   #bgToolbar    { min-width: min(165px, calc(100vw - 32px)); }
-
-  /* Larger touch targets for toolbar buttons */
   .tb-btn { width: 36px; height: 36px; font-size: 14px; }
 }
 
 @media (max-width: 480px) {
   #editorTopBar .site-label { max-width: 60px; }
-  /* On very small phones hide undo/redo from top bar (available in drawer) */
   #undoBtnTop, #redoBtnTop, #saveStatusTop { display: none; }
 }
 </style>
@@ -343,7 +334,7 @@ html, body {
       <div class="section-label" style="margin-top:10px;">Tools</div>
       <button type="button" class="tool-btn" id="hintToggleBtn">
         <i class="fa-regular fa-circle-question"></i> How to edit
-        <span class="tool-hint" id="hintToggleArrow">▾</span>
+        <span class="tool-hint" id="hintToggleArrow">&dtrif;</span>
       </button>
       <button type="button" class="tool-btn" id="undoBtn" disabled>
         <i class="fa-solid fa-rotate-left"></i> Undo
@@ -356,9 +347,9 @@ html, body {
     </div>
 
     <div id="sbHint">
-      <strong>💡 Tap any text</strong> in the preview to edit it inline.<br>
-      <strong>🖼️ Tap an image</strong> to open the replace panel.<br>
-      <strong>🎨 Tap a section background</strong> to change its colour.<br>
+      <strong>&#128161; Tap any text</strong> in the preview to edit it inline.<br>
+      <strong>&#128444;&#65039; Tap an image</strong> to open the replace panel.<br>
+      <strong>&#127912; Tap a section background</strong> to change its colour.<br>
       Changes save automatically.
     </div>
 
@@ -378,20 +369,15 @@ html, body {
   <div id="editorMain">
     <!-- Top bar -->
     <div id="editorTopBar">
-      <!-- Hamburger: mobile only -->
       <button id="menuToggleBtn" type="button" aria-label="Menu" onclick="openDrawer()">
         <i class="fa-solid fa-bars"></i>
       </button>
-
       <span class="site-label"><?= htmlspecialchars($site['business_name']) ?></span>
       <span class="page-label">&mdash; <?= htmlspecialchars($pages[$currentPage]) ?></span>
       <div style="flex:1;"></div>
-
       <button id="undoBtnTop" type="button" title="Undo" disabled class="top-icon-btn"><i class="fa-solid fa-rotate-left"></i></button>
       <button id="redoBtnTop" type="button" title="Redo" disabled class="top-icon-btn"><i class="fa-solid fa-rotate-right"></i></button>
       <span id="saveStatusTop" style="font-size:10px;color:#334155;"></span>
-
-      <!-- Done button: mobile only -->
       <a href="/portal/my_sites.php" id="topDoneBtn">
         <i class="fa-solid fa-check" style="margin-right:5px;font-size:11px;"></i>Done
       </a>
@@ -471,7 +457,6 @@ html, body {
 </div>
 
 <script>
-// ---- Drawer (mobile sidebar) ----
 function openDrawer() {
   document.getElementById('editorSidebar').classList.add('drawer-open');
   document.getElementById('drawerOverlay').classList.add('open');
@@ -484,7 +469,6 @@ function closeDrawer() {
 }
 document.getElementById('drawerOverlay').addEventListener('click', closeDrawer);
 
-// ---- Viewport switcher ----
 document.querySelectorAll('.preview-btn').forEach(btn => {
   btn.addEventListener('click', function() {
     document.querySelectorAll('.preview-btn').forEach(b => b.classList.remove('active'));
@@ -493,7 +477,6 @@ document.querySelectorAll('.preview-btn').forEach(btn => {
   });
 });
 
-// ---- How-to-edit hint toggle ----
 const hintBox   = document.getElementById('sbHint');
 const hintBtn   = document.getElementById('hintToggleBtn');
 const hintArrow = document.getElementById('hintToggleArrow');
@@ -504,32 +487,30 @@ if (hintBtn && hintBox) {
   });
 }
 
-// ---- Mirror undo/redo/saveStatus across all instances ----
-const undoSb   = document.getElementById('undoBtn');
-const redoSb   = document.getElementById('redoBtn');
-const undoTop  = document.getElementById('undoBtnTop');
-const redoTop  = document.getElementById('redoBtnTop');
-const mobUndo  = document.getElementById('mobUndoBtn');
-const mobRedo  = document.getElementById('mobRedoBtn');
-const mobSave  = document.getElementById('mobSaveBtn');
-const ssSb     = document.getElementById('saveStatus');
-const ssTop    = document.getElementById('saveStatusTop');
+const undoSb  = document.getElementById('undoBtn');
+const redoSb  = document.getElementById('redoBtn');
+const undoTop = document.getElementById('undoBtnTop');
+const redoTop = document.getElementById('redoBtnTop');
+const mobUndo = document.getElementById('mobUndoBtn');
+const mobRedo = document.getElementById('mobRedoBtn');
+const mobSave = document.getElementById('mobSaveBtn');
+const ssSb    = document.getElementById('saveStatus');
+const ssTop   = document.getElementById('saveStatusTop');
 
 function mirrorAttr(source, target, attr) {
   if (!source || !target) return;
   new MutationObserver(() => { target[attr] = source[attr]; }).observe(source, { attributes: true });
 }
-mirrorAttr(undoSb, undoTop,  'disabled');
-mirrorAttr(undoSb, mobUndo,  'disabled');
-mirrorAttr(redoSb, redoTop,  'disabled');
-mirrorAttr(redoSb, mobRedo,  'disabled');
+mirrorAttr(undoSb, undoTop, 'disabled');
+mirrorAttr(undoSb, mobUndo, 'disabled');
+mirrorAttr(redoSb, redoTop, 'disabled');
+mirrorAttr(redoSb, mobRedo, 'disabled');
 
-if (undoTop)  undoTop.addEventListener('click',  () => undoSb?.click());
-if (mobUndo)  mobUndo.addEventListener('click',  () => undoSb?.click());
-if (redoTop)  redoTop.addEventListener('click',  () => redoSb?.click());
-if (mobRedo)  mobRedo.addEventListener('click',  () => redoSb?.click());
+if (undoTop) undoTop.addEventListener('click', () => undoSb?.click());
+if (mobUndo) mobUndo.addEventListener('click', () => undoSb?.click());
+if (redoTop) redoTop.addEventListener('click', () => redoSb?.click());
+if (mobRedo) mobRedo.addEventListener('click', () => redoSb?.click());
 
-// Mobile save button triggers the sidebar save (site_editor.js exposes window.editorSave)
 if (mobSave) {
   mobSave.addEventListener('click', () => {
     if (typeof window.editorSave === 'function') window.editorSave();
