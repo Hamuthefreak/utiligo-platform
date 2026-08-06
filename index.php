@@ -21,7 +21,7 @@ $faq_free_sites = defined('FREE_SITE_LIMIT')          ? FREE_SITE_LIMIT         
 $faq_pro_price  = defined('PRO_PLAN_PRICE')           ? PRO_PLAN_PRICE          : 21.99;
 $faq_ent_price  = defined('ENTREPRENEUR_PLAN_PRICE')  ? ENTREPRENEUR_PLAN_PRICE : 49.99;
 
-$pageTitle = 'Utiligo — Find Clients. Build Websites. Get aid.';
+$pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
