@@ -22,7 +22,7 @@ $faq_pro_price  = defined('PRO_PLAN_PRICE')           ? PRO_PLAN_PRICE          
 $faq_ent_price  = defined('ENTREPRENEUR_PLAN_PRICE')  ? ENTREPRENEUR_PLAN_PRICE : 49.99;
 
 $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.';
-require_once __DIR__ . '/includes/header.php';
+require_once __DIR__ . '/includes/heaer.php';
 ?>
 
 <!-- HERO -->
