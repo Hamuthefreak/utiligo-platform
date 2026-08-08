@@ -18,6 +18,17 @@ error_reporting(E_ALL);
 
 if (!defined('APP_ENV')) define('APP_ENV', getenv('APP_ENV') ?: 'production');
 
+// ── Load admin-managed config overrides FIRST ─────────────────────────
+// storage/config_overrides.php is written by admin/config.php and may
+// define() any constant in this file (DB creds, plan limits, keys, …).
+// It MUST be loaded before the defines below so its values win over the
+// defaults.  (plan_limits.php loaded later will see them already set.)
+$_storage_overrides = __DIR__ . '/storage/config_overrides.php';
+if (is_file($_storage_overrides)) {
+    require_once $_storage_overrides;
+}
+unset($_storage_overrides);
+
 if (APP_ENV === 'production') {
     ini_set('display_errors', '0');
     ini_set('log_errors', '1');
@@ -38,14 +49,22 @@ if (APP_ENV === 'production') {
     ini_set('display_errors', '1');
 }
 
+require_once __DIR__ . '/includes/global_error_handler.php';
+
 // ---- Platform database ----
-if (!defined('DB_HOST')) define('DB_HOST', getenv('DB_HOST') ?: 'localhost');
+// NOTE: default host is 127.0.0.1 (forces TCP) instead of 'localhost'.
+// On many hosts (InfinityFree, Windows, PHP-FPM), 'localhost' makes PDO
+// try the Unix socket and fail with SQLSTATE[HY000] [2002]
+// "No such file or directory".  To override, set DB_HOST env var or
+// define() it in storage/config_overrides.php (e.g. your InfinityFree
+// MySQL hostname like sql303.epizy.com).
+if (!defined('DB_HOST')) define('DB_HOST', getenv('DB_HOST') ?: '127.0.0.1');
 if (!defined('DB_NAME')) define('DB_NAME', getenv('DB_NAME') ?: 'utiligo_platform');
 if (!defined('DB_USER')) define('DB_USER', getenv('DB_USER') ?: 'CHANGE_ME');
 if (!defined('DB_PASS')) define('DB_PASS', getenv('DB_PASS') ?: 'CHANGE_ME');
 
 // ---- User accounts database ----
-if (!defined('USERDB_HOST')) define('USERDB_HOST', getenv('USERDB_HOST') ?: 'localhost');
+if (!defined('USERDB_HOST')) define('USERDB_HOST', getenv('USERDB_HOST') ?: '127.0.0.1');
 if (!defined('USERDB_NAME')) define('USERDB_NAME', getenv('USERDB_NAME') ?: 'utiligo_users_db');
 if (!defined('USERDB_USER')) define('USERDB_USER', getenv('USERDB_USER') ?: 'CHANGE_ME');
 if (!defined('USERDB_PASS')) define('USERDB_PASS', getenv('USERDB_PASS') ?: 'CHANGE_ME');
@@ -73,6 +92,14 @@ if (!defined('GOOGLE_FIELDS_CONTACT'))
 if (!defined('GOOGLE_FIELDS_FULL'))
     define('GOOGLE_FIELDS_FULL',
         GOOGLE_FIELDS_CONTACT . ',reviews,price_level,plus_code,url,vicinity');
+
+// ── Google Places monthly cap ────────────────────────────────────────────
+// Total number of Google Places API calls (text-search + place-details
+// combined) platform-wide per calendar month, UTC. Hard stop after this is
+// exceeded so we never get billed past Google's free tier.
+// Default 5000 ≈ Google's free quota for Places API.
+// Override via storage/config_overrides.php (Admin → Settings → Google API).
+if (!defined('PLACES_API_MONTHLY_LIMIT')) define('PLACES_API_MONTHLY_LIMIT', 5000);
 
 function google_fields_mask(): string {
     return match(GOOGLE_FIELDS_TIER) {
@@ -173,7 +200,11 @@ if (session_status() === PHP_SESSION_NONE) {
         // Session start failed — log and continue without sessions.
         // Pages that require login will redirect to /login.php via
         // require_login() -> is_logged_in() -> $_SESSION check.
-        error_log('[config] session_start failed: ' . $__se->getMessage());
+        if (function_exists('_utiligo_write_error_log')) {
+            _utiligo_write_error_log('ERROR', 'session_start failed: ' . $__se->getMessage(), __FILE__, __LINE__);
+        } else {
+            error_log('[config] session_start failed: ' . $__se->getMessage());
+        }
         unset($__se);
     }
 }

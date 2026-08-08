@@ -1,0 +1,56 @@
+[07-Aug-2026 12:44:41 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:44:42 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:47:44 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:47:46 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:48:13 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:49:19 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:49:24 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:51:55 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:52:01 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:52:01 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:52:12 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 12:52:14 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:27:38 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:27:54 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:27:55 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:27:58 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:27:59 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:59:47 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:59:49 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:59:51 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 13:59:53 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:08:47 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:08:49 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:08:50 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:14:34 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:16:31 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:16:33 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:16:38 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:16:40 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:16:42 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:17:05 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:18:25 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:18:28 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:30:08 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:30:10 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:30:10 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:30:11 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:30:12 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:49:25 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] No such file or directory
+[07-Aug-2026 14:53:58 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] Connection refused
+[07-Aug-2026 14:54:00 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] Connection refused
+[07-Aug-2026 14:54:02 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] Connection refused
+[07-Aug-2026 14:54:39 America/New_York] [remember_me] check failed: SQLSTATE[HY000] [2002] Connection refused
+[07-Aug-2026 18:38:59 America/New_York] send_email(): BREVO_API_KEY not configured — falling back to mail()
+[07-Aug-2026 18:38:59 America/New_York] send_email(): mail() fallback failed for singhhamu2008@gmail.com (subject: Verify your Utiligo account)
+[07-Aug-2026 18:40:18 America/New_York] send_email(): BREVO_API_KEY not configured — falling back to mail()
+[07-Aug-2026 18:40:18 America/New_York] send_email(): mail() fallback failed for singhhamu2008@gmail.com (subject: Verify your Utiligo account)
+[07-Aug-2026 18:51:33 America/New_York] send_email(): Brevo API failed for singhhamu2008@gmail.com — HTTP {"message":"Key not found","code":"unauthorized"}
+
+[07-Aug-2026 18:51:33 America/New_York] send_email(): mail() fallback failed for singhhamu2008@gmail.com (subject: Verify your Utiligo account)
+[07-Aug-2026 18:53:47 America/New_York] send_email(): Brevo API failed for singhhamu2008@gmail.com — HTTP {"message":"Key not found","code":"unauthorized"}
+
+[07-Aug-2026 18:53:47 America/New_York] send_email(): mail() fallback failed for singhhamu2008@gmail.com (subject: Verify your Utiligo account)
+[07-Aug-2026 18:54:30 America/New_York] send_email(): Brevo API failed for singhhamu2008@gmail.com — HTTP {"message":"Key not found","code":"unauthorized"}
+
+[07-Aug-2026 18:54:30 America/New_York] send_email(): mail() fallback failed for singhhamu2008@gmail.com (subject: Verify your Utiligo account)

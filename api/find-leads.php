@@ -27,7 +27,7 @@ $_t_start = microtime(true);
 
 // ── helpers ───────────────────────────────────────────────────────────────
 function _leads_ms(float $since): int { return (int)round((microtime(true) - $since) * 1000); }
-function _leads_json_fail(string $msg, int $code = 200, array $extra = []): never {
+function _leads_json_fail(string $msg, int $code = 200, array $extra = []): void {
     if ($code !== 200) http_response_code($code);
     echo json_encode(array_merge(['success'=>false,'error'=>$msg], $extra));
     exit;
@@ -179,8 +179,9 @@ foreach ($_required_cols as $_col => $_ddl) {
 }
 $_existing_cols = get_columns($pdo, 'utiligo_leads');
 
-// ── 6. Pro lead-limit check ───────────────────────────────────────────────
-$pro_lead_limit = plan_lead_limit($plan);
+// ── 6. Pro lead-limit check (with per-user override) ───────────────────────
+preload_user_limit_overrides($uid);   // primes the limit-override cache
+$pro_lead_limit = plan_lead_limit($plan, $uid);
 if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
     try {
         $lc_check = $pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id=?');
@@ -205,7 +206,7 @@ if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
 // ── 7. Free quota — stored in USER DB so it always persists ──────────────
 $searches_used = 0; $searches_remaining = null;
 if (!$is_paid) {
-    $daily_limit = (int)FREE_SEARCH_DAILY_LIMIT;
+    $daily_limit = plan_search_daily_limit($plan, $uid);  // honors override
     $fingerprint = 'uid_' . $uid;
     try {
         $udb = get_user_db();
@@ -282,6 +283,22 @@ if (!$from_cache) {
         leads_log_error('google_api_key_missing', ['uid'=>$uid]);
         _leads_json_fail('Lead search not configured.');
     }
+
+    // ── Monthly hard cap ───────────────────────────────────────────────────
+    // Worst-case cost of this one search = (3 textsearch pages) + (max detail
+    // calls per search) detail lookups. We refuse to start if the remaining
+    // monthly budget can't cover it, so a search never starts and then dies
+    // halfway through when the cap is hit.
+    $max_pages = 3;
+    $max_det   = (int)MAX_PLACES_DETAILS_LOOKUPS;
+    $worst_cost_this_search = $max_pages + $max_det;
+    $api_remaining = places_api_remaining();
+    if ($api_remaining < $worst_cost_this_search) {
+        leads_log_warn('places_api_monthly_limit', ['remaining'=>$api_remaining, 'worst_cost'=>$worst_cost_this_search, 'uid'=>$uid]);
+        $month_label = gmdate('F Y');
+        _leads_json_fail('Monthly lead-search limit reached for the platform (resets ' . $month_label . '). Try again next month.');
+    }
+
     $ctx = stream_context_create(['http'=>['timeout'=>15,'ignore_errors'=>true]]);
     $max_det=$det_cnt=0; $max_det=(int)MAX_PLACES_DETAILS_LOOKUPS;
     $next_token=null; $pages_fetched=0; $max_pages=3;
@@ -361,6 +378,17 @@ if (!$from_cache) {
         $next_token=$places['next_page_token']??null;
         $pages_fetched++;
     } while ($next_token && $pages_fetched<$max_pages && count($all_leads)<$req_count);
+
+    // ── Record this search's API usage against the monthly cap ──────────
+    // $pages_fetched = number of text-search API calls made;
+    // $det_cnt       = number of place-details API calls made.
+    // Worst-case was already budgeted before starting (line 293-298).
+    // We record the ACTUAL count (not the worst-case) so a partial
+    // search that errored out doesn't over-debit the monthly budget.
+    $_api_calls_used = (int)$pages_fetched + (int)$det_cnt;
+    if ($_api_calls_used > 0) {
+        places_api_increment($_api_calls_used);
+    }
 
     $_google_ms = _leads_ms($_t_google);
     leads_log_info('google_fetch',['city'=>$city,'industry'=>$industry,'pages'=>$pages_fetched,'raw_leads'=>count($all_leads),'ms'=>$_google_ms]);

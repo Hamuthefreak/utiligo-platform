@@ -216,3 +216,56 @@ function db_table_has_column(PDO $pdo, string $table, string $column): bool
     }
     return $cache[$cacheKey];
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Google Places monthly cap helpers
+   ───────────────────────────────────────────────────────────────────────────
+   Enforces a platform-wide monthly call limit (PLACES_API_MONTHLY_LIMIT,
+   default 5000) so we never exceed Google's free tier and get billed.
+   Tracked in `places_api_usage` (platform DB, created by migration 019).
+   Month is UTC 'YYYY-MM'; counter resets automatically at month boundary.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Remaining Google Places calls in the current UTC month.
+ * Returns the limit itself if tracking fails (defensive; never throws).
+ * Returns >=0 (clamped to 0).
+ */
+function places_api_remaining(): int
+{
+    $limit = defined('PLACES_API_MONTHLY_LIMIT') ? (int)PLACES_API_MONTHLY_LIMIT : 5000;
+    try {
+        $pdo  = get_platform_db();
+        $ym   = gmdate('Y-m');
+        $stmt = $pdo->prepare('SELECT calls_count FROM places_api_usage WHERE year_month = ? LIMIT 1');
+        $stmt->execute([$ym]);
+        $used = (int)$stmt->fetchColumn();
+        return max(0, $limit - $used);
+    } catch (\Throwable $e) {
+        // Table missing or DB unreachable — degrade to "limit assumed remaining"
+        // to avoid blocking lead search during a partial outage.
+        error_log('[places_api_remaining] ' . $e->getMessage());
+        return $limit;
+    }
+}
+
+/**
+ * Atomically increment this month's Places API call counter by $count.
+ * Uses INSERT ... ON DUPLICATE KEY UPDATE so concurrent requests are safe.
+ * Never throws; failures are logged.
+ */
+function places_api_increment(int $count = 1): void
+{
+    if ($count <= 0) return;
+    try {
+        $pdo = get_platform_db();
+        $ym  = gmdate('Y-m');
+        $pdo->prepare(
+            'INSERT INTO places_api_usage (year_month, calls_count)
+             VALUES (?, ?)
+             ON DUPLICATE KEY UPDATE calls_count = calls_count + ?'
+        )->execute([$ym, $count, $count]);
+    } catch (\Throwable $e) {
+        error_log('[places_api_increment] ' . $e->getMessage());
+    }
+}

@@ -55,7 +55,10 @@ RewriteRule ^includes/   - [F,L]
 <FilesMatch "^(config|db|userdb)\.php$">
     Require all denied
 </FilesMatch>
-<FilesMatch "\.(sql|sh|env|log|bak|zip)$">
+# Block sensitive file types. NOT ".zip" — user-generated site exports
+# are served from /exports/*.zip (api/generate-site.php), and blocking
+# *.zip globally would 403 every legitimate ZIP download.
+<FilesMatch "\.(sql|sh|env|log|bak|ini)$">
     Require all denied
 </FilesMatch>
 
@@ -73,3 +76,8 @@ RewriteRule ^includes/   - [F,L]
 </IfModule>
 
 ServerSignature Off
+# php_value only works under mod_php; wrap it so PHP-FPM/CGI/FastCGI
+# hosts (InfinityFree and most modern setups) don't 500 the whole site.
+<IfModule mod_php.c>
+    php_value display_errors On
+</IfModule>

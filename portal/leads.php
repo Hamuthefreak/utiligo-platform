@@ -155,13 +155,20 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     align-items:stretch;
   }
   .search-actions .tog-row {
+    flex-direction:column;
+    align-items:stretch;
+    gap:12px;
+  }
+  .search-actions .tog-row > label {
     justify-content:space-between;
+    align-self:stretch;
   }
   #searchBtn {
     width:100%;
     justify-content:center;
     padding-top:.85rem;
     padding-bottom:.85rem;
+    margin-left:0;          /* override ml-auto */
   }
 }
 </style>
@@ -233,11 +240,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 
 <!-- PAGE HEADER -->
-<div class="mb-6">
+<div class="mb-5 sm:mb-6">
   <div class="flex items-start justify-between flex-wrap gap-3">
-    <div>
-      <h1 class="text-2xl font-bold tracking-tight">Find Leads</h1>
-      <p class="text-slate-500 text-sm mt-1">Discover local businesses with no website — your next paying clients.</p>
+    <div class="min-w-0">
+      <h1 class="text-xl sm:text-2xl font-bold tracking-tight">Find Leads</h1>
+      <p class="text-slate-500 text-xs sm:text-sm mt-1">Discover local businesses with no website — your next paying clients.</p>
     </div>
     <button onclick="openHistoryDrawer()"
       class="xl:hidden flex items-center gap-1.5 text-xs text-slate-500 hover:text-white

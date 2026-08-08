@@ -90,7 +90,17 @@ function register_user(string $email, string $password, string $fullName): array
 
     require_once __DIR__ . '/../db.php';
     $platformDb = get_platform_db();
-    $platformDb->prepare('INSERT INTO utiligo_whitelabel (user_id) VALUES (?)')->execute([$userId]);
+    try {
+        $platformDb->prepare('INSERT INTO utiligo_whitelabel (user_id) VALUES (?)')->execute([$userId]);
+    } catch (\Throwable $e) {
+        // Whitelabel row is non-essential at signup (portal/onboarding.php
+        // creates it later if missing). Never fail registration over this.
+        if (function_exists('_utiligo_write_error_log')) {
+            _utiligo_write_error_log('ERROR', 'register_user whitelabel insert failed: ' . $e->getMessage(), __FILE__, __LINE__);
+        } else {
+            error_log('[register_user] whitelabel insert failed: ' . $e->getMessage());
+        }
+    }
 
     return ['success' => true, 'user_id' => $userId];
 }

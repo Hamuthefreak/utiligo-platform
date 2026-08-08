@@ -127,8 +127,8 @@ if (!function_exists('_nav_active')) {
 
 <aside id="sidebar" class="w-64 h-screen bg-slate-900/95 border-r border-white/5 flex flex-col lg:fixed lg:top-0 lg:left-0 backdrop-blur-xl">
 
-  <!-- Logo -->
-  <div class="px-5 py-5 border-b border-white/5">
+  <!-- Logo (never scrolls away; never gets compressed) -->
+  <div class="px-5 py-5 border-b border-white/5 shrink-0">
     <a href="/" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
         <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
@@ -141,8 +141,8 @@ if (!function_exists('_nav_active')) {
     </a>
   </div>
 
-  <!-- Nav -->
-  <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
+  <!-- Nav (scrolls independently; min-h-0 is the flexbox key to allow shrink) -->
+  <nav class="flex-1 min-h-0 overflow-y-auto px-3 py-4 space-y-1">
     <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mb-2">Main</p>
     <a href="/portal/index"    class="nav-link <?= _nav_active('/portal/index',    $_path) ?>"><i class="fa-solid fa-house"></i> Dashboard</a>
     <a href="/portal/leads"    class="nav-link <?= _nav_active('/portal/leads',    $_path) ?>"><i class="fa-solid fa-magnifying-glass"></i> Find Leads</a>
@@ -173,7 +173,7 @@ if (!function_exists('_nav_active')) {
 
   <!-- Plan badge -->
   <?php if (!$_is_paid): ?>
-  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
+  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8 shrink-0">
     <p class="text-xs font-bold text-white mb-0.5">Free Plan</p>
     <p class="text-xs text-slate-400 mb-3">Unlock more leads &amp; sites</p>
     <a href="/portal/billing?upgrade=1"
@@ -182,7 +182,7 @@ if (!function_exists('_nav_active')) {
     </a>
   </div>
   <?php elseif ($_is_pro): ?>
-  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8">
+  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8 shrink-0">
     <p class="text-xs font-bold text-white mb-0.5">Pro Plan</p>
     <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; 500 sites</p>
     <a href="/portal/billing?plan=entrepreneur"
@@ -192,8 +192,8 @@ if (!function_exists('_nav_active')) {
   </div>
   <?php endif; ?>
 
-  <!-- User footer -->
-  <div class="px-4 py-4 border-t border-white/5 flex items-center gap-3">
+  <!-- User footer (always visible at bottom; never compressed) -->
+  <div class="px-4 py-4 border-t border-white/5 flex items-center gap-3 shrink-0">
     <div class="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center shrink-0 text-sm font-bold text-white">
       <?= $_initials ?>
     </div>
@@ -201,7 +201,7 @@ if (!function_exists('_nav_active')) {
       <p class="text-xs font-semibold text-white truncate"><?= $_name ?></p>
       <p class="text-xs text-slate-500"><?= $_plan_label ?> Plan</p>
     </div>
-    <a href="/logout" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
+    <a href="/logout" title="Logout" class="w-9 h-9 rounded-lg flex items-center justify-center text-slate-500 hover:text-red-400 hover:bg-white/5 transition text-sm shrink-0">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
     </a>
   </div>
@@ -223,7 +223,7 @@ if (!function_exists('_nav_active')) {
     <?php endif; ?>
     <span class="font-black text-base">Utiligo</span>
   </a>
-  <a href="/logout" class="text-slate-400 hover:text-white text-sm">
+  <a href="/logout" class="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-white/5 transition">
     <i class="fa-solid fa-arrow-right-from-bracket"></i>
   </a>
 </header>

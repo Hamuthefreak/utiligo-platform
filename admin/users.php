@@ -1,11 +1,14 @@
 <?php
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../userdb.php';
+require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/admin_auth.php';
+require_once __DIR__ . '/../includes/functions.php';
 
 require_admin();
 $admin = $GLOBALS['admin_user'];
 $udb   = get_user_db();
+$pdb   = get_platform_db();
 
 // ── POST actions ──────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -19,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $pg       = max(1, (int)($_GET['page'] ?? 1));
     $base     = '/admin/users.php?page=' . $pg . ($q !== '' ? '&q=' . $q : '');
 
-    if ($targetId === (int)$admin['id'] && in_array($action, ['ban','demote'])) {
-        header('Location: ' . $base . '&flash_error=' . urlencode('You cannot ban or demote your own account.'));
+    if ($targetId === (int)$admin['id'] && in_array($action, ['ban','demote','delete'])) {
+        header('Location: ' . $base . '&flash_error=' . urlencode('You cannot ban, demote, or delete your own account.'));
         exit;
     }
 
@@ -60,6 +63,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $udb->prepare('UPDATE utiligo_users SET is_admin=0 WHERE id=?')->execute([$targetId]);
         _admin_log('WARN', "Demoted user_id={$targetId}");
         header('Location: ' . $base . '&flash=' . urlencode('Admin rights removed.'));
+        exit;
+    }
+
+    // ── Delete account (irreversible) ──────────────────────────────────────────
+    // HARD-delete the user across BOTH databases and their server-side files:
+    //   User DB:    remember_tokens, email_verifications, password_resets,
+    //               2fa_codes, lead_search_quota, then the user row itself.
+    //   Platform DB: site_uploads (per-site), generated_sites (incl. on-disk
+    //               site folders + ZIP files), whitelabel, unlocked_leads,
+    //               lead_search_history.
+    //   Files:       /assets/uploads/user_images/{user_id}/
+    // Self-delete is blocked above (would log the admin out mid-request).
+    if ($action === 'delete' && $targetId > 0) {
+        $deletedEmail = '';
+        try {
+            $u = $udb->prepare('SELECT email FROM utiligo_users WHERE id = ? LIMIT 1');
+            $u->execute([$targetId]);
+            $row = $u->fetch();
+            $deletedEmail = $row['email'] ?? '';
+        } catch (\Throwable $e) {}
+
+        // ── Platform DB: clean generated site files + uploads, then rows ──
+        try {
+            $siteStmt = $pdb->prepare('SELECT id, public_slug, business_name, zip_file_path FROM utiligo_generated_sites WHERE user_id = ?');
+            $siteStmt->execute([$targetId]);
+            $sites = $siteStmt->fetchAll();
+
+            foreach ($sites as $s) {
+                $slugDir = !empty($s['public_slug'])
+                    ? $s['public_slug']
+                    : (slugify($s['business_name'] ?? 'site') . '-' . $s['id']);
+                $siteDir = __DIR__ . '/../assets/uploads/generated_sites/' . $slugDir;
+                if (is_dir($siteDir)) {
+                    if (!recursive_delete_directory($siteDir) && function_exists('log_error')) {
+                        log_error('admin.delete_user', "Could not fully remove: {$siteDir}", ['user_id' => $targetId, 'site_id' => $s['id']]);
+                    }
+                }
+                if (!empty($s['zip_file_path'])) {
+                    $zipPath = __DIR__ . '/../' . ltrim($s['zip_file_path'], '/');
+                    if (file_exists($zipPath)) @unlink($zipPath);
+                }
+                // Per-site uploads (if the table/column exists)
+                if (db_table_has_column($pdb, 'utiligo_site_uploads', 'site_id')) {
+                    try {
+                        $pdb->prepare('DELETE FROM utiligo_site_uploads WHERE site_id = ?')->execute([$s['id']]);
+                    } catch (\Throwable $e) {}
+                }
+            }
+            $pdb->prepare('DELETE FROM utiligo_generated_sites WHERE user_id = ?')->execute([$targetId]);
+        } catch (\Throwable $e) {}
+
+        // ── Platform DB: other user-scoped tables ──
+        foreach (['utiligo_whitelabel', 'unlocked_leads', 'utiligo_lead_search_history',
+                  'crm_clients', 'crm_tasks', 'crm_notes', 'crm_activities'] as $tbl) {
+            try {
+                $pdb->prepare("DELETE FROM `{$tbl}` WHERE user_id = ?")->execute([$targetId]);
+            } catch (\Throwable $e) {}
+        }
+
+        // ── User DB: remember tokens, tokens, 2fa, quota, then the row ──
+        $userDbTables = [
+            'utiligo_remember_tokens',
+            'utiligo_email_verifications',
+            'utiligo_password_resets',
+            'utiligo_2fa_codes',
+            'lead_search_quota',
+        ];
+        foreach ($userDbTables as $tbl) {
+            try {
+                $stmt = $udb->prepare("DELETE FROM `{$tbl}` WHERE user_id = ?");
+                $stmt->execute([$targetId]);
+            } catch (\Throwable $e) {}
+        }
+        $ok = false;
+        try {
+            $ok = (bool)$udb->prepare('DELETE FROM utiligo_users WHERE id = ?')->execute([$targetId]);
+        } catch (\Throwable $e) {
+            if (function_exists('log_error')) log_error('admin.delete_user', $e, ['user_id' => $targetId]);
+        }
+
+        // ── User-owned image directory ──
+        if ($ok) {
+            $userImgDir = __DIR__ . '/../assets/uploads/user_images/' . $targetId;
+            if (is_dir($userImgDir)) {
+                recursive_delete_directory($userImgDir);
+            }
+        }
+
+        _admin_log('WARN', "Hard-deleted user_id={$targetId} email=" . ($deletedEmail ?: '<unknown>') . " ok=" . ($ok ? '1' : '0'));
+        $msg = $ok
+            ? 'Account permanently deleted (email: ' . htmlspecialchars($deletedEmail ?: 'unknown') . ').'
+            : 'Could not fully delete the user row (other data cleared). See error log.';
+        header('Location: ' . $base . '&flash=' . urlencode($msg));
         exit;
     }
     header('Location: ' . $base);
@@ -258,14 +354,41 @@ require_once __DIR__ . '/../includes/admin_layout.php';
               <?php endif; ?>
             </form>
 
+            <?php if ((int)$u['id'] !== (int)$admin['id']): ?>
+            <!-- Hard-delete account (irreversible; wipes both DBs + files) -->
+            <form method="POST" onsubmit="return confirmDestroy('<?= htmlspecialchars($u['email'] ?? 'this user', ENT_QUOTES) ?>');">
+              <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
+              <input type="hidden" name="user_id"    value="<?= $u['id'] ?>">
+              <input type="hidden" name="action"     value="delete">
+              <button class="bg-red-600/15 hover:bg-red-600/40 text-red-300 border border-red-500/40 px-2.5 py-1 rounded-lg text-xs font-semibold transition">
+                <i class="fa-solid fa-trash text-[10px] mr-1"></i>Delete
+              </button>
+            </form>
+            <?php endif; ?>
+
           </div>
         </td>
       </tr>
       <?php endforeach; ?>
       </tbody>
-    </table>
-  </div>
-</div>
+     </table>
+   </div>
+ </div>
+
+<script>
+// Confirmation for irreversible hard-delete. Asks twice so a misclick
+// can't permanently wipe a user across both DBs and the filesystem.
+function confirmDestroy(email) {
+  if (!confirm('This will PERMANENTLY DELETE this account and all related\n' +
+               'data across both databases, including generated site files.\n' +
+               'This action CANNOT be undone.\n\n' +
+               'Email: ' + email + '\n\n' +
+               'Click OK to confirm the FIRST step.')) {
+    return false;
+  }
+  return prompt('To confirm, type the email address shown above exactly:') === email;
+}
+</script>
 
 <?php if ($pages > 1): ?>
 <div class="flex gap-2">

@@ -18,5 +18,11 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
+<!-- Download confirmation helper: every <a data-download> / .zip-download
+     gets progress + a "Downloaded" confirmation toast instead of silently
+     loading forever. Loaded from portal_layout_end so every portal page
+     (My Sites, Generate, leads) gets it automatically. -->
+<script src="/assets/js/download_helper.js?v=1"></script>
+
 </body>
 </html>

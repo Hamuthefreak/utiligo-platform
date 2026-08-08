@@ -11,6 +11,73 @@
  */
 require_once __DIR__ . '/../config.php';
 
+/**
+ * Look up a per-admin-set limit override for one user+key.  Returns the
+ * override value when present, otherwise the $default passed in.  Never
+ * throws — on any DB error / missing table / unavailable connection, the
+ * plan default is returned silently so a partial DB outage never blocks
+ * lead search or site generation.
+ *
+ * Memoized per-request via a static cache keyed by user_id+key. A single
+ * request that needs both lead_limit and site_limit for the same user
+ * only hits the DB once.
+ */
+function user_limit_override(int $user_id, string $limit_key, int $default): int
+{
+    static $cache = [];
+    if ($user_id <= 0) return $default;
+
+    $cacheKey = $user_id . '|' . $limit_key;
+    if (array_key_exists($cacheKey, $cache)) return $cache[$cacheKey];
+
+    $val = _load_user_limit_overrides($user_id)[$limit_key] ?? $default;
+    return $cache[$cacheKey] = $val;
+}
+
+/**
+ * Internal: SELECT every override row for one user and stash them in the
+ * per-request cache as a key=>value map, so callers of user_limit_override
+ * afterwards see them without an extra round-trip.  Falls back to an
+ * empty array on any error (table missing, DB down, etc.).
+ */
+function _load_user_limit_overrides(int $user_id): array
+{
+    static $loaded = [];
+    if (isset($loaded[$user_id])) return $loaded[$user_id];
+
+    $map = [];
+    try {
+        if (function_exists('get_user_db')) {
+            $udb = get_user_db();
+            $stmt = $udb->prepare(
+                'SELECT limit_key, limit_value FROM `user_limit_overrides` WHERE user_id = ?'
+            );
+            $stmt->execute([$user_id]);
+            foreach ($stmt->fetchAll() as $r) {
+                $map[(string)$r['limit_key']] = (int)$r['limit_value'];
+            }
+        }
+    } catch (\Throwable $e) {
+        // Migration 020 not applied yet, or user DB unreachable — fall
+        // through silently with an empty map (so user_limit_override()
+        // returns its $default).  Logged so the operator can see it.
+        if (function_exists('error_log')) {
+            error_log('[user_limit_override] ' . $e->getMessage());
+        }
+    }
+    return $loaded[$user_id] = $map;
+}
+
+/**
+ * Public alias used by portal/api pages to prime the cache once at the
+ * top of the request so the first call to user_limit_override() doesn't
+ * trigger a SELECT.  Safe no-op if the table or DB is unavailable.
+ */
+function preload_user_limit_overrides(int $user_id): void
+{
+    if ($user_id > 0) _load_user_limit_overrides($user_id);
+}
+
 if (!defined('FREE_LEAD_LIMIT'))            define('FREE_LEAD_LIMIT',            3);
 if (!defined('FREE_SITE_LIMIT'))            define('FREE_SITE_LIMIT',            1);
 if (!defined('FREE_SEARCH_DAILY_LIMIT'))    define('FREE_SEARCH_DAILY_LIMIT',    2);
@@ -86,14 +153,36 @@ function plan_label(string $plan): string {
 function has_feature(string $feature, string $plan): bool {
     return in_array($feature, get_plan_config($plan)['features'], true);
 }
-function plan_lead_limit(string $plan): int {
-    return (int) get_plan_config($plan)['lead_limit'];
+function plan_lead_limit(string $plan, ?int $user_id = null): int {
+    $base = (int) get_plan_config($plan)['lead_limit'];
+    if ($user_id === null) return $base;
+    return user_limit_override($user_id, 'lead_limit', $base);
 }
-function plan_site_limit(string $plan): int {
-    return (int) get_plan_config($plan)['site_limit'];
+function plan_site_limit(string $plan, ?int $user_id = null): int {
+    $base = (int) get_plan_config($plan)['site_limit'];
+    if ($user_id === null) return $base;
+    return user_limit_override($user_id, 'site_limit', $base);
 }
-function plan_search_daily_limit(string $plan): int {
-    return (int) get_plan_config($plan)['search_daily'];
+function plan_search_daily_limit(string $plan, ?int $user_id = null): int {
+    $base = (int) get_plan_config($plan)['search_daily'];
+    if ($user_id === null) return $base;
+    return user_limit_override($user_id, 'search_daily', $base);
+}
+/**
+ * CRM client cap (Pro plan only; ENT is unlimited by default). Defined
+ * in includes/plan_limits.php as PRO_CLIENT_LIMIT / ENT_CLIENT_LIMIT.
+ * Honors a per-user override (limit_key='client_limit').
+ */
+function plan_client_limit(string $plan, ?int $user_id = null): int {
+    if ($plan === 'entrepreneur') {
+        $base = defined('ENT_CLIENT_LIMIT') ? (int)ENT_CLIENT_LIMIT : -1;
+    } elseif ($plan === 'pro') {
+        $base = defined('PRO_CLIENT_LIMIT') ? (int)PRO_CLIENT_LIMIT : 50;
+    } else {
+        $base = 0; // free plan has no CRM access
+    }
+    if ($user_id === null) return $base;
+    return user_limit_override($user_id, 'client_limit', $base);
 }
 function plan_team_seats(string $plan): int {
     return (int) (get_plan_config($plan)['team_seats'] ?? 0);

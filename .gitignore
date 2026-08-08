@@ -1,0 +1,8 @@
+# Secrets & local config — never commit
+/storage/config_overrides.php
+/.env
+*.log
+
+# Build artifacts
+/Utiligo.zip
+/UTILIGO.zip

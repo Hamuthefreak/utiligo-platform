@@ -70,6 +70,9 @@ $_has_logo  = file_exists($_logo_path);
     <a href="/admin/users.php" class="nav-link admin-item <?= $adminPage==='users' ? 'active' : '' ?>">
       <i class="fa-solid fa-users"></i> Users
     </a>
+    <a href="/admin/crm.php" class="nav-link admin-item <?= $adminPage==='crm' ? 'active' : '' ?>">
+      <i class="fa-solid fa-address-book"></i> CRM
+    </a>
     <a href="/admin/email.php" class="nav-link admin-item <?= $adminPage==='email' ? 'active' : '' ?>">
       <i class="fa-solid fa-envelope"></i> Email Blast
     </a>

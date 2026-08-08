@@ -1,7 +1,18 @@
+<?php
+$_logo_path = __DIR__ . '/../assets/images/logo.png';
+$_logo_url  = '/assets/images/logo.png';
+$_has_logo  = file_exists($_logo_path);
+?>
 <footer class="bg-slate-900/60 border-t border-white/10 mt-20">
   <div class="max-w-6xl mx-auto px-6 py-14 grid md:grid-cols-4 gap-10">
     <div>
-      <a href="/" class="text-lg font-bold flex items-center gap-2 mb-3"><i class="fa-solid fa-bolt text-emerald-400"></i>Utiligo</a>
+      <a href="/" class="text-lg font-bold flex items-center gap-2 mb-3">
+        <?php if ($_has_logo): ?>
+          <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-6 w-auto">
+        <?php else: ?>
+          <i class="fa-solid fa-bolt text-emerald-400"></i>
+        <?php endif; ?>Utiligo
+      </a>
       <p class="text-slate-400 text-sm leading-relaxed">Find clients without a website. Build them one in 60 seconds. Get paid.</p>
       <div class="flex gap-3 mt-5">
         <a href="[INSERT LINK HERE]" class="w-9 h-9 flex items-center justify-center rounded-full bg-white/5 hover:bg-white/10 transition text-slate-400 hover:text-white" title="X / Twitter — add link"><i class="fa-brands fa-x-twitter"></i></a>
@@ -47,8 +58,12 @@
   <div class="border-t border-white/10">
     <div class="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center gap-4">
       <p class="text-slate-500 text-xs">&copy; <?= date('Y') ?> Utiligo.ca — All rights reserved.</p>
-      <span class="inline-flex items-center gap-1 bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs text-slate-400">
-        <i class="fa-solid fa-bolt text-emerald-400"></i> Powered by Utiligo
+      <span class="inline-flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs text-slate-400">
+        <?php if ($_has_logo): ?>
+          <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-3.5 w-auto">
+        <?php else: ?>
+          <i class="fa-solid fa-bolt text-emerald-400"></i>
+        <?php endif; ?> Powered by Utiligo
       </span>
     </div>
   </div>

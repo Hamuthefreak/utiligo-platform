@@ -16,7 +16,12 @@ require_once __DIR__ . '/../config.php';
 
 function send_email(string $to, string $subject, string $htmlBody, string $textBody = '', string $toName = ''): bool
 {
-    if (defined('BREVO_API_KEY') && BREVO_API_KEY !== '' && BREVO_API_KEY !== 'YOUR_BREVO_API_KEY') {
+    $hasBrevoKey = defined('BREVO_API_KEY')
+        && BREVO_API_KEY !== ''
+        && BREVO_API_KEY !== 'YOUR_BREVO_API_KEY';
+
+    // --- Brevo REST API path (preferred) ---
+    if ($hasBrevoKey) {
         $payload = [
             'sender' => ['name' => SMTP_FROM_NAME, 'email' => SMTP_FROM_EMAIL],
             'to'     => [['email' => $to, 'name' => $toName ?: $to]],
@@ -35,21 +40,50 @@ function send_email(string $to, string $subject, string $htmlBody, string $textB
                 'api-key: ' . BREVO_API_KEY,
                 'content-type: application/json',
             ],
-            CURLOPT_TIMEOUT => 10,
+            CURLOPT_TIMEOUT        => 10,
+            CURLOPT_CONNECTTIMEOUT => 5,
         ]);
         $response = curl_exec($ch);
         $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $err      = curl_errno($ch);
+        $errMsg   = curl_error($ch);
         curl_close($ch);
 
-        if (!$err && $httpCode >= 200 && $httpCode < 300) return true;
-        error_log('Brevo send failed (HTTP ' . $httpCode . '): ' . $response);
+        if (!$err && $httpCode >= 200 && $httpCode < 300) {
+            return true;
+        }
+        // Brevo call failed — log and fall through to mail() as a last resort.
+        $detail = $err ? "cURL err {$err} ({$errMsg})" : "HTTP {$response}";
+        $msg = "send_email(): Brevo API failed for {$to} — {$detail}";
+        error_log($msg);
+        if (function_exists('log_error')) {
+            try { log_error('brevo_send_failed', null, [
+                'to' => $to, 'subject' => $subject, 'http' => $httpCode, 'curl_err' => $err,
+            ]); } catch (\Throwable $e) {}
+        }
+        // Fall through to the mail() fallback below.
+    } else {
+        // No API key configured — make this visible so it isn't blamed on the app.
+        error_log('send_email(): BREVO_API_KEY not configured — falling back to mail()');
     }
 
+    // --- PHP mail() fallback ---
+    // Many shared hosts (InfinityFree free tier) disable mail(), in which case
+    // this returns false and is *not* silenced so the failure is at least logged.
     $headers  = "MIME-Version: 1.0\r\n";
     $headers .= "Content-type: text/html; charset=UTF-8\r\n";
     $headers .= "From: " . SMTP_FROM_NAME . " <" . SMTP_FROM_EMAIL . ">\r\n";
-    return @mail($to, $subject, $htmlBody, $headers);
+
+    $ok = @mail($to, $subject, $htmlBody, $headers);
+    if (!$ok) {
+        error_log("send_email(): mail() fallback failed for {$to} (subject: {$subject})");
+        if (function_exists('log_error')) {
+            try { log_error('mail_fallback_failed', null, [
+                'to' => $to, 'subject' => $subject,
+            ]); } catch (\Throwable $e) {}
+        }
+    }
+    return $ok;
 }
 
 function brevo_upsert_contact(string $email, array $attributes = [], array $listIds = []): bool
@@ -68,12 +102,17 @@ function brevo_upsert_contact(string $email, array $attributes = [], array $list
             'api-key: ' . BREVO_API_KEY,
             'content-type: application/json',
         ],
-        CURLOPT_TIMEOUT => 10,
+        CURLOPT_TIMEOUT        => 10,
+        CURLOPT_CONNECTTIMEOUT => 5,
     ]);
-    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    // ORDER FIX: curl_exec() MUST run before curl_getinfo() — previously
+    // the HTTP code was always 0 (stale) and the function always failed.
     curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err      = curl_errno($ch);
     curl_close($ch);
-    return $httpCode >= 200 && $httpCode < 300;
+
+    return !$err && $httpCode >= 200 && $httpCode < 300;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════

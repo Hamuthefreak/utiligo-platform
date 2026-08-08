@@ -83,7 +83,8 @@
     </div>
   `;
   document.body.appendChild(overlay);
-  document.body.style.overflow = 'hidden';
+  // Only lock body scroll on desktop; on mobile the overlay scrolls itself.
+  if (window.innerWidth >= 600) document.body.style.overflow = 'hidden';
 
   /* ── Stagger cards in ───────────────────────────────────────── */
   overlay.querySelectorAll('.ob-plan-card[data-delay]').forEach(card => {

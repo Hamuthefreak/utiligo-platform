@@ -77,11 +77,16 @@ function run_pending_migrations(PDO $pdo, string $migrations_dir): void
                 // 42000 + "Duplicate key name" = index already exists
                 $msg = $e->getMessage();
                 $ignorable =
-                    $sqlstate === '42S21'                              // duplicate column
-                    || $sqlstate === '42S01'                           // table exists
+                       $sqlstate === '42S21'   // duplicate column
+                    || $sqlstate === '42S01'   // table exists
+                    || $sqlstate === '42S22'   // column not found (ALTER on schema that already has it / table missing on this DB)
+                    || $sqlstate === '42S02'   // base table not found (ALTER on wrong DB)
                     || str_contains($msg, 'Duplicate column name')
                     || str_contains($msg, 'already exists')
-                    || str_contains($msg, 'Duplicate key name');
+                    || str_contains($msg, 'Duplicate key name')
+                    || str_contains($msg, "Can't find file")  // MySQL file-per-table quietly missing
+                    || str_contains($msg, 'Unknown column')   // re-alter, or wrong DB
+                    || str_contains($msg, "Unknown table");   // bolt.dev MySQL flavour
 
                 if (!$ignorable) {
                     // Real error — log it but don't crash the whole request

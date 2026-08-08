@@ -54,10 +54,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             if ($sent % 10 === 0 && $sent > 0) usleep(300000);
         }
 
-        // FIX 2: Log the blast to utiligo_marketing_sends
+        // FIX 2: Log the blast to utiligo_marketing_sends (user DB).
+        // Previously called get_db() which does not exist anywhere in the
+        // codebase (only get_user_db() / get_platform_db()), raising a
+        // fatal \Error AFTER every email had already been sent, and the
+        // \Exception catch below didn't catch \Error on PHP 7+. This left
+        // the page broken while still delivering all the emails.
         try {
-            $db = get_db();
-            $logStmt = $db->prepare(
+            // Reuse the $udb connection opened at line 32 (same user DB
+            // where utiligo_users lives). utiligo_marketing_sends is created
+            // by migrations/017_marketing_sends.sql.
+            $logStmt = $udb->prepare(
                 'INSERT INTO utiligo_marketing_sends (sent_by_admin, subject, segment, recipients_count)
                  VALUES (:admin, :subject, :segment, :count)'
             );
@@ -67,10 +74,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                 ':segment' => $audience,
                 ':count'   => $sent,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            // Catch \Throwable (not \Exception) so missing-table or
+            // connection errors are caught instead of fatalitying the
+            // request. The blast itself already succeeded — only the
+            // audit-log row failed, so we just record it and continue.
             _admin_log('ERROR', 'Failed to log blast to utiligo_marketing_sends: ' . $e->getMessage());
         }
 
+        // FIX 3: Email-blast per-recipient failures are part of the user's
+        // requested "email blast priority" — surface every failed recipient
+        // in the global error log with this file's tag, with email-priority
+        // alerting so the admin learns about blast failures immediately.
+        if ($errors) {
+            _admin_log('ERROR', 'email blast recipients failed: ' . implode(' | ', $errors));
+            _utiligo_write_error_log('ERROR', 'email blast had ' . count($errors) . ' failed recipient(s): ' . implode(' | ', array_slice($errors, 0, 20)), __FILE__, __LINE__);
+            utiligo_alert('ERROR', 'Email blast had ' . count($errors) . ' failed recipient(s) [blast subject: ' . $subject . ']', __FILE__, __LINE__);
+        }
         _admin_log('INFO', "Blast done: sent={$sent} errors=".count($errors));
         $success = "Sent to {$sent} recipient(s).";
     }

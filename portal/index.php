@@ -12,7 +12,8 @@ $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 $pdo     = get_platform_db();
 
-$firstName = trim(explode(' ', $user['name'] ?? 'there')[0]);
+$firstName = trim(explode(' ', $user['full_name'] ?? 'there')[0]);
+if ($firstName === '' || strtoupper($firstName) === 'THERE') $firstName = 'there';
 $hour      = (int)date('G');
 $greeting  = $hour < 12 ? 'Good morning' : ($hour < 18 ? 'Good afternoon' : 'Good evening');
 
@@ -58,6 +59,7 @@ $views14Total = array_sum($views14);
 // ── CRM stats (paid only, table may not exist yet) ────────────────────────────
 $crmClients   = [];
 $crmTasks     = [];
+$upcomingTasks = [];   // tasks due today, overdue, or in next 7 days (mobile-friendly bucketed feed)
 $stageCounts  = ['lead'=>0,'contacted'=>0,'proposal'=>0,'negotiation'=>0,'won'=>0,'lost'=>0];
 $pipelineVal  = 0.0;
 $crmTotal     = 0;
@@ -77,9 +79,36 @@ if ($is_paid) {
         $t = $pdo->prepare("SELECT t.*, c.name AS client_name FROM crm_tasks t LEFT JOIN crm_clients c ON c.id = t.client_id WHERE t.user_id = ? AND t.done = 0 ORDER BY (t.due_date IS NULL), t.due_date ASC LIMIT 5");
         $t->execute([$uid]);
         $crmTasks = $t->fetchAll(PDO::FETCH_ASSOC);
+
+        // Bucketed follow-up tasks — for the dashboard "follow-up" widget.
+        // due today / overdue / upcoming (next 7 days). Mobile-friendly.
+        $bucketStmt = $pdo->prepare("
+            SELECT t.*, c.name AS client_name
+            FROM crm_tasks t
+            LEFT JOIN crm_clients c ON c.id = t.client_id
+            WHERE t.user_id = ? AND t.done = 0
+              AND t.due_date IS NOT NULL
+              AND t.due_date <= DATE_ADD(CURDATE(), INTERVAL 7 DAY)
+            ORDER BY t.due_date ASC
+            LIMIT 15
+        ");
+        $bucketStmt->execute([$uid]);
+        $upcomingTasks = $bucketStmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (\Throwable $e) {}
 }
 $recentClients = array_slice($crmClients, 0, 5);
+
+// Bucket counters for the follow-up widget
+$todayStr    = date('Y-m-d');
+$upcomingEnd = date('Y-m-d', strtotime('+7 days'));
+$tasksOverdue = 0; $tasksToday = 0; $tasksUpcoming = 0;
+foreach ($upcomingTasks as $tk) {
+    $d = $tk['due_date'] ?? null;
+    if (!$d) continue;
+    if ($d < $todayStr)        $tasksOverdue++;
+    elseif ($d === $todayStr) $tasksToday++;
+    else                       $tasksUpcoming++;
+}
 
 $stageMeta = [
     'lead'        => ['Lead',        '#3b82f6'],
@@ -110,6 +139,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <style>
 .dash-card { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:18px; padding:20px; }
+@media (max-width:639px) {
+  .dash-card { padding:16px; border-radius:14px; }
+  .kpi-value { font-size:1.55rem; }
+  .kpi-icon { width:32px; height:32px; font-size:.78rem; }
+}
 .kpi { display:flex; flex-direction:column; gap:4px; position:relative; overflow:hidden; }
 .kpi-icon { position:absolute; top:16px; right:16px; width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:.85rem; }
 .kpi-label { font-size:.65rem; text-transform:uppercase; letter-spacing:.08em; color:#64748b; }
@@ -117,6 +151,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .kpi-sub   { font-size:.7rem; color:#475569; }
 .qa-btn { display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:14px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); transition:all .15s; text-decoration:none; }
 .qa-btn:hover { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.15); transform:translateY(-2px); }
+@media (max-width:639px) {
+  .qa-btn { padding:12px 14px; gap:10px; }
+  .qa-icon { width:34px; height:34px; font-size:.82rem; }
+}
 .qa-icon { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:.9rem; }
 .feed-row { display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
 .feed-row:last-child { border-bottom:none; }
@@ -133,25 +171,25 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </style>
 
 <!-- Greeting header -->
-<div class="flex items-center justify-between flex-wrap gap-4 mb-8">
-  <div>
-    <div class="flex items-center gap-3 flex-wrap">
-      <h1 class="text-3xl font-black tracking-tight"><?= $greeting ?>, <?= htmlspecialchars($firstName) ?></h1>
+<div class="flex items-start sm:items-center justify-between flex-wrap gap-3 mb-6 sm:mb-8">
+  <div class="min-w-0">
+    <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
+      <h1 class="text-2xl sm:text-3xl font-black tracking-tight"><?= $greeting ?>, <?= htmlspecialchars($firstName) ?></h1>
       <span class="text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider"
             style="background:<?= $planBadge[1] ?>22;color:<?= $planBadge[1] ?>;border:1px solid <?= $planBadge[1] ?>44;">
         <?= $planBadge[0] ?>
       </span>
     </div>
-    <p class="text-slate-500 text-sm mt-1"><?= date('l, F j') ?> — here's what's happening across your sites and clients.</p>
+    <p class="text-slate-500 text-xs sm:text-sm mt-1"><?= date('l, F j') ?> — here's what's happening across your sites and clients.</p>
   </div>
   <a href="/portal/generate.php"
-     class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 active:scale-95 text-black px-5 py-2.5 rounded-xl font-bold text-sm transition-all">
+     class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 active:scale-95 text-black px-4 sm:px-5 py-2.5 rounded-xl font-bold text-sm transition-all w-full sm:w-auto justify-center sm:justify-start">
     <i class="fa-solid fa-bolt text-xs"></i> Generate New Site
   </a>
 </div>
 
 <!-- KPI cards -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5 sm:mb-6">
   <div class="dash-card kpi">
     <div class="kpi-icon" style="background:rgba(16,185,129,.12);color:#34d399;"><i class="fa-solid fa-globe"></i></div>
     <p class="kpi-label">Live Sites</p>
@@ -179,7 +217,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <!-- Quick actions -->
-<div class="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
+<div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5 sm:mb-6">
   <a href="/portal/generate.php" class="qa-btn">
     <div class="qa-icon" style="background:rgba(16,185,129,.12);color:#34d399;"><i class="fa-solid fa-bolt"></i></div>
     <div><p class="text-sm font-bold text-slate-200">Generate Site</p><p class="text-[11px] text-slate-500">AI site in 60s</p></div>
@@ -199,7 +237,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <!-- Charts row -->
-<div class="grid grid-cols-1 lg:grid-cols-5 gap-4 mb-6">
+<div class="grid grid-cols-1 lg:grid-cols-5 gap-3 sm:gap-4 mb-5 sm:mb-6">
 
   <div class="dash-card lg:col-span-3">
     <p class="section-title">Site Views — Last 14 Days
@@ -241,7 +279,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <!-- Activity + tasks row -->
-<div class="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-6">
+<div class="grid grid-cols-1 lg:grid-cols-3 gap-3 sm:gap-4 mb-5 sm:mb-6">
 
   <!-- Recent sites -->
   <div class="dash-card">
@@ -302,9 +340,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <?php endforeach; endif; ?>
   </div>
 
-  <!-- Tasks due -->
+  <!-- Tasks due — Follow-ups -->
   <div class="dash-card">
-    <p class="section-title">Open Tasks
+    <p class="section-title">Follow-ups
       <a href="/portal/crm.php">Manage →</a>
     </p>
     <?php if (!$is_paid): ?>
@@ -312,32 +350,57 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <i class="fa-solid fa-lock text-2xl block mb-2 opacity-30"></i>
         Tasks require a paid plan.
       </div>
-    <?php elseif (empty($crmTasks)): ?>
+    <?php elseif (empty($upcomingTasks) && empty($crmTasks)): ?>
       <div class="text-center py-8 text-slate-600 text-sm">
         <i class="fa-solid fa-check-double text-2xl block mb-2 opacity-30"></i>
         All caught up. Nothing due.
       </div>
-    <?php else: foreach ($crmTasks as $tk):
-      $due    = $tk['due_date'] ?? null;
-      $overdue = $due && strtotime($due) < strtotime('today');
-      $today   = $due && date('Y-m-d', strtotime($due)) === date('Y-m-d');
-      $priColor = ['high'=>'#f87171','medium'=>'#fbbf24','low'=>'#64748b'][$tk['priority'] ?? 'medium'];
-    ?>
-      <div class="feed-row">
-        <div class="feed-dot" style="background:rgba(255,255,255,.06);color:<?= $priColor ?>;">
-          <i class="fa-solid fa-flag"></i>
+    <?php else: ?>
+      <!-- Buckets -->
+      <div class="grid grid-cols-3 gap-2 mb-3">
+        <div class="rounded-xl p-2.5 text-center" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);">
+          <p class="text-lg font-extrabold text-red-400"><?= $tasksOverdue ?></p>
+          <p class="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Overdue</p>
         </div>
-        <div class="flex-1 min-w-0">
-          <p class="feed-title"><?= htmlspecialchars($tk['title']) ?></p>
-          <p class="feed-sub"><?= htmlspecialchars($tk['client_name'] ?? 'General') ?></p>
+        <div class="rounded-xl p-2.5 text-center" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.15);">
+          <p class="text-lg font-extrabold" style="color:#fbbf24;"><?= $tasksToday ?></p>
+          <p class="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Today</p>
         </div>
-        <?php if ($due): ?>
-          <span class="task-due" style="background:<?= $overdue ? 'rgba(239,68,68,.15);color:#f87171' : ($today ? 'rgba(245,158,11,.15);color:#fbbf24' : 'rgba(255,255,255,.06);color:#94a3b8') ?>;">
-            <?= $overdue ? 'Overdue' : ($today ? 'Today' : date('M j', strtotime($due))) ?>
-          </span>
-        <?php endif; ?>
+        <div class="rounded-xl p-2.5 text-center" style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.15);">
+          <p class="text-lg font-extrabold" style="color:#818cf8;"><?= $tasksUpcoming ?></p>
+          <p class="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">7 days</p>
+        </div>
       </div>
-    <?php endforeach; endif; ?>
+      <!-- Upcoming feed -->
+      <?php
+        $renderedList = 0;
+        foreach ($upcomingTasks as $tk):
+          if ($renderedList >= 6) break;
+          $due    = $tk['due_date'] ?? null;
+          $overdue = $due && strtotime($due) < strtotime('today');
+          $today   = $due && date('Y-m-d', strtotime($due)) === date('Y-m-d');
+          $priColor = ['high'=>'#f87171','medium'=>'#fbbf24','low'=>'#64748b'][$tk['priority'] ?? 'medium'];
+          $renderedList++;
+      ?>
+        <div class="feed-row">
+          <div class="feed-dot" style="background:rgba(255,255,255,.06);color:<?= $priColor ?>;">
+            <i class="fa-solid fa-flag"></i>
+          </div>
+          <div class="flex-1 min-w-0">
+            <p class="feed-title"><?= htmlspecialchars($tk['title']) ?></p>
+            <p class="feed-sub"><?= htmlspecialchars($tk['client_name'] ?? 'General') ?></p>
+          </div>
+          <?php if ($due): ?>
+            <span class="task-due" style="background:<?= $overdue ? 'rgba(239,68,68,.15);color:#f87171' : ($today ? 'rgba(245,158,11,.15);color:#fbbf24' : 'rgba(255,255,255,.06);color:#94a3b8') ?>;">
+              <?= $overdue ? 'Overdue' : ($today ? 'Today' : date('M j', strtotime($due))) ?>
+            </span>
+          <?php endif; ?>
+        </div>
+      <?php endforeach; ?>
+      <?php if (count($upcomingTasks) > 6): ?>
+      <p class="text-center text-[11px] text-slate-600 mt-2"><a href="/portal/crm.php#tasks" class="hover:text-slate-400 transition">+ <?= count($upcomingTasks) - 6 ?> more in CRM →</a></p>
+      <?php endif; ?>
+    <?php endif; ?>
   </div>
 
 </div>

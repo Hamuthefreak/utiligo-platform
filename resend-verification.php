@@ -45,7 +45,21 @@ if ($email && filter_var($email, FILTER_VALIDATE_EMAIL)) {
         if ($user && !(int)($user['email_verified'] ?? 0)) {
             $token      = create_email_verification_token((int)$user['id']);
             $verifyLink = rtrim(APP_BASE_URL, '/') . '/verify.php?token=' . $token;
-            try { send_verification_email($email, $user['full_name'] ?? '', $verifyLink); } catch (\Throwable $e) {}
+            // Note: by design this endpoint ALWAYS redirects to
+            // /login.php?resent=1 and never reveals whether the email exists
+            // (anti-enumeration). So we don't surface the failure to the
+            // user — but we DO log it so the operator can see in
+            // storage/php_errors.log that the resend actually failed (e.g.
+            // when BREVO_API_KEY isn't configured), otherwise it's totally
+            // invisible and the user just sits refreshing their inbox.
+            try {
+                $ok = send_verification_email($email, $user['full_name'] ?? '', $verifyLink);
+                if (!$ok) {
+                    error_log('[resend-verification] send_verification_email returned false for ' . $email);
+                }
+            } catch (\Throwable $e) {
+                error_log('[resend-verification] send_verification_email threw for ' . $email . ': ' . $e->getMessage());
+            }
         }
     }
     // Always redirect — never reveal whether the email exists or limit was hit

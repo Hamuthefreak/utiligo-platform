@@ -187,7 +187,20 @@ if (!$hasShareCols) {
 }
 
 if ($leadId) {
-    $pdo->prepare('UPDATE utiligo_leads SET status="contacted" WHERE id=?')->execute([$leadId]);
+    // Mark the lead as contacted. Westrapped in a guard because:
+    // (a) the `status` column is added by migration 018; on a host where the
+    //     migration hasn't been applied yet this UPDATE used to throw
+    //     SQLSTATE[42S22] Column not found and abort the success JSON.
+    // (b) double-quoted string "contacted" was MySQL-standard syntax abuse
+    //     — switching to single quotes for portability.
+    try {
+        $hasStatusCol = db_table_has_column($pdo, 'utiligo_leads', 'status');
+        if ($hasStatusCol) {
+            $pdo->prepare("UPDATE utiligo_leads SET status='contacted' WHERE id=?")->execute([$leadId]);
+        }
+    } catch (\Throwable $e) {
+        error_log('[generate-site lead status] ' . $e->getMessage());
+    }
 }
 
 json_response([

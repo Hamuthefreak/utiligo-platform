@@ -11,6 +11,10 @@ if (is_logged_in()) { header('Location: /portal/index.php'); exit; }
 $_plan_param  = isset($_GET['plan']) && in_array($_GET['plan'], ['pro','entrepreneur']) ? $_GET['plan'] : 'free';
 $_plan_labels = ['free' => 'Free', 'pro' => 'Pro — $21.99/mo', 'entrepreneur' => 'Entrepreneur — $49.99/mo'];
 
+$_logo_path = __DIR__ . '/assets/images/logo.png';
+$_logo_url  = '/assets/images/logo.png';
+$_has_logo  = file_exists($_logo_path);
+
 $error   = '';
 $success = false;
 
@@ -49,7 +53,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($newUser) {
                     $token      = create_email_verification_token($newUser['id']);
                     $verifyLink = rtrim(APP_BASE_URL, '/') . '/verify.php?token=' . $token;
-                    try { send_verification_email($email, $full_name, $verifyLink); } catch (\Throwable $e) {}
+
+                    // Send verification email. Previously wrapped in
+                    //   try { ... } catch (\Throwable $e) {}
+                    // with the error discarded — so when send_email() failed
+                    // (e.g. no BREVO_API_KEY configured on InfinityFree where
+                    // mail() is also disabled), signup silently "succeeded"
+                    // with no verification email and no error surfaced. Now
+                    // we capture the failure and expose it on the success page.
+                    $emailError = null;
+                    try {
+                        $sentOk = send_verification_email($email, $full_name, $verifyLink);
+                        if (!$sentOk) {
+                            $emailError = 'Verification email could not be sent right now. '
+                                        . 'You can request a new one from the login page ("Resend verification").';
+                        }
+                    } catch (\Throwable $e) {
+                        $emailError = 'Verification email could not be sent right now: '
+                                    . htmlspecialchars($e->getMessage());
+                        error_log('[register] send_verification_email threw: ' . $e->getMessage());
+                    }
+                    if ($emailError) $_SESSION['register_email_error'] = $emailError;
+
                     try { brevo_upsert_contact($email, ['FIRSTNAME' => $full_name], [BREVO_LIST_ALL_USERS]); } catch (\Throwable $e) {}
                 }
 
@@ -78,9 +103,13 @@ require_once __DIR__ . '/includes/header.php';
   <!-- ====== CHECK YOUR INBOX ====== -->
   <div class="text-center mb-8">
     <a href="/" class="inline-flex items-center gap-2">
-      <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
-        <i class="fa-solid fa-bolt text-black text-base"></i>
-      </div>
+      <?php if ($_has_logo): ?>
+        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-9 w-auto">
+      <?php else: ?>
+        <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
+          <i class="fa-solid fa-bolt text-black text-base"></i>
+        </div>
+      <?php endif; ?>
       <span class="text-2xl font-black">Utiligo</span>
     </a>
   </div>
@@ -101,6 +130,19 @@ require_once __DIR__ . '/includes/header.php';
         We emailed a verification link to<br>
         <span class="text-white font-semibold"><?= htmlspecialchars($email) ?></span>
       </p>
+
+      <?php
+        // Surface an email-send failure if we hit one (no BREVO_API_KEY /
+        // mail() disabled on InfinityFree etc.). Previously this was hidden.
+        $registerEmailError = $_SESSION['register_email_error'] ?? '';
+        unset($_SESSION['register_email_error']);
+      ?>
+      <?php if ($registerEmailError): ?>
+        <div class="bg-amber-500/10 border border-amber-400/30 text-amber-300 rounded-lg px-4 py-3 mb-6 text-sm text-left">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+          <?= $registerEmailError ?>
+        </div>
+      <?php endif; ?>
 
       <ol class="space-y-3 mb-8">
         <li class="flex items-start gap-3">
@@ -139,9 +181,13 @@ require_once __DIR__ . '/includes/header.php';
   <!-- ====== REGISTRATION FORM ====== -->
   <div class="text-center mb-8">
     <a href="/" class="inline-flex items-center gap-2 mb-6">
-      <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
-        <i class="fa-solid fa-bolt text-black text-base"></i>
-      </div>
+      <?php if ($_has_logo): ?>
+        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-9 w-auto">
+      <?php else: ?>
+        <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
+          <i class="fa-solid fa-bolt text-black text-base"></i>
+        </div>
+      <?php endif; ?>
       <span class="text-2xl font-black">Utiligo</span>
     </a>
     <h1 class="text-2xl font-bold">Create your account</h1>

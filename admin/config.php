@@ -72,6 +72,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
     if (!admin_csrf_verify('config', $_POST['csrf_token'] ?? null)) {
         $save_error = 'Invalid or expired security token. Please refresh and try again.';
     } else {
+        // Build the list of keys we're ABOUT to write so we can preserve
+        // any define() calls already in the file that we do NOT manage
+        // (e.g. DB_HOST / DB_USER / DB_PASS / DB_NAME / USERDB_* /
+        // BREVO_API_KEY / GOOGLE_PLACES_API_KEY).  Without this, saving
+        // the plan-limits form would wipe DB creds and 500 the whole site.
+        $editing_keys = [];
+        foreach ($fields as $f) $editing_keys[] = $f[0];
+        $editing_keys_set = array_flip($editing_keys);
+
+        $preserved_lines = [];
+        if (is_file($overrides_file)) {
+            $existing = @file_get_contents($overrides_file);
+            if (is_string($existing)) {
+                // Match define('KEY', ...); on a single line. This is the
+                // exact format admin/config.php & admin/settings.php write.
+                if (preg_match_all('/^\s*define\s*\(\s*[\'"]([A-Z0-9_]+)[\'"]\s*,.*\)\s*;\s*$/m', $existing, $m, PREG_SET_ORDER)) {
+                    foreach ($m as $match) {
+                        $key = $match[1];
+                        if (!isset($editing_keys_set[$key])) {
+                            $preserved_lines[] = trim($match[0]);
+                        }
+                    }
+                }
+            }
+        }
+
         $lines = [
             '<?php',
             '// Admin-managed config overrides.',
@@ -79,6 +105,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
             '// define() calls here win over defaults in includes/plan_limits.php and config.php.',
             '',
         ];
+        if ($preserved_lines) {
+            $lines[] = '// ── Preserved from previous file (not editable via this form) ──';
+            foreach ($preserved_lines as $p) $lines[] = $p;
+            $lines[] = '';
+            $lines[] = '// ── Editable settings (saved ' . date('Y-m-d H:i:s') . ') ──';
+        }
         foreach ($fields as [$key, $label, $type]) {
             $raw = $_POST['cfg'][$key] ?? '';
             switch ($type) {

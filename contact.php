@@ -30,8 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Please fill in your name, a valid email, and a message.';
         } else {
             $htmlBody = "<p><strong>From:</strong> {$name} ({$email})</p><p>" . nl2br($message) . '</p>';
-            send_email(SMTP_FROM_EMAIL, 'New Contact Form Message — Utiligo', $htmlBody, '', 'Utiligo Contact Form');
-            $submitted = true;
+            $ok = send_email(SMTP_FROM_EMAIL, 'New Contact Form Message — Utiligo', $htmlBody, '', 'Utiligo Contact Form');
+            if ($ok) {
+                $submitted = true;
+            } else {
+                $error = 'Sorry, we couldn\'t send your message right now due to a technical issue. Please try again in a few minutes, or email us directly.';
+                error_log('[contact] send_email failed for message from ' . $email);
+            }
         }
     }
 }

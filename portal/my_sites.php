@@ -428,7 +428,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <?php endif; ?>
 
       <?php if ($zipUrl): ?>
-        <a href="<?= htmlspecialchars($zipUrl) ?>" class="ca-btn ca-btn-ghost">
+        <a href="<?= htmlspecialchars($zipUrl) ?>" data-download class="ca-btn ca-btn-ghost" title="Download ZIP">
           <i class="fa-solid fa-download" style="font-size:.6rem;"></i> ZIP
         </a>
       <?php endif; ?>

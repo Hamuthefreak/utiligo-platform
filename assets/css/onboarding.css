@@ -13,7 +13,8 @@
   background: #020817;
   opacity: 1;
   transition: opacity 0.55s cubic-bezier(0.4,0,0.2,1);
-  overflow: hidden;
+  overflow: auto;          /* allow scrolling on small screens */
+  -webkit-overflow-scrolling: touch;
 }
 .ob-overlay.ob-exit {
   opacity: 0;
@@ -174,6 +175,18 @@
   gap: 0;
 }
 
+/* Mobile: stack contents vertically so they can scroll naturally */
+@media (max-width: 600px) {
+  #ob-signup {
+    display: block;        /* override flex centering */
+    padding: 80px 16px 32px;
+  }
+  .ob-signup-inner {
+    min-height: calc(100vh - 112px); /* fill so centered look is retained */
+    justify-content: center;
+  }
+}
+
 .ob-signup-heading {
   font-size: clamp(1.4rem, 4vw, 2rem);
   font-weight: 800;
@@ -201,6 +214,12 @@
   gap: 16px;
   width: 100%;
   margin-bottom: 32px;
+}
+@media (max-width: 600px) {
+  .ob-plans {
+    grid-template-columns: 1fr;   /* one card per row on phones */
+    gap: 12px;
+  }
 }
 
 .ob-plan-card {

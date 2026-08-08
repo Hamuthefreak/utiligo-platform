@@ -551,8 +551,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <i class="fa-solid fa-eye"></i>Preview
     </a>
     <a id="genDownloadLink" href="#"
+       data-download
        class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 text-black px-5 py-2.5 rounded-xl font-bold">
-      <i class="fa-solid fa-download"></i>Download ZIP
+       <i class="fa-solid fa-download"></i>Download ZIP
     </a>
   </div>
   <div id="genShareLinkWrap" class="hidden bg-white/5 rounded-xl p-4 max-w-md mx-auto">

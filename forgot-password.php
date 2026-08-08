@@ -5,13 +5,22 @@ require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/mailer.php';
 
 $submitted = false;
+$sendFailed = false;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && csrf_verify($_POST['csrf_token'] ?? null)) {
     $email = trim($_POST['email'] ?? '');
     $result = create_password_reset_token($email);
     if ($result) {
         $resetLink = APP_BASE_URL . '/reset-password.php?token=' . $result['token'];
-        send_password_reset_email($email, $result['full_name'], $resetLink);
+        $ok = send_password_reset_email($email, $result['full_name'], $resetLink);
+        if (!$ok) {
+            // Don't reveal whether the account exists — but DO tell the user
+            // a technical problem prevented the send, otherwise they'll sit
+            // refreshing their inbox forever waiting for an email that
+            // never came (e.g. when BREVO_API_KEY isn't configured).
+            $sendFailed = true;
+            error_log('[forgot-password] send_password_reset_email failed for ' . $email);
+        }
     }
     $submitted = true;
 }
@@ -24,9 +33,20 @@ require_once __DIR__ . '/includes/header.php';
   <div class="glass rounded-2xl p-8">
     <?php if ($submitted): ?>
       <div class="text-center">
-        <div class="text-4xl mb-4">📬</div>
-        <h1 class="text-2xl font-bold mb-2">Check Your Email</h1>
-        <p class="text-slate-400 text-sm">If an account exists with that email, we've sent a password reset link. It expires in <?= PASSWORD_RESET_EXPIRY_MINUTES ?> minutes.</p>
+        <div class="text-4xl mb-4"><?= $sendFailed ? '⚠️' : '📬' ?></div>
+        <?php if ($sendFailed): ?>
+          <h1 class="text-2xl font-bold mb-2">Email couldn't be sent</h1>
+          <p class="text-slate-400 text-sm">
+            We found your account but hit a technical problem while sending the reset email.
+            Please try again in a few minutes, or contact support if it keeps happening.
+          </p>
+          <div class="mt-6">
+            <a href="/forgot-password.php" class="text-emerald-400 hover:underline text-sm">Try again</a>
+          </div>
+        <?php else: ?>
+          <h1 class="text-2xl font-bold mb-2">Check Your Email</h1>
+          <p class="text-slate-400 text-sm">If an account exists with that email, we've sent a password reset link. It expires in <?= PASSWORD_RESET_EXPIRY_MINUTES ?> minutes.</p>
+        <?php endif; ?>
       </div>
     <?php else: ?>
       <h1 class="text-2xl font-bold mb-2 text-center">Forgot Password</h1>

@@ -43,6 +43,30 @@ var seenCb       = document.getElementById('includeSeenLeads');
 var togTrack     = document.getElementById('togTrack');
 var csrfToken    = document.body.dataset.csrf || '';
 
+// Lightweight toast helper (no library dep). Used by "Add to CRM".
+function leadsToast(title, body, kind) {
+    var host = document.getElementById('leadsToastHost');
+    if (!host) {
+        host = document.createElement('div');
+        host.id = 'leadsToastHost';
+        host.style.cssText = 'position:fixed;bottom:20px;right:20px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:320px;';
+        document.body.appendChild(host);
+    }
+    var palette = {
+        success: { bg:'rgba(16,185,129,.12)', br:'rgba(16,185,129,.25)', ic:'#34d399', iclass:'fa-circle-check' },
+        warn:    { bg:'rgba(245,158,11,.12)', br:'rgba(245,158,11,.25)', ic:'#fbbf24', iclass:'fa-triangle-exclamation' },
+        info:    { bg:'rgba(99,102,241,.12)', br:'rgba(99,102,241,.25)', ic:'#818cf8', iclass:'fa-circle-info' }
+    };
+    var p = palette[kind] || palette.info;
+    var el = document.createElement('div');
+    el.style.cssText = 'background:#0f172a;border:1px solid ' + p.br + ';border-radius:12px;padding:12px 14px;display:flex;gap:10px;align-items:flex-start;box-shadow:0 8px 24px rgba(0,0,0,.4);animation:crm-in .25s ease;';
+    el.innerHTML = '<i class="fa-solid ' + p.iclass + '" style="color:' + p.ic + ';margin-top:1px;"></i>'
+                 + '<div style="flex:1;min-width:0;"><p style="font-size:13px;font-weight:700;color:#fff;margin:0;">' + esc(title) + '</p>'
+                 + '<p style="font-size:11px;color:#94a3b8;margin:2px 0 0;">' + esc(body) + '</p></div>';
+    host.appendChild(el);
+    setTimeout(function(){ el.style.transition = 'opacity .3s, transform .3s'; el.style.opacity = '0'; el.style.transform = 'translateY(8px)'; setTimeout(function(){ el.remove(); }, 320); }, 3500);
+}
+
 if (!form) return;
 
 // ============================================================
@@ -319,9 +343,12 @@ function renderLeadCard(lead, seenSet, idx) {
               + (lead.business_category ? '<span class="text-slate-600"><i class="fa-solid fa-tag mr-1"></i>'+esc(lead.business_category)+'</span>' : '')
             + '</div>'
           + '</div>'
-          + '<a href="'+genUrl+'" class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-4 py-2 rounded-xl font-bold whitespace-nowrap transition-all shrink-0">'
+          + '<a href="'+genUrl+'" class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-3 py-2 rounded-xl font-bold whitespace-nowrap transition-all shrink-0">'
             + '<i class="fa-solid fa-bolt text-[10px]"></i> Build Site'
           + '</a>'
+          + '<button type="button" class="crm-add-from-lead inline-flex items-center gap-1.5 text-xs bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white border border-white/10 px-3 py-2 rounded-xl font-bold whitespace-nowrap transition-all shrink-0" data-lead-id="'+lead.id+'">'
+            + '<i class="fa-solid fa-address-book text-[10px]"></i> Add to CRM'
+          + '</button>'
         + '</div>'
         + '<div class="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-white/5">'
           + phonePill + emailPill + mapsLink
@@ -333,6 +360,55 @@ function renderLeadCard(lead, seenSet, idx) {
             copyText(btn.dataset.copy, btn);
         });
     });
+
+    // "Add to CRM": posts to /portal/crm.php (crm_action=add_from_lead).
+    // Idempotent server-side; on success shows a toast and links to the CRM.
+    var crmBtn = card.querySelector('.crm-add-from-lead');
+    if (crmBtn) {
+        crmBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            e.preventDefault();
+            var btn = this;
+            var leadId = btn.getAttribute('data-lead-id');
+            if (!leadId || btn.disabled) return;
+            var origHTML = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin text-[10px]"></i> Adding…';
+            var fd = new FormData();
+            fd.append('crm_action', 'add_from_lead');
+            fd.append('lead_id',    leadId);
+            fd.append('csrf_token', csrfToken);
+            fetch('/portal/crm.php', { method:'POST', body:fd })
+                .then(function(r){return r.json();})
+                .then(function(j){
+                    btn.disabled = false;
+                    if (j && j.ok) {
+                        btn.innerHTML = '<i class="fa-solid fa-check text-[10px]"></i> ' + (j.existing ? 'Already in CRM' : 'Added to CRM');
+                        btn.classList.add('text-emerald-400','border-emerald-500/30');
+                        btn.classList.remove('text-slate-300','border-white/10');
+                        // Click → open CRM (detail page if id returned)
+                        btn.addEventListener('click', function(){
+                            window.location.href = '/portal/crm.php?client=' + j.id;
+                        }, { once:true });
+                        leadsToast('Added to CRM', j.existing ? 'This lead was already in your client list.' : 'You can now track it in your pipeline.', 'success');
+                    } else {
+                        btn.innerHTML = origHTML;
+                        var msg = (j && j.error) ? j.error : 'Could not add to CRM.';
+                        // 'upgrade' is a magic server response for free plans
+                        if (msg === 'upgrade') {
+                            leadsToast('Upgrade required', 'Client CRM is a Pro feature. Upgrade to add leads to your pipeline.', 'warn');
+                        } else {
+                            leadsToast('Could not add to CRM', msg, 'warn');
+                        }
+                    }
+                })
+                .catch(function(){
+                    btn.disabled = false;
+                    btn.innerHTML = origHTML;
+                    leadsToast('Network error', 'Please try again.', 'warn');
+                });
+        });
+    }
     return card;
 }
 

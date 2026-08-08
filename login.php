@@ -55,11 +55,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $_SESSION['pending_2fa_method'] = 'email';
                     $code = create_2fa_code($u['id']);
-                    send_2fa_code_email($u['email'], $u['full_name'], $code);
+                    $sent = send_2fa_code_email($u['email'], $u['full_name'], $code);
+                    if (!$sent) {
+                        // Roll back the pending-2FA session state so the user
+                        // isn't left on /verify-2fa.php with no code in their
+                        // inbox. Previously send_2fa_code_email()'s failure was
+                        // ignored and the user was redirected anyway, leaving
+                        // them stuck.
+                        unset($_SESSION['pending_2fa_user_id'], $_SESSION['pending_2fa_method'], $_SESSION['pending_2fa_remember']);
+                        $error = 'We couldn\'t send your login code right now. Please try again in a moment, or contact support.';
+                        error_log('[login] send_2fa_code_email failed for user ' . $u['id']);
+                        $u = null; // fall through to render the login form with $error
+                    }
                 }
 
-                header('Location: /verify-2fa.php');
-                exit;
+                if (!empty($u) && $u['two_factor_enabled']) {
+                    header('Location: /verify-2fa.php');
+                    exit;
+                }
             } else {
                 login_user($u['id']);
                 if ($rememberMe) {

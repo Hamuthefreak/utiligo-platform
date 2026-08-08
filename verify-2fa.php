@@ -79,8 +79,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['resend']) && $method 
     $u = $stmt->fetch();
     if ($u) {
         $newCode = create_2fa_code($pendingUserId);
-        send_2fa_code_email($u['email'], $u['full_name'], $newCode);
-        $resent = true;
+        $ok = send_2fa_code_email($u['email'], $u['full_name'], $newCode);
+        if ($ok) {
+            $resent = true;
+        } else {
+            $error = 'We couldn\'t send a new code right now. Please try again in a moment, or contact support.';
+            error_log('[verify-2fa] send_2fa_code_email failed for user ' . $pendingUserId);
+        }
     }
 }
 
