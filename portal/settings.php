@@ -328,6 +328,9 @@ $initials = substr($initials, 0, 2);
 $joined   = !empty($user['created_at']) ? date('F Y', strtotime($user['created_at'])) : 'Unknown';
 
 $pageTitle = 'Settings — Utiligo';
+// Keep tab switching (Profile / Password / Security / Notifications / Danger)
+// instant — skip the page-transition loader used on the rest of the portal.
+$disable_transition_loader = true;
 require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 

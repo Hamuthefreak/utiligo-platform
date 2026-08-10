@@ -237,6 +237,12 @@ function closeSidebar() { document.getElementById('sidebar').classList.remove('o
 
 // ── Utiligo Portal Transition System ────────────────────────────────────
 (function () {
+  // Settings page opts out so tab switching (Profile / Password / Security…)
+  // stays instant — set $disable_transition_loader = true before including
+  // portal_layout.php. Everywhere else the loader keeps working as before.
+  var disabled = <?= (!empty($disable_transition_loader) ? 'true' : 'false') ?>;
+  if (disabled) return;
+
   var loader = document.getElementById('utl-loader');
   var bar    = document.getElementById('utl-progress-bar');
   if (!loader || !bar) return;
