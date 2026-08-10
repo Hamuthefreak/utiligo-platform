@@ -14,8 +14,8 @@ header('Content-Type: text/html; charset=utf-8');
 <html>
 <head>
 <meta charset="UTF-8">
-<link rel="icon" type="image/png" href="/assets/images/sitelogo-icon.png">
-<link rel="apple-touch-icon" href="/assets/images/sitelogo-icon.png">
+<link rel="icon" type="image/png" href="/assets/images/newsitelogo.png">
+<link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
 <title>Utiligo Error Probe</title>
 <style>
 body{font-family:monospace;background:#0d0d14;color:#cdd6f4;padding:30px;font-size:13px;line-height:1.6;}

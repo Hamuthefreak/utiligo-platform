@@ -1,6 +1,6 @@
 <?php
-$_logo_path = __DIR__ . '/../assets/images/logo.png';
-$_logo_url  = '/assets/images/logo.png';
+$_logo_path = __DIR__ . '/../assets/images/utiligoheaderlogo.png';
+$_logo_url  = '/assets/images/utiligoheaderlogo.png';
 $_has_logo  = file_exists($_logo_path);
 ?>
 <footer class="bg-slate-900/60 border-t border-white/10 mt-20">

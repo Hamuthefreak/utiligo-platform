@@ -11,8 +11,8 @@ if (is_logged_in()) { header('Location: /portal/index.php'); exit; }
 $_plan_param  = isset($_GET['plan']) && in_array($_GET['plan'], ['pro','entrepreneur']) ? $_GET['plan'] : 'free';
 $_plan_labels = ['free' => 'Free', 'pro' => 'Pro — $21.99/mo', 'entrepreneur' => 'Entrepreneur — $49.99/mo'];
 
-$_logo_path = __DIR__ . '/assets/images/logo.png';
-$_logo_url  = '/assets/images/logo.png';
+$_logo_path = __DIR__ . '/assets/images/utiligoheaderlogo.png';
+$_logo_url  = '/assets/images/utiligoheaderlogo.png';
 $_has_logo  = file_exists($_logo_path);
 
 $error   = '';

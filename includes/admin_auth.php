@@ -23,7 +23,7 @@ function _admin_deny(string $reason, int $code = 403): never
     _admin_log('DENY', $reason);
     http_response_code($code);
     if (!headers_sent()) header('Content-Type: text/html; charset=UTF-8');
-    echo '<!DOCTYPE html><html><head><link rel="icon" type="image/png" href="/assets/images/sitelogo-icon.png"><title>Access Denied</title>'
+    echo '<!DOCTYPE html><html><head><link rel="icon" type="image/png" href="/assets/images/newsitelogo.png"><title>Access Denied</title>'
        . '<style>body{background:#0F172A;color:#94A3B8;font-family:Inter,sans-serif;'
        . 'display:flex;align-items:center;justify-content:center;height:100vh;margin:0;}'
        . '.box{text-align:center;}.box h1{color:#EF4444;font-size:2rem;margin:0 0 .5rem;}'

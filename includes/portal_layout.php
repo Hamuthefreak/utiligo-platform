@@ -14,8 +14,8 @@ $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 $_is_admin = !empty($_user['is_admin']);
 
-$_logo_path = __DIR__ . '/../assets/images/logo.png';
-$_logo_url  = '/assets/images/logo.png';
+$_logo_path = __DIR__ . '/../assets/images/utiligoheaderlogo.png';
+$_logo_url  = '/assets/images/utiligoheaderlogo.png';
 $_has_logo  = file_exists($_logo_path);
 
 $_plan_label = $_is_ent ? 'Entrepreneur' : ($_is_pro ? 'Pro' : 'Free');
@@ -33,8 +33,8 @@ if (!function_exists('_nav_active')) {
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/png" href="/assets/images/sitelogo-icon.png">
-<link rel="apple-touch-icon" href="/assets/images/sitelogo-icon.png">
+<link rel="icon" type="image/png" href="/assets/images/newsitelogo.png">
+<link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
 <title><?= htmlspecialchars($pageTitle) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
