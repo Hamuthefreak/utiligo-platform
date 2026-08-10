@@ -22,6 +22,32 @@ $faq_pro_price  = defined('PRO_PLAN_PRICE')           ? PRO_PLAN_PRICE          
 $faq_ent_price  = defined('ENTREPRENEUR_PLAN_PRICE')  ? ENTREPRENEUR_PLAN_PRICE : 49.99;
 
 $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.';
+$seoTitle  = 'Utiligo | Lead Generation & Website Builder for Freelancers & Agencies';
+$seoDescription = 'Utiligo helps freelancers and agencies find local businesses with no website, generate a professional website in 60 seconds, and close more clients. No coding or design skills required.';
+
+// FAQ used both for the on-page accordion and the FAQPage structured data.
+$faqs = [
+    ['Do I need any coding or design experience?',
+     'No. Utiligo generates the entire website for you — you just enter the business details and pick a template. You can also edit text, images, and colours live inside the dashboard.'],
+    ['What happens to the websites I generate?',
+     'Every site exports as a clean, standalone ZIP file. You can host it anywhere — there\'s no lock-in to our platform.'],
+    ["What's the difference between Pro and Entrepreneur?",
+     'Pro gives you '.$faq_pro_leads.' lead unlocks and '.$faq_pro_sites.' active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and '.$faq_ent_sites.' active websites, plus client reports and team seats for agencies running at scale.'],
+    ['Is the free plan actually usable, or just a teaser?',
+     'The free plan lets you run searches, see '.$faq_free_leads.' leads per search, and generate '.$faq_free_sites.' site per day with 2 templates. ZIP export and all templates require a paid plan.'],
+    ['How does billing work?',
+     'Pro is $'.number_format($faq_pro_price,2).'/month and Entrepreneur is $'.number_format($faq_ent_price,2).'/month — cancel anytime. You keep access through the end of your current billing period after cancelling.'],
+];
+
+$seo_json_ld = [[
+    '@type'      => 'FAQPage',
+    'mainEntity' => array_map(fn($f) => [
+        '@type'          => 'Question',
+        'name'           => $f[0],
+        'acceptedAnswer' => ['@type' => 'Answer', 'text' => html_entity_decode(strip_tags($f[1]))],
+    ], $faqs),
+]];
+
 require_once __DIR__ . '/includes/header.php';
 ?>
 
@@ -229,18 +255,7 @@ require_once __DIR__ . '/includes/header.php';
     <h2 class="text-3xl md:text-4xl font-bold mt-2">Frequently Asked Questions</h2>
   </div>
   <div class="space-y-4">
-    <?php foreach ([
-      ['Do I need any coding or design experience?',
-       'No. Utiligo generates the entire website for you — you just enter the business details and pick a template. You can also edit text, images, and colours live inside the dashboard.'],
-      ['What happens to the websites I generate?',
-       'Every site exports as a clean, standalone ZIP file. You can host it anywhere — there\'s no lock-in to our platform.'],
-      ["What's the difference between Pro and Entrepreneur?",
-       'Pro gives you '.$faq_pro_leads.' lead unlocks and '.$faq_pro_sites.' active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and '.$faq_ent_sites.' active websites, plus client reports and team seats for agencies running at scale.'],
-      ['Is the free plan actually usable, or just a teaser?',
-       'The free plan lets you run searches, see '.$faq_free_leads.' leads per search, and generate '.$faq_free_sites.' site per day with 2 templates. ZIP export and all templates require a paid plan.'],
-      ['How does billing work?',
-       'Pro is $'.number_format($faq_pro_price,2).'/month and Entrepreneur is $'.number_format($faq_ent_price,2).'/month — cancel anytime. You keep access through the end of your current billing period after cancelling.'],
-    ] as [$q,$a]): ?>
+    <?php foreach ($faqs as [$q,$a]): ?>
     <details class="glass rounded-xl p-5 group">
       <summary class="cursor-pointer font-semibold text-sm flex justify-between items-center list-none">
         <?= htmlspecialchars($q) ?>

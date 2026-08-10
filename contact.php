@@ -42,6 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = 'Contact Us — Utiligo';
+$seoTitle  = 'Contact Utiligo — Questions, Feedback & Partnerships';
+$seoDescription = 'Questions, feedback, or partnership ideas? Contact the Utiligo team — the lead generation and website builder for freelancers and agencies.';
 require_once __DIR__ . '/includes/header.php';
 ?>
 

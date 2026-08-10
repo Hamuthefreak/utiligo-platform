@@ -87,6 +87,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = 'Create Account — Utiligo';
+$seoTitle  = 'Sign Up Free | Utiligo — Lead Generation & Website Builder for Freelancers';
+$seoDescription = 'Create your free Utiligo account and start finding local businesses without a website. Generate professional websites in 60 seconds and close more clients. No credit card required.';
 require_once __DIR__ . '/includes/header.php';
 ?>
 

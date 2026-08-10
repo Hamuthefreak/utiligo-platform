@@ -80,4 +80,7 @@ $html = preg_replace_callback('/href="([a-z\-]+)\.html"/', function ($m) use ($s
 $beacon = '<script>navigator.sendBeacon && navigator.sendBeacon("/api/track_view.php",new URLSearchParams({site_id:' . $siteId . '}));</script>';
 $html   = str_replace('</body>', $beacon . '</body>', $html);
 
+// Temporary client-preview links — keep them out of search results.
+$html = str_replace('<head>', "<head>\n<meta name=\"robots\" content=\"noindex, nofollow\">", $html);
+
 echo $html;

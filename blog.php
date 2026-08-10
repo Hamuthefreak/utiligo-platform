@@ -4,6 +4,8 @@
  * actual blog content below inside the <div class="prose ..."> block.
  */
 $pageTitle = 'Blog — Utiligo';
+$seoTitle  = 'Blog | Lead Generation Tips for Freelancers & Agencies';
+$seoDescription = 'Guides and tips on lead generation, building websites for local businesses, and scaling your freelance or agency business with Utiligo.';
 require_once __DIR__ . '/includes/header.php';
 ?>
 

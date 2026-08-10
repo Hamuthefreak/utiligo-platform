@@ -88,6 +88,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle = 'Login — Utiligo';
+$seoTitle  = 'Log In | Utiligo — Find Clients & Build Websites';
+$seoDescription = 'Log in to Utiligo to run lead searches, generate websites, and manage your client pipeline. New here? Start free.';
 require_once __DIR__ . '/includes/header.php';
 ?>
 

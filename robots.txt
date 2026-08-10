@@ -1,0 +1,22 @@
+User-agent: *
+Allow: /
+
+# App areas — not for search engines
+Disallow: /admin/
+Disallow: /api/
+Disallow: /assets/uploads/
+Disallow: /cron/
+Disallow: /db/
+Disallow: /errors/
+Disallow: /exports/
+Disallow: /includes/
+Disallow: /migrations/
+Disallow: /notfound/
+Disallow: /portal/
+Disallow: /sql/
+Disallow: /storage/
+
+# Generated-site preview links (temporary, expire after 7 days)
+Disallow: /s/
+
+Sitemap: https://utiligo.ca/sitemap.xml

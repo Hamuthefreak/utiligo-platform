@@ -4,6 +4,8 @@
  * actual careers content below inside the <div class="prose ..."> block.
  */
 $pageTitle = 'Careers — Utiligo';
+$seoTitle  = 'Careers at Utiligo';
+$seoDescription = 'Join the team behind Utiligo, the lead generation and website builder for freelancers and agencies.';
 require_once __DIR__ . '/includes/header.php';
 ?>
 
