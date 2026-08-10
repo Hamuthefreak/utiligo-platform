@@ -234,7 +234,7 @@ set_exception_handler(function (\Throwable $e): void {
     if ($isApi) {
         echo json_encode(['success' => false, 'error' => 'Server error. This has been logged — please try again or contact support.']);
     } else {
-        echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><link rel=\"icon\" type=\"image/png\" href=\"/assets/images/sitelogo.png\"><title>Server error — Utiligo</title>"
+        echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><link rel=\"icon\" type=\"image/png\" href=\"/assets/images/sitelogo-icon.png\"><title>Server error — Utiligo</title>"
            . "<style>body{font-family:system-ui,Segoe UI,Arial;background:#020817;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}"
            . ".box{max-width:480px;padding:40px;text-align:center;}"
            . "h1{font-size:48px;margin:0 0 8px;color:#ef4444}"
@@ -289,7 +289,7 @@ register_shutdown_function(function (): void {
         if ($isApi) {
             echo json_encode(['success' => false, 'error' => 'Server error. This has been logged — please try again or contact support.']);
         } else {
-            echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><link rel=\"icon\" type=\"image/png\" href=\"/assets/images/sitelogo.png\"><title>Server error — Utiligo</title>"
+            echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><link rel=\"icon\" type=\"image/png\" href=\"/assets/images/sitelogo-icon.png\"><title>Server error — Utiligo</title>"
                . "<style>body{font-family:system-ui,Segoe UI,Arial;background:#020817;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}"
                . ".box{max-width:480px;padding:40px;text-align:center;}"
                . "h1{font-size:48px;margin:0 0 8px;color:#ef4444}"

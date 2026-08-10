@@ -43,8 +43,8 @@ if ($seoImage && strpos($seoImage, 'http') !== 0) $seoImage = $_seo_base . $seoI
 <meta name="twitter:title" content="<?= htmlspecialchars($seoTitle) ?>">
 <meta name="twitter:description" content="<?= htmlspecialchars($seoDescription, ENT_QUOTES, 'UTF-8') ?>">
 <meta name="twitter:image" content="<?= htmlspecialchars($seoImage) ?>">
-<link rel="icon" type="image/png" href="/assets/images/sitelogo.png">
-<link rel="apple-touch-icon" href="/assets/images/sitelogo.png">
+<link rel="icon" type="image/png" href="/assets/images/sitelogo-icon.png">
+<link rel="apple-touch-icon" href="/assets/images/sitelogo-icon.png">
 <?php
 // ── JSON-LD structured data: Organization + WebSite always, plus any
 //    page-specific graph (e.g. homepage adds a FAQPage) via $seo_json_ld. ──
