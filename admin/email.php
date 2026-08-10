@@ -22,8 +22,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
     $audience  = $_POST['audience'] ?? 'all';
     $customRaw = trim($_POST['custom_emails'] ?? '');
 
-    // FIX 1: Whitelist audience to only valid DB enum values (plan is enum('free','pro'))
-    $validAudiences = ['all', 'pro', 'free', 'custom'];
+    // Whitelist audience to valid segments (plan is enum('free','pro','entrepreneur'))
+    $validAudiences = ['all', 'paid', 'pro', 'free', 'entrepreneur', 'custom'];
     if (!in_array($audience, $validAudiences)) $audience = 'all';
 
     if (!$subject || !$bodyHtml) {
@@ -33,8 +33,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $recipients = [];
         if ($audience === 'all') {
             $recipients = $udb->query('SELECT email,full_name FROM utiligo_users WHERE email_verified=1')->fetchAll(PDO::FETCH_ASSOC);
+        } elseif ($audience === 'paid') {
+            $recipients = $udb->query("SELECT email,full_name FROM utiligo_users WHERE plan IN ('pro','entrepreneur') AND email_verified=1")->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($audience === 'pro') {
             $recipients = $udb->query("SELECT email,full_name FROM utiligo_users WHERE plan='pro' AND email_verified=1")->fetchAll(PDO::FETCH_ASSOC);
+        } elseif ($audience === 'entrepreneur') {
+            $recipients = $udb->query("SELECT email,full_name FROM utiligo_users WHERE plan='entrepreneur' AND email_verified=1")->fetchAll(PDO::FETCH_ASSOC);
         } elseif ($audience === 'free') {
             $recipients = $udb->query("SELECT email,full_name FROM utiligo_users WHERE plan='free' AND email_verified=1")->fetchAll(PDO::FETCH_ASSOC);
         } else {
@@ -46,6 +50,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
             }
         }
         $footer = '<p style="font-size:11px;color:#64748b;margin:24px 0 0;text-align:center;"><a href="https://utiligo.ca/unsubscribe" style="color:#94a3b8;">Unsubscribe</a> &middot; <a href="https://utiligo.ca" style="color:#94a3b8;">Utiligo.ca</a></p>';
+
+        // ── Make the body Gmail-safe BEFORE the send loop ─────────────────
+        // 1) Host any base64 (data:) images uploaded from the builder's image
+        //    library onto the server — Gmail does not reliably load data: URIs.
+        // 2) Rewrite root-relative URLs ("/assets/...", "/exports/...") to
+        //    absolute HTTPS URLs, which email clients need to load images.
+        $assetLog = '';
+        $bodyHtml = email_host_data_images($bodyHtml, $assetLog);
+        $bodyHtml = email_absolutize_assets($bodyHtml);
+        if ($assetLog !== '') {
+            _admin_log('WARN', 'email image hosting: ' . rtrim($assetLog, '; '));
+        }
+
         _admin_log('INFO', "Blast start: subject='{$subject}' aud={$audience} to=".count($recipients));
         foreach ($recipients as $r) {
             $html = email_wrapper('Message from Utiligo', "<p>Hi {$r['full_name']},</p>{$bodyHtml}", $footer);
@@ -97,6 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 $csrf = admin_csrf_token('email_blast');
+
+// Full wrapper chrome used by the JS Preview modal so the on-screen preview
+// is pixel-identical to the email that actually gets sent (dark card, header
+// logo, footer). Tokens are swapped client-side before rendering.
+$_blastFooter = '<p style="font-size:11px;color:#64748b;margin:24px 0 0;text-align:center;"><a href="https://utiligo.ca/unsubscribe" style="color:#94a3b8;">Unsubscribe</a> &middot; <a href="https://utiligo.ca" style="color:#94a3b8;">Utiligo.ca</a></p>';
+$_ebChrome    = email_wrapper('__EB_SUBJECT__', '<p style="margin:0 0 8px;color:#CBD5E1;">Hi there,</p>' . '__EB_BODY__', $_blastFooter);
+$ebChromeJson = json_encode($_ebChrome);
+unset($_blastFooter, $_ebChrome);
+
 $pageTitle = 'Email Blast — Admin — Utiligo';
 $adminPage = 'email';
 require_once __DIR__ . '/../includes/admin_layout.php';
@@ -232,7 +258,9 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       <label class="pp-label" style="margin-bottom:.5rem">Audience</label>
       <div class="flex flex-wrap gap-1.5" id="aud-btns">
         <button type="button" class="aud-pill on" data-v="all">All</button>
+        <button type="button" class="aud-pill" data-v="paid">Paid</button>
         <button type="button" class="aud-pill" data-v="pro">Pro</button>
+        <button type="button" class="aud-pill" data-v="entrepreneur">Entrepreneur</button>
         <button type="button" class="aud-pill" data-v="free">Free</button>
         <button type="button" class="aud-pill" data-v="custom">Custom</button>
       </div>
@@ -442,7 +470,8 @@ const CANVAS = document.getElementById('eb-canvas');
 const HINT   = document.getElementById('canvas-hint');
 
 // ═══ DEFAULTS ════════════════════════════════
-const LOGO_URL = '/assets/images/logo.png';
+const LOGO_URL = <?= json_encode(rtrim(APP_BASE_URL, '/') . '/assets/images/logo.png') ?>;
+const EB_CHROME = <?= $ebChromeJson ?>;
 
 const DEF = {
   logo     : { src: LOGO_URL, alt:'Utiligo', align:'center', width:'180', radius:'0', blockBg:'#111827', padV:'20', padH:'28' },
@@ -1009,7 +1038,7 @@ document.getElementById('aud-btns').addEventListener('click', e => {
   document.querySelectorAll('.aud-pill').forEach(b => b.classList.remove('on'));
   btn.classList.add('on');
   document.getElementById('custom-box').classList.toggle('hidden', btn.dataset.v !== 'custom');
-  const labels = { all:'All verified users', pro:'Pro plan users', free:'Free plan users', custom:'Custom list' };
+  const labels = { all:'All verified users', paid:'Pro + Entrepreneur users', pro:'Pro plan users', entrepreneur:'Entrepreneur plan users', free:'Free plan users', custom:'Custom list' };
   document.getElementById('pv-to-label').textContent = labels[btn.dataset.v] || 'All verified users';
 });
 
@@ -1038,16 +1067,14 @@ function prevModal() {
   const m = document.getElementById('prev-modal');
   if (m.classList.contains('flex')) { closePrevModal(); return; }
   const subj = document.getElementById('s-subject').value.trim() || '(no subject)';
-  document.getElementById('pv-iframe').srcdoc =
-    '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
-    '<meta name="viewport" content="width=device-width,initial-scale=1">'+
-    '<style>*{box-sizing:border-box;}body{margin:0;padding:0;background:#f1f5f9;font-family:Arial,sans-serif;}</style>'+
-    '</head><body>'+
-    '<div style="background:#fff;border-bottom:1px solid #e5e7eb;padding:12px 20px;font-size:13px;color:#6b7280;">'+
-    '<div><strong style="color:#111;">Subject:</strong> ' + escAttr(subj) + '</div>'+
-    '<div><strong style="color:#111;">From:</strong> Utiligo &lt;noreply@utiligo.ca&gt;</div>'+
-    '</div><div style="padding:24px 0;">' + buildEmail() + '</div>'+
-    '</body></html>';
+  // Render through the exact same email_wrapper template used at send time —
+  // dark card, header logo, footer, real subject — so the preview is
+  // pixel-identical to what lands in Gmail.
+  const greeting = '<p style="margin:0 0 8px;color:#CBD5E1;">Hi there,</p>';
+  const chrome = EB_CHROME
+    .split('__EB_SUBJECT__').join(escAttr(subj))
+    .split('__EB_BODY__').join(greeting + buildEmail());
+  document.getElementById('pv-iframe').srcdoc = chrome;
   m.classList.replace('hidden','flex');
 }
 function closePrevModal() { document.getElementById('prev-modal').classList.replace('flex','hidden'); }

@@ -135,8 +135,9 @@ function brevo_upsert_contact(string $email, array $attributes = [], array $list
 function email_wrapper(string $preheader, string $bodyHtml, string $footerExtra = ''): string
 {
     $year    = date('Y');
-    $site    = 'https://utiligo.ca';
-    $logo    = 'https://utiligo.ca/assets/img/utiligo-logo-email.png'; // fallback text shown if 404
+    $base    = rtrim(defined('APP_BASE_URL') ? APP_BASE_URL : 'https://utiligo.ca', '/');
+    $site    = $base;
+    $logo    = $base . '/assets/images/logo.png'; // must exist — absolute URL so it loads in Gmail
 
     return <<<HTML
 <!DOCTYPE html>
@@ -159,31 +160,31 @@ function email_wrapper(string $preheader, string $bodyHtml, string $footerExtra 
 
 <!-- Outer table -->
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
-       style="background-color:#0F172A;min-height:100vh;">
+       style="background-color:#0F172A;">
   <tr>
     <td align="center" style="padding:40px 16px 60px;">
 
       <!-- Card -->
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"
              style="max-width:580px;background-color:#1A2540;border-radius:20px;overflow:hidden;
-                    box-shadow:0 20px 60px rgba(0,0,0,0.5);">
+                    border:1px solid #25324F;box-shadow:0 20px 60px rgba(0,0,0,0.5);">
 
         <!-- ── Header bar ── -->
         <tr>
-          <td style="background:linear-gradient(135deg,#0F172A 0%,#1E3A5F 100%);
+          <td style="background-color:#111E34;background:linear-gradient(135deg,#0F172A 0%,#1E3A5F 100%);
                      padding:32px 40px 28px;text-align:center;
                      border-bottom:1px solid rgba(16,185,129,0.25);">
-            <!-- Wordmark fallback if logo image fails -->
+            <!-- Wordmark: image for modern clients, styled text for Outlook/MSO -->
             <a href="{$site}" style="text-decoration:none;">
-              <!--[if !mso]><!-->
-              <img src="{$logo}" alt="Utiligo" width="130" height="auto"
-                   style="display:block;margin:0 auto;max-width:130px;height:auto;"
-                   onerror="this.style.display='none';document.getElementById('logo-text').style.display='block';">
-              <!--<![endif]-->
-              <span id="logo-text" style="display:none;font-family:Inter,Arial,sans-serif;
-                    font-size:26px;font-weight:800;letter-spacing:-0.5px;color:#FFFFFF;">
+              <!--[if mso]>
+              <span style="font-family:Arial,sans-serif;font-size:26px;font-weight:800;color:#FFFFFF;">
                 utili<span style="color:#10B981;">go</span>
               </span>
+              <![endif]-->
+              <!--[if !mso]><!-->
+              <img src="{$logo}" alt="Utiligo" width="130" height="auto"
+                   style="display:block;margin:0 auto;max-width:130px;height:auto;border:0;outline:none;text-decoration:none;-ms-interpolation-mode:bicubic;">
+              <!--<![endif]-->
             </a>
           </td>
         </tr>
@@ -223,6 +224,110 @@ function email_wrapper(string $preheader, string $bodyHtml, string $footerExtra 
 </body>
 </html>
 HTML;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   GMAIL-SAFE ASSET HELPERS
+   ═══════════════════════════════════════════════════════════════════════════
+
+   Email clients (Gmail, Fastmail, etc.) render HTML in a sandbox: relative
+   image/link URLs like "/assets/..." resolve against the mail app's own
+   origin and come back 404, and JavaScript never runs.  These two helpers
+   are run immediately before sending so every <img> points at an absolute,
+   publicly reachable HTTPS URL.
+
+   • email_host_data_images() — extracts base64 (data:) images from the admin
+     builder and writes them to assets/uploads/emails/ on this server, then
+     swaps the src for an absolute URL.  Gmail refuses to load <img> tags
+     whose src is a data: URI in many cases, which is why the builder's
+     "copy URL" library images showed up broken before.
+   • email_absolutize_assets()  — rewrites root-relative ("/...") and
+     protocol-relative ("//...") src/href/background URLs to absolute.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * Extract base64 (data:) images from an HTML body and host them under
+ * /assets/uploads/emails/ so clients that block data: URIs can load them.
+ *
+ * @param string $html  Email HTML
+ * @param string $log   Out: human-readable notes for the admin log
+ * @return string       HTML with data: image srcs replaced (unchanged on error)
+ */
+function email_host_data_images(string $html, string &$log = ''): string
+{
+    $base  = rtrim(defined('APP_BASE_URL') ? APP_BASE_URL : 'https://utiligo.ca', '/');
+    $limit = 16;
+    $count = 0;
+
+    $res = preg_replace_callback(
+        '#\bsrc\s*=\s*(["\'])data:image/(png|jpe?g|gif|webp);base64,([A-Za-z0-9+/=]+)\1#i',
+        function ($m) use ($base, &$count, $limit, &$log) {
+            $q     = $m[1];
+            $b64   = $m[3];
+            if ($count >= $limit) { $log .= 'image limit reached; skipped one; '; return $m[0]; }
+
+            $bin = base64_decode($b64, true);
+            if ($bin === false || $bin === '') { $log .= 'invalid base64 image skipped; '; return $m[0]; }
+            if (strlen($bin) > 1024 * 1024)    { $log .= 'image >1MB skipped; '; return $m[0]; }
+
+            // Validate by magic bytes — never trust the MIME label.
+            $ext = null;
+            if      (strncmp($bin, "\xFF\xD8\xFF", 3) === 0)            { $ext = 'jpg'; }
+            elseif  (strncmp($bin, "\x89PNG\x0D\x0A\x1A\x0A", 8) === 0) { $ext = 'png'; }
+            elseif  (strncmp($bin, 'GIF87a', 6) === 0 || strncmp($bin, 'GIF89a', 6) === 0) { $ext = 'gif'; }
+            elseif  (strncmp($bin, 'RIFF', 4) === 0 && strncmp(substr($bin, 8, 4), 'WEBP', 4) === 0) { $ext = 'webp'; }
+            if ($ext === null) { $log .= 'unrecognised image type skipped; '; return $m[0]; }
+
+            $dir = __DIR__ . '/../assets/uploads/emails';
+            if (!is_dir($dir) && !@mkdir($dir, 0755, true)) { $log .= 'cannot create emails dir; '; return $m[0]; }
+            if (!is_writable($dir))                        { $log .= 'emails dir not writable; '; return $m[0]; }
+
+            $name = 'email_' . gmdate('Ymd_His') . '_' . dechex(random_int(4096, 65535)) . '.' . $ext;
+            $path = $dir . '/' . $name;
+            if (@file_put_contents($path, $bin) === false) { $log .= 'image write failed; '; return $m[0]; }
+
+            $count++;
+            return 'src=' . $q . $base . '/assets/uploads/emails/' . $name . $q;
+        },
+        $html
+    );
+    return ($res !== null) ? $res : $html;
+}
+
+/**
+ * Rewrite root-relative and protocol-relative asset URLs to absolute, so
+ * images/links load inside emailed HTML (Gmail resolves "/x" against its
+ * own origin, not yours).  Absolute, data:, mailto:, tel: etc. are left alone.
+ */
+function email_absolutize_assets(string $html): string
+{
+    $base = rtrim(defined('APP_BASE_URL') ? APP_BASE_URL : 'https://utiligo.ca', '/');
+
+    $res = preg_replace_callback(
+        '#\b(src|href|background)\s*=\s*(["\'])(.*?)\2#i',
+        function ($m) use ($base) {
+            $attr = strtolower($m[1]);
+            $q    = $m[2];
+            $url  = trim($m[3]);
+            if ($url === '' || $url === '#') return $m[0];
+
+            // Already absolute (scheme present) — leave untouched.
+            if (preg_match('#^[a-z][a-z0-9+.\-]*:#i', $url)) {
+                return $m[0];
+            }
+            // Protocol-relative "//cdn.example/x" -> "https://cdn.example/x"
+            if (strpos($url, '//') === 0) {
+                return $attr . '=' . $q . 'https:' . $url . $q;
+            }
+            // Root-relative "/assets/..." -> "https://site/assets/..."
+            if (strpos($url, '/') === 0) {
+                return $attr . '=' . $q . $base . $url . $q;
+            }
+            return $m[0];
+        },
+        $html
+    );
+    return ($res !== null) ? $res : $html;
 }
 
 /* ── Shared style atoms ─────────────────────────────────────────────────── */
