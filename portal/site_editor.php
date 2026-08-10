@@ -311,7 +311,7 @@ html, body {
             <i class="fa-solid fa-bolt" style="color:#000;font-size:10px;"></i>
           </div>
         <?php endif; ?>
-        <span>Utiligo</span>
+        <?php if (!$_has_logo): ?><span>Utiligo</span><?php endif; ?>
       </div>
       <div id="sbSiteName"><?= htmlspecialchars($site['business_name']) ?></div>
     </div>

@@ -11,7 +11,7 @@ $_has_logo  = file_exists($_logo_path);
           <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-6 w-auto">
         <?php else: ?>
           <i class="fa-solid fa-bolt text-emerald-400"></i>
-        <?php endif; ?>Utiligo
+        <?php endif; ?><?php if (!$_has_logo): ?>Utiligo<?php endif; ?>
       </a>
       <p class="text-slate-400 text-sm leading-relaxed">Find clients without a website. Build them one in 60 seconds. Get paid.</p>
       <div class="flex gap-3 mt-5">

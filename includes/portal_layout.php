@@ -139,7 +139,7 @@ if (!function_exists('_nav_active')) {
           <i class="fa-solid fa-bolt text-black text-sm"></i>
         </div>
       <?php endif; ?>
-      <span class="text-lg font-black tracking-tight group-hover:text-slate-300 transition">Utiligo</span>
+      <?php if (!$_has_logo): ?><span class="text-lg font-black tracking-tight group-hover:text-slate-300 transition">Utiligo</span><?php endif; ?>
     </a>
   </div>
 
@@ -223,7 +223,7 @@ if (!function_exists('_nav_active')) {
         <i class="fa-solid fa-bolt text-black text-xs"></i>
       </div>
     <?php endif; ?>
-    <span class="font-black text-base">Utiligo</span>
+    <?php if (!$_has_logo): ?><span class="font-black text-base">Utiligo</span><?php endif; ?>
   </a>
   <a href="/logout" class="w-9 h-9 rounded-lg flex items-center justify-center text-slate-400 hover:text-red-400 hover:bg-white/5 transition">
     <i class="fa-solid fa-arrow-right-from-bracket"></i>

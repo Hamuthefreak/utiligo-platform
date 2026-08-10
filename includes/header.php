@@ -150,7 +150,7 @@ $_seo_ld = array_filter(array_merge([
       <?php else: ?>
         <i class="fa-solid fa-bolt text-white text-xl"></i>
       <?php endif; ?>
-      <span class="logo-wordmark text-white">Utiligo</span>
+      <?php if (!$_has_logo): ?><span class="logo-wordmark text-white">Utiligo</span><?php endif; ?>
     </a>
     <div class="hidden md:flex gap-8 text-sm font-medium text-slate-300">
       <a href="/#how-it-works" class="hover:text-white">How It Works</a>

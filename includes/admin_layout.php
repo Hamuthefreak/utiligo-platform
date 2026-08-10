@@ -57,10 +57,12 @@ $_has_logo  = file_exists($_logo_path);
           <i class="fa-solid fa-bolt text-black text-sm"></i>
         </div>
       <?php endif; ?>
+      <?php if (!$_has_logo): ?>
       <div>
         <span class="text-lg font-black tracking-tight group-hover:text-slate-300 transition">Utiligo</span>
         <div class="text-[10px] font-semibold text-purple-400 leading-none mt-0.5">Admin Panel</div>
       </div>
+      <?php endif; ?>
     </a>
   </div>
 
@@ -121,7 +123,7 @@ $_has_logo  = file_exists($_logo_path);
         <i class="fa-solid fa-bolt text-black text-xs"></i>
       </div>
     <?php endif; ?>
-    <span class="font-black text-base">Utiligo <span class="text-purple-400 text-xs font-semibold">Admin</span></span>
+    <?php if (!$_has_logo): ?><span class="font-black text-base">Utiligo <span class="text-purple-400 text-xs font-semibold">Admin</span></span><?php endif; ?>
   </a>
   <a href="/logout.php" class="text-slate-400 hover:text-white text-sm">
     <i class="fa-solid fa-arrow-right-from-bracket"></i>

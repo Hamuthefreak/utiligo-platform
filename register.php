@@ -112,7 +112,7 @@ require_once __DIR__ . '/includes/header.php';
           <i class="fa-solid fa-bolt text-black text-base"></i>
         </div>
       <?php endif; ?>
-      <span class="text-2xl font-black">Utiligo</span>
+      <?php if (!$_has_logo): ?><span class="text-2xl font-black">Utiligo</span><?php endif; ?>
     </a>
   </div>
 
@@ -190,7 +190,7 @@ require_once __DIR__ . '/includes/header.php';
           <i class="fa-solid fa-bolt text-black text-base"></i>
         </div>
       <?php endif; ?>
-      <span class="text-2xl font-black">Utiligo</span>
+      <?php if (!$_has_logo): ?><span class="text-2xl font-black">Utiligo</span><?php endif; ?>
     </a>
     <h1 class="text-2xl font-bold">Create your account</h1>
     <p class="text-slate-400 text-sm mt-1">No credit card required to start.</p>
