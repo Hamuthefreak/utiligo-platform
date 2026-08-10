@@ -55,6 +55,16 @@ function login_user(int $userId): void
     session_regenerate_id(true);
     $_SESSION['user_id'] = $userId;
     unset($_SESSION['login_attempts'], $_SESSION['login_locked_until']);
+
+    // Best-effort last-login stamp (column added by migration 021 —
+    // on a DB where the migration hasn't applied yet this just fails
+    // silently and does NOT block the login).
+    try {
+        _auth_require_deps();
+        get_user_db()->prepare('UPDATE utiligo_users SET last_login_at = NOW() WHERE id = ?')->execute([$userId]);
+    } catch (\Throwable $e) {
+        // Non-critical — ignore.
+    }
 }
 
 function logout_user(): void

@@ -40,46 +40,69 @@ try {
     $sites = ['note' => 'Could not fetch sites: ' . $e->getMessage()];
 }
 
-// --- Lead history (utiligo_leads table) ---
+// --- Lead history: unlocked leads joined to their Google Places data ---
 $leads = [];
 try {
     $l = $platform->prepare(
-        'SELECT business_name, business_category, business_city, business_phone,
-                business_email, created_at
-         FROM utiligo_leads
-         WHERE user_id = ?
-         ORDER BY created_at DESC
+        'SELECT l.business_name, l.business_category, l.business_city, l.business_phone,
+                l.business_email, l.rating, l.maps_url, ul.unlocked_at
+         FROM unlocked_leads ul
+         INNER JOIN utiligo_leads l ON l.id = ul.lead_id
+         WHERE ul.user_id = ?
+         ORDER BY ul.unlocked_at DESC
          LIMIT 500'
     );
     $l->execute([$user['id']]);
     $leads = $l->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) {
-    // Fallback: try unlocked_leads table
+    // Degrade gracefully to search history on hosts missing the join tables.
     try {
-        $l2 = $platform->prepare(
-            'SELECT lead_data, created_at
-             FROM unlocked_leads
+        $h = $platform->prepare(
+            'SELECT city, industry, keywords, result_count, created_at
+             FROM utiligo_lead_search_history
              WHERE user_id = ?
              ORDER BY created_at DESC
              LIMIT 500'
         );
-        $l2->execute([$user['id']]);
-        $rows  = $l2->fetchAll(PDO::FETCH_ASSOC);
-        $leads = array_map(function ($r) {
-            $decoded = json_decode($r['lead_data'] ?? '{}', true) ?: [];
-            $decoded['unlocked_at'] = $r['created_at'];
-            return $decoded;
-        }, $rows);
+        $h->execute([$user['id']]);
+        $leads = $h->fetchAll(PDO::FETCH_ASSOC);
     } catch (\Throwable $e2) {
-        $leads = ['note' => 'Lead history not available.'];
+        $leads = [];
     }
 }
+
+// --- CRM data (best effort; tables may not exist on all hosts) ---
+$crm = ['clients' => [], 'deals' => [], 'tasks' => [], 'notes' => [], 'activities' => []];
+$crmQueries = [
+    'clients'    => 'SELECT id, name, business, email, phone, city, industry, stage, deal_value, probability, source, created_at, updated_at FROM crm_clients WHERE user_id = ? ORDER BY id DESC',
+    'deals'      => 'SELECT d.id, d.client_id, c.name AS client_name, d.title, d.value, d.stage, d.closed_at, d.created_at FROM crm_deals d LEFT JOIN crm_clients c ON c.id = d.client_id WHERE d.user_id = ? ORDER BY d.id DESC',
+    'tasks'      => 'SELECT id, client_id, title, due_date, priority, done, remind_email, done_at, created_at FROM crm_tasks WHERE user_id = ? ORDER BY id DESC',
+    'notes'      => 'SELECT id, client_id, body, pinned, created_at FROM crm_notes WHERE user_id = ? ORDER BY id DESC',
+    'activities' => 'SELECT id, client_id, activity_type, title, meta, created_at FROM crm_activities WHERE user_id = ? ORDER BY id DESC',
+];
+foreach ($crmQueries as $key => $sql) {
+    try {
+        $q = $platform->prepare($sql);
+        $q->execute([$user['id']]);
+        $crm[$key] = $q->fetchAll(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) { /* table missing — leave empty */ }
+}
+
+// --- White-label brand (best effort) ---
+$whitelabel = null;
+try {
+    $wb = $platform->prepare('SELECT brand_name, primary_color, secondary_color FROM utiligo_whitelabel WHERE user_id = ? LIMIT 1');
+    $wb->execute([$user['id']]);
+    $whitelabel = $wb->fetch(PDO::FETCH_ASSOC) ?: null;
+} catch (\Throwable $e) { $whitelabel = null; }
 
 $export = [
     'exported_at'  => date('c'),
     'profile'      => $profile,
     'sites'        => $sites,
     'lead_history' => $leads,
+    'crm'          => $crm,
+    'whitelabel'   => $whitelabel,
 ];
 
 $filename = 'utiligo-data-' . date('Y-m-d') . '.json';

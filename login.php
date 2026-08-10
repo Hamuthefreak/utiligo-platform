@@ -120,6 +120,9 @@ require_once __DIR__ . '/includes/header.php';
       <h1 class="text-2xl font-bold mb-1 text-center md:hidden">Welcome Back</h1>
       <h2 class="text-xl font-bold mb-6 text-center hidden md:block">Log in to Utiligo</h2>
 
+      <?php if (isset($_GET['loggedout'])): ?>
+        <div class="bg-emerald-500/10 border border-emerald-400/30 text-emerald-400 rounded-lg px-4 py-3 mb-6 text-sm">You've been signed out. All trusted devices were removed.</div>
+      <?php endif; ?>
       <?php if (isset($_GET['resent'])): ?>
         <div class="bg-emerald-500/10 border border-emerald-400/30 text-emerald-400 rounded-lg px-4 py-3 mb-6 text-sm">Verification email resent — check your inbox.</div>
       <?php endif; ?>

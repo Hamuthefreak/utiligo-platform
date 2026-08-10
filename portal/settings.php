@@ -26,26 +26,29 @@ $tab     = $_GET['tab'] ?? 'profile';
 // ======================================================================
 $userdb = get_user_db();
 
-// TOTP columns (migration 005)
-$has_totp_cols = db_table_has_column($userdb, 'utiligo_users', 'two_factor_secret');
-$totp_enabled  = false;
-if ($has_totp_cols) {
-    $st = $userdb->prepare('SELECT two_factor_enabled FROM utiligo_users WHERE id = ?');
-    $st->execute([$user['id']]);
-    $totp_enabled = (bool)$st->fetchColumn();
-}
-
-// Email 2FA — uses utiligo_2fa_codes table which exists from the start
-// We expose this as a separate toggle: "Use email codes on login"
-// Stored via two_factor_enabled column in the pre-TOTP sense (migration 002)
+// TOTP + email-2FA state share the same columns:
+//   - two_factor_enabled = 1  → some form of 2FA is required at login
+//   - two_factor_secret  set  → authenticator app (TOTP); empty → email codes
+// login.php decides the method exactly this way (secret present => TOTP),
+// so the toggles here mirror the real login behaviour.
+$has_totp_cols  = db_table_has_column($userdb, 'utiligo_users', 'two_factor_secret');
 $has_email2fa_col = db_table_has_column($userdb, 'utiligo_users', 'two_factor_enabled');
-// Read current email-2FA preference (only meaningful when totp NOT enabled)
-$email2fa_enabled = false;
-if ($has_email2fa_col && !$totp_enabled) {
-    $st2 = $userdb->prepare('SELECT two_factor_enabled FROM utiligo_users WHERE id = ?');
-    $st2->execute([$user['id']]);
-    $email2fa_enabled = (bool)$st2->fetchColumn();
-}
+$sec            = ['two_factor_enabled' => 0, 'two_factor_secret' => null];
+try {
+    if ($has_totp_cols) {
+        $st = $userdb->prepare('SELECT two_factor_enabled, two_factor_secret FROM utiligo_users WHERE id = ?');
+    } else {
+        $st = $userdb->prepare('SELECT two_factor_enabled FROM utiligo_users WHERE id = ?');
+    }
+    $st->execute([$user['id']]);
+    $row = $st->fetch(PDO::FETCH_ASSOC);
+    if ($row) $sec = array_merge($sec, $row);
+} catch (\Throwable $e) { /* non-fatal */ }
+
+$flag_enabled   = ((int)($sec['two_factor_enabled'] ?? 0) === 1);
+$totp_secret    = (string)($sec['two_factor_secret'] ?? '');
+$totp_enabled   = $flag_enabled && $totp_secret !== '';
+$email2fa_enabled = $flag_enabled && $totp_secret === '';
 
 // Notification prefs (migration 005)
 $notif_prefs = ['email_sites'=>1,'email_leads'=>1,'email_billing'=>1,'email_tips'=>0];
@@ -56,6 +59,14 @@ if ($has_notif_col) {
     $raw = $st3->fetchColumn();
     if ($raw) $notif_prefs = array_merge($notif_prefs, json_decode($raw, true) ?: []);
 }
+
+// Last successful login (migration 021) — best effort
+$lastLoginAt = '';
+try {
+    $stl = $userdb->prepare('SELECT last_login_at FROM utiligo_users WHERE id = ?');
+    $stl->execute([$user['id']]);
+    $lastLoginAt = (string)$stl->fetchColumn();
+} catch (\Throwable $e) { /* non-fatal */ }
 
 // ======================================================================
 // POST HANDLERS
@@ -77,11 +88,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($chk->fetch()) {
                 $error = 'That email is already in use by another account.';
             } else {
+                $oldEmail = strtolower(trim($user['email'] ?? ''));
                 $userdb->prepare('UPDATE utiligo_users SET full_name = ?, email = ? WHERE id = ?')
                     ->execute([$full_name, $email, $user['id']]);
-                $message = 'Profile updated successfully.';
                 $user['full_name'] = $full_name;
                 $user['email']     = $email;
+
+                // If the email changed, the previous verification no longer
+                // applies — mark the account unverified and send a fresh link
+                // so the new address is confirmed (login.php blocks unverified
+                // accounts when EMAIL_VERIFICATION_REQUIRED is on).
+                if ($email !== $oldEmail) {
+                    try {
+                        $userdb->prepare('UPDATE utiligo_users SET email_verified = 0 WHERE id = ?')->execute([$user['id']]);
+                        $user['email_verified'] = 0;
+                        $token  = create_email_verification_token($user['id']);
+                        $verify = rtrim(defined('APP_BASE_URL') ? APP_BASE_URL : 'https://utiligo.ca', '/')
+                                . '/verify-email.php?token=' . urlencode($token);
+                        $sentMail = send_verification_email($email, $full_name, $verify);
+                        $message  = $sentMail
+                            ? 'Profile updated. We emailed a verification link to your new address — please verify it before your next login.'
+                            : 'Profile updated. Your email changed — we couldn\'t send the verification email, so please visit Resend Verification if you are asked to verify on next login.';
+                    } catch (\Throwable $e) {
+                        $message = 'Profile updated. Your email changed, but the verification email could not be sent — use the resend-verification flow on the login page if needed.';
+                    }
+                } else {
+                    $message = 'Profile updated successfully.';
+                }
             }
         }
     }
@@ -133,6 +166,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $userdb->prepare('UPDATE utiligo_users SET two_factor_enabled = 0 WHERE id = ?')->execute([$user['id']]);
             $email2fa_enabled = false;
             $message = 'Email two-factor authentication disabled.';
+        }
+    }
+
+    // ── Sign out of every device ──
+    elseif (($_POST['action'] ?? '') === 'logout_all') {
+        // Delete every trusted-device (remember-me) token so no other browser
+        // can auto-login, then end this session too.
+        try {
+            $userdb->prepare('DELETE FROM utiligo_remember_tokens WHERE user_id = ?')->execute([$user['id']]);
+        } catch (\Throwable $e) { /* non-fatal */ }
+        logout_user();
+        header('Location: /login.php?loggedout=all');
+        exit;
+    }
+
+    // ── Resend verification email (Settings → Profile) ──
+    elseif (($_POST['action'] ?? '') === 'resend_verification') {
+        $tab = 'profile';
+        try {
+            $token  = create_email_verification_token($user['id']);
+            $verify = rtrim(defined('APP_BASE_URL') ? APP_BASE_URL : 'https://utiligo.ca', '/')
+                    . '/verify-email.php?token=' . urlencode($token);
+            if (send_verification_email($user['email'], $user['full_name'] ?? '', $verify)) {
+                $message = 'Verification email sent — check your inbox.';
+            } else {
+                $error = 'We couldn\'t send the verification email right now. Please try again shortly.';
+            }
+        } catch (\Throwable $e) {
+            $error = 'Could not send the verification email.';
         }
     }
 
@@ -209,6 +271,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (strtoupper($confirm_word) !== 'DELETE') {
             $error = 'Type DELETE (all caps) to confirm account deletion.';
         } else {
+            // ── Deactivate / delete the user's platform data (best effort) ──
+            // Matches the warning text on the page: sites are deactivated,
+            // lead history and CRM data are removed.
+            try { $platform = get_platform_db(); } catch (\Throwable $e) { $platform = null; }
+            if ($platform) {
+                $cleanups = [
+                    "UPDATE utiligo_generated_sites SET link_active = 0, public_slug = NULL WHERE user_id = ?",
+                    "DELETE FROM unlocked_leads WHERE user_id = ?",
+                    "DELETE FROM utiligo_lead_search_history WHERE user_id = ?",
+                    "DELETE FROM utiligo_site_uploads WHERE user_id = ?",
+                    "DELETE FROM utiligo_whitelabel WHERE user_id = ?",
+                    "DELETE FROM crm_activities WHERE user_id = ?",
+                    "DELETE FROM crm_notes WHERE user_id = ?",
+                    "DELETE FROM crm_tasks WHERE user_id = ?",
+                    "DELETE FROM crm_deals WHERE user_id = ?",
+                    "DELETE FROM crm_clients WHERE user_id = ?",
+                ];
+                foreach ($cleanups as $sql) {
+                    try { $platform->prepare($sql)->execute([$user['id']]); } catch (\Throwable $e) { /* table may not exist on this host */ }
+                }
+            }
+            try { $userdb->prepare('DELETE FROM lead_search_quota WHERE user_id = ?')->execute([$user['id']]); } catch (\Throwable $e) {}
+            try { $userdb->prepare('DELETE FROM utiligo_remember_tokens WHERE user_id = ?')->execute([$user['id']]); } catch (\Throwable $e) {}
+
             try {
                 $userdb->prepare("UPDATE utiligo_users SET plan='free', subscription_status='cancelled',
                     email=CONCAT('deleted_',id,'_',email), full_name='Deleted Account',
@@ -246,13 +332,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <!-- Page header -->
-<div class="flex items-center gap-5 mb-8">
+<div class="flex items-center gap-5 mb-8 flex-wrap sm:flex-nowrap">
   <div class="w-16 h-16 rounded-2xl bg-gradient-to-br from-white/20 to-white/5 border border-white/10 flex items-center justify-center shrink-0">
     <span class="text-xl font-extrabold text-white tracking-tight"><?= htmlspecialchars($initials) ?></span>
   </div>
-  <div>
-    <h1 class="text-3xl font-bold tracking-tight"><?= htmlspecialchars($user['full_name'] ?? 'Your Account') ?></h1>
-    <div class="flex items-center gap-3 mt-1 flex-wrap">
+  <div class="min-w-0">
+    <h1 class="text-3xl font-bold tracking-tight truncate"><?= htmlspecialchars($user['full_name'] ?? 'Your Account') ?></h1>
+    <div class="flex items-center gap-2 mt-2 flex-wrap">
       <span class="text-slate-400 text-sm"><?= htmlspecialchars($user['email'] ?? '') ?></span>
       <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full
         <?= $plan==='entrepreneur'?'bg-purple-500/15 text-purple-300 border border-purple-500/20':
@@ -261,7 +347,17 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <i class="fa-solid fa-<?= $plan==='entrepreneur'?'rocket':($plan==='pro'?'crown':'user') ?> mr-1"></i>
         <?= plan_label($plan) ?>
       </span>
-      <span class="text-[11px] text-slate-600">Joined <?= $joined ?></span>
+      <span class="inline-flex items-center gap-1 text-[10px] font-bold px-2.5 py-1 rounded-full
+        <?= (int)($user['email_verified'] ?? 0) ? 'bg-green-500/15 text-green-300 border border-green-500/20' : 'bg-amber-500/15 text-amber-300 border border-amber-500/20' ?>">
+        <i class="fa-solid fa-<?= (int)($user['email_verified'] ?? 0) ? 'circle-check' : 'triangle-exclamation' ?> mr-1"></i>
+        <?= (int)($user['email_verified'] ?? 0) ? 'Email verified' : 'Email unverified' ?>
+      </span>
+    </div>
+    <div class="flex items-center gap-4 mt-1.5 text-[11px] text-slate-600 flex-wrap">
+      <span><i class="fa-regular fa-calendar-check mr-1"></i>Joined <?= $joined ?></span>
+      <?php if ($lastLoginAt !== ''): ?>
+      <span><i class="fa-solid fa-right-to-bracket mr-1"></i>Last login <?= date('M j, Y g:ia', strtotime($lastLoginAt)) ?></span>
+      <?php endif; ?>
     </div>
   </div>
 </div>
@@ -315,8 +411,23 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Email Address</label>
         <input type="email" name="email" required value="<?= htmlspecialchars($user['email'] ?? '') ?>"
                class="w-full bg-slate-800/80 border border-slate-600 text-white rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
-        <p class="text-[11px] text-slate-500 mt-1.5"><i class="fa-solid fa-circle-info mr-1"></i>Changing your email will require you to log in again on other devices.</p>
+        <p class="text-[11px] text-slate-500 mt-1.5"><i class="fa-solid fa-circle-info mr-1"></i>Changing your email will require you to verify the new address before your next login.</p>
       </div>
+
+      <?php if (!(int)($user['email_verified'] ?? 0)): ?>
+      <div class="flex flex-wrap items-center justify-between gap-3 bg-amber-500/8 border border-amber-500/20 rounded-xl px-4 py-3">
+        <p class="text-xs text-amber-300"><i class="fa-solid fa-triangle-exclamation mr-1.5"></i>Your email isn't verified yet.</p>
+        <form method="POST">
+          <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+          <input type="hidden" name="action" value="resend_verification">
+          <button type="submit"
+                  class="text-xs bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/20 px-3.5 py-2 rounded-lg font-semibold transition">
+            Resend verification
+          </button>
+        </form>
+      </div>
+      <?php endif; ?>
+
       <div class="pt-2">
         <button type="submit" class="bg-white hover:bg-slate-200 active:scale-95 text-black px-6 py-2.5 rounded-xl font-bold text-sm transition">Save Changes</button>
       </div>
@@ -578,7 +689,7 @@ function togglePw(id,btn){const i=document.getElementById(id);if(!i)return;const
 
   <!-- Session info -->
   <div class="glass rounded-2xl p-6 border border-white/5">
-    <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">Current Session</p>
+    <p class="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">Session &amp; Sign-in</p>
     <div class="space-y-3">
       <div class="flex items-center gap-3">
         <div class="w-8 h-8 rounded-lg bg-white/8 flex items-center justify-center shrink-0">
@@ -601,12 +712,30 @@ function togglePw(id,btn){const i=document.getElementById(id);if(!i)return;const
           <p class="text-xs text-slate-500"><?= htmlspecialchars($_SERVER['HTTP_X_FORWARDED_FOR'] ?? $_SERVER['REMOTE_ADDR'] ?? 'Unknown') ?></p>
         </div>
       </div>
+      <?php if ($lastLoginAt !== ''): ?>
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-white/8 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-right-to-bracket text-slate-400 text-xs"></i>
+        </div>
+        <div>
+          <p class="text-sm text-white font-medium">Last Login</p>
+          <p class="text-xs text-slate-500"><?= date('F j, Y \a\t g:ia', strtotime($lastLoginAt)) ?></p>
+        </div>
+      </div>
+      <?php endif; ?>
     </div>
-    <div class="mt-5 pt-4 border-t border-white/5">
-      <a href="/logout.php" class="inline-flex items-center gap-2 text-sm text-red-400 hover:text-red-300 font-semibold transition">
-        <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>Sign out of all devices
+    <div class="mt-5 pt-4 border-t border-white/5 flex flex-wrap items-center justify-between gap-3">
+      <a href="/logout.php" class="inline-flex items-center gap-2 text-sm text-slate-400 hover:text-white font-semibold transition">
+        <i class="fa-solid fa-arrow-right-from-bracket text-xs"></i>Sign out this device
       </a>
-      <p class="text-[11px] text-slate-600 mt-1">This will end your current session immediately.</p>
+      <form method="POST" onsubmit="return confirm('Sign out every device that is logged into this account, including trusted (remembered) devices?');">
+        <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+        <input type="hidden" name="action" value="logout_all">
+        <button type="submit" class="inline-flex items-center gap-2 text-sm bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/20 px-4 py-2 rounded-xl font-semibold transition">
+          <i class="fa-solid fa-shield-xmark text-xs"></i>Sign out everywhere
+        </button>
+      </form>
+      <p class="text-[11px] text-slate-600 basis-full">Signing out everywhere removes all remembered devices. This device will be signed out immediately.</p>
     </div>
   </div>
 
@@ -746,7 +875,7 @@ document.querySelectorAll('.sr-only').forEach(cb=>{
       </div>
       <div class="flex-1">
         <p class="font-semibold text-white mb-1">Export Your Data</p>
-        <p class="text-sm text-slate-400 mb-4">Download a copy of your profile, generated sites list, and lead history as a JSON file.</p>
+        <p class="text-sm text-slate-400 mb-4">Download a copy of your profile, generated sites, lead history, and CRM data as a JSON file.</p>
         <a href="/api/export_data.php"
            class="inline-flex items-center gap-2 text-sm bg-white/10 hover:bg-white/15 text-white px-5 py-2.5 rounded-xl font-semibold transition">
           <i class="fa-solid fa-file-arrow-down text-xs"></i>Download My Data
