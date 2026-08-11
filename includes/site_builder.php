@@ -23,10 +23,10 @@ function build_site_pages(array $business, string $templateKey, array $customIma
     $email = $business['email'] ?: 'contact@example.com';
     $tagline = "{$category} Serving {$city} & Surrounding Areas";
 
-    $heroImage = $customImages['hero'] ?? "https://source.unsplash.com/1600x900/?" . urlencode($category);
-    $aboutImage = $customImages['about'] ?? "https://source.unsplash.com/800x600/?" . urlencode($category . ',team');
+    $heroImage = $customImages['hero'] ?? "https://picsum.photos/seed/" . urlencode($category) . "/1600/900";
+    $aboutImage = $customImages['about'] ?? "https://picsum.photos/seed/" . urlencode($category) . "-about/800/600";
     $galleryImages = $customImages['gallery'] ?? array_map(
-        fn($i) => "https://source.unsplash.com/600x450/?" . urlencode($category) . "&sig={$i}",
+        fn($i) => "https://picsum.photos/seed/" . urlencode($category) . "-{$i}/600/450",
         range(1, 6)
     );
 
@@ -35,12 +35,15 @@ function build_site_pages(array $business, string $templateKey, array $customIma
     $footer = build_footer($name, $phone, $email);
     $editorAssets = build_editor_assets_tag();
 
+    $metaDescription = "{$name} — {$category} serving {$city} and surrounding areas. Call {$phone} for a free quote.";
+    $metaThemeColor  = $t['primary'] ?? '#0f172a';
+
     $pages = [];
-    $pages['index.html'] = wrap_page($name, 'Home', $css, $nav, build_home_page($name, $tagline, $category, $city, $heroImage, $t), $footer, $editorAssets);
-    $pages['about.html'] = wrap_page($name, 'About', $css, $nav, build_about_page($name, $category, $city, $aboutImage, $t), $footer, $editorAssets);
-    $pages['services.html'] = wrap_page($name, 'Services', $css, $nav, build_services_page($name, $category, $t), $footer, $editorAssets);
-    $pages['gallery.html'] = wrap_page($name, 'Gallery', $css, $nav, build_gallery_page($name, $galleryImages, $t), $footer, $editorAssets);
-    $pages['contact.html'] = wrap_page($name, 'Contact', $css, $nav, build_contact_page($name, $phone, $email, $city, $t), $footer, $editorAssets);
+    $pages['index.html'] = wrap_page($name, 'Home', $css, $nav, build_home_page($name, $tagline, $category, $city, $heroImage, $t), $footer, $editorAssets, $metaDescription, $metaThemeColor);
+    $pages['about.html'] = wrap_page($name, 'About', $css, $nav, build_about_page($name, $category, $city, $aboutImage, $t), $footer, $editorAssets, $metaDescription, $metaThemeColor);
+    $pages['services.html'] = wrap_page($name, 'Services', $css, $nav, build_services_page($name, $category, $t), $footer, $editorAssets, $metaDescription, $metaThemeColor);
+    $pages['gallery.html'] = wrap_page($name, 'Gallery', $css, $nav, build_gallery_page($name, $galleryImages, $t), $footer, $editorAssets, $metaDescription, $metaThemeColor);
+    $pages['contact.html'] = wrap_page($name, 'Contact', $css, $nav, build_contact_page($name, $phone, $email, $city, $t), $footer, $editorAssets, $metaDescription, $metaThemeColor);
 
     return $pages;
 }
@@ -56,15 +59,22 @@ function build_editor_assets_tag(): string
     return '<!--EDITOR_ASSETS-->';
 }
 
-function wrap_page(string $businessName, string $pageTitle, string $css, string $nav, string $body, string $footer, string $editorAssets = ''): string
+function wrap_page(string $businessName, string $pageTitle, string $css, string $nav, string $body, string $footer, string $editorAssets = '', string $metaDescription = '', string $metaThemeColor = ''): string
 {
+    $headExtra = '';
+    if ($metaDescription !== '') {
+        $headExtra .= '<meta name="description" content="' . htmlspecialchars($metaDescription, ENT_QUOTES, 'UTF-8') . '">';
+    }
+    if ($metaThemeColor !== '' && preg_match('/^#[0-9a-fA-F]{3,8}$/', $metaThemeColor)) {
+        $headExtra .= '<meta name="theme-color" content="' . htmlspecialchars($metaThemeColor, ENT_QUOTES, 'UTF-8') . '">';
+    }
     return <<<HTML
 <!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{$pageTitle} — {$businessName}</title>
+{$headExtra}<title>{$pageTitle} — {$businessName}</title>
 <style>{$css}</style>
 </head>
 <body>

@@ -16,8 +16,9 @@ document.addEventListener('DOMContentLoaded', function () {
   const csrfToken = document.body.dataset.csrf || '';
 
   function selectTemplate(card) {
-    templateCards.forEach((c) => c.classList.remove('border-emerald-400', 'ring-2', 'ring-emerald-400/40'));
-    card.classList.add('border-emerald-400', 'ring-2', 'ring-emerald-400/40');
+    if (card.dataset.locked === '1') { window.location.href = '/portal/billing.php?upgrade=1'; return; }
+    templateCards.forEach((c) => c.classList.remove('border-white', '!border-white'));
+    card.classList.add('border-white');
     if (templateInput) templateInput.value = card.dataset.template;
     if (templateLabel) templateLabel.textContent = card.dataset.label;
   }
@@ -25,7 +26,9 @@ document.addEventListener('DOMContentLoaded', function () {
   templateCards.forEach((card) => {
     card.addEventListener('click', () => selectTemplate(card));
   });
-  if (templateCards.length) selectTemplate(templateCards[0]);
+  // Select the first template the user is allowed to use (never auto-redirect).
+  const firstFree = [...templateCards].find((c) => c.dataset.locked !== '1');
+  if (firstFree) selectTemplate(firstFree);
 
   if (!form) return;
 
