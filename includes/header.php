@@ -47,13 +47,22 @@ if ($seoImage && strpos($seoImage, 'http') !== 0) $seoImage = $_seo_base . $seoI
 <link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
 <?php
 // ── JSON-LD structured data: Organization + WebSite always, plus any
-//    page-specific graph (e.g. homepage adds a FAQPage) via $seo_json_ld. ──
+//    page-specific graph (e.g. homepage adds FAQPage/Product) via $seo_json_ld. ──
+$_seo_social = defined('SEO_SOCIAL_URLS') && is_array(SEO_SOCIAL_URLS)
+    ? array_values(array_filter(SEO_SOCIAL_URLS, fn($u) => is_string($u) && strpos($u, 'http') === 0))
+    : [];
+$_seo_org = ['@type' => 'Organization', '@id' => $_seo_base . '/#organization', 'name' => 'Utiligo', 'url' => $_seo_base, 'logo' => ['@type' => 'ImageObject', 'url' => $seoImage]];
+if ($_seo_social) $_seo_org['sameAs'] = $_seo_social;
 $_seo_ld = array_filter(array_merge([
-    ['@type' => 'Organization', '@id' => $_seo_base . '/#organization', 'name' => 'Utiligo', 'url' => $_seo_base, 'logo' => ['@type' => 'ImageObject', 'url' => $seoImage]],
+    $_seo_org,
     ['@type' => 'WebSite', '@id' => $_seo_base . '/#website', 'url' => $_seo_base, 'name' => 'Utiligo', 'publisher' => ['@id' => $_seo_base . '/#organization']],
 ], isset($seo_json_ld) && is_array($seo_json_ld) ? $seo_json_ld : []));
 ?>
 <script type="application/ld+json"><?= json_encode($_seo_ld, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) ?></script>
+<?php if (defined('ANALYTICS_GTAG_ID') && ANALYTICS_GTAG_ID): ?>
+<script async src="https://www.googletagmanager.com/gtag/js?id=<?= htmlspecialchars(ANALYTICS_GTAG_ID) ?>"></script>
+<script>window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','<?= htmlspecialchars(ANALYTICS_GTAG_ID) ?>',{anonymize_ip:true});</script>
+<?php endif; ?>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">

@@ -37,16 +37,42 @@ $faqs = [
      'The free plan lets you run searches, see '.$faq_free_leads.' leads per search, and generate '.$faq_free_sites.' site per day with 2 templates. ZIP export and all templates require a paid plan.'],
     ['How does billing work?',
      'Pro is $'.number_format($faq_pro_price,2).'/month and Entrepreneur is $'.number_format($faq_ent_price,2).'/month — cancel anytime. You keep access through the end of your current billing period after cancelling.'],
+    ['How does Utiligo find businesses without a website?',
+     'We search local business data in any city and industry, then check whether each business already has its own website. Businesses that already have one are filtered out, so the leads you see are genuine website opportunities.'],
+    ['Is Utiligo a lead generation tool?',
+     'Yes. It\'s built for freelancers, web designers, and agencies whose pipeline is simple: find local businesses without a website, then sell them one. Searching, saving leads, and building pitch-ready sites all happen in one place.'],
+    ['Which cities and industries does Utiligo cover?',
+     'Any city you type and any industry — from plumbers, roofers, and electricians to restaurants, salons, and cleaners. Big markets like Toronto, Montreal, and Vancouver work the same as smaller towns.'],
+    ['Can I white-label the websites as my own?',
+     'Yes. Pro and Entrepreneur plans let you brand the client portal with your own name and colours, and every generated site exports as a clean ZIP you can host anywhere — including on the business\'s own domain.'],
 ];
 
-$seo_json_ld = [[
-    '@type'      => 'FAQPage',
-    'mainEntity' => array_map(fn($f) => [
+$seoBase = rtrim(defined('APP_BASE_URL') ? APP_BASE_URL : 'https://utiligo.ca', '/');
+
+$seo_json_ld = [
+    ['@type' => 'FAQPage', 'mainEntity' => array_map(fn($f) => [
         '@type'          => 'Question',
         'name'           => $f[0],
         'acceptedAnswer' => ['@type' => 'Answer', 'text' => html_entity_decode(strip_tags($f[1]))],
-    ], $faqs),
-]];
+    ], $faqs)],
+    [
+        '@type' => 'Product', 'name' => 'Utiligo Free', 'description' => 'Free lead searches and website generation for freelancers.',
+        'offers' => ['@type' => 'Offer', 'price' => '0', 'priceCurrency' => 'CAD', 'availability' => 'https://schema.org/InStock', 'url' => $seoBase . '/register.php?plan=free'],
+    ],
+    [
+        '@type' => 'Product', 'name' => 'Utiligo Pro', 'description' => 'Unlock '.number_format($PRO_LEAD_LIMIT, 0).' leads and '.number_format($PRO_SITE_LIMIT, 0).' sites, ZIP exports, and the full revenue dashboard.',
+        'offers' => ['@type' => 'Offer', 'price' => number_format($PRO_PRICE, 2), 'priceCurrency' => 'CAD', 'availability' => 'https://schema.org/InStock', 'url' => $seoBase . '/register.php?plan=pro'],
+    ],
+    [
+        '@type' => 'Product', 'name' => 'Utiligo Entrepreneur', 'description' => 'Unlimited leads, '.number_format($ENT_SITE_LIMIT, 0).' active sites, team seats, and client reports for agencies.',
+        'offers' => ['@type' => 'Offer', 'price' => number_format($ENT_PRICE, 2), 'priceCurrency' => 'CAD', 'availability' => 'https://schema.org/InStock', 'url' => $seoBase . '/register.php?plan=entrepreneur'],
+    ],
+    [
+        '@type' => 'SoftwareApplication', 'name' => 'Utiligo', 'applicationCategory' => 'BusinessApplication', 'operatingSystem' => 'Web',
+        'description' => 'Lead generation and website builder for freelancers and agencies.',
+        'offers' => ['@type' => 'Offer', 'price' => number_format($PRO_PRICE, 2), 'priceCurrency' => 'CAD', 'availability' => 'https://schema.org/InStock'],
+    ],
+];
 
 require_once __DIR__ . '/includes/header.php';
 ?>
@@ -57,12 +83,34 @@ require_once __DIR__ . '/includes/header.php';
   <h1 class="text-4xl md:text-6xl font-extrabold mt-4 mb-6 leading-tight">
     Find Clients. Build Websites. <span class="whitespace-nowrap"><span class="underline decoration-white/20">Get Paid.</span></span>
   </h1>
-  <p class="text-xl text-slate-400 max-w-2xl mx-auto mb-10">Utiligo finds local businesses without a website, then generates a professional site for them in 60 seconds. No lock-in &mdash; export a clean ZIP anytime.</p>
+  <p class="text-xl text-slate-400 max-w-2xl mx-auto mb-6">Utiligo finds local businesses without a website, then generates a professional site for them in 60 seconds. No lock-in &mdash; export a clean ZIP anytime.</p>
+  <p class="text-sm text-slate-500 max-w-2xl mx-auto mb-10">Lead generation for freelancers &amp; agencies: search any city and industry for businesses with no website of their own &mdash; then pitch them a site you build in under a minute.</p>
   <a href="/register.php" class="inline-block bg-white hover:bg-slate-200 text-black px-8 py-4 rounded-full font-semibold text-lg transition">Start Finding Clients Free &rarr;</a>
 </section>
 
+<!-- LEAD GENERATION BENEFITS -->
+<section id="leadgen" class="max-w-6xl mx-auto px-6 py-10 md:py-14">
+  <div class="grid md:grid-cols-3 gap-6">
+    <div class="glass rounded-xl p-6">
+      <i class="fa-solid fa-shop text-white text-2xl mb-4"></i>
+      <h3 class="font-semibold mb-2">Local businesses without a website</h3>
+      <p class="text-slate-400 text-sm">Every search targets businesses that still don&rsquo;t have their own site &mdash; the exact gap a web designer or agency can fill.</p>
+    </div>
+    <div class="glass rounded-xl p-6">
+      <i class="fa-solid fa-sack-dollar text-white text-2xl mb-4"></i>
+      <h3 class="font-semibold mb-2">Your warmest possible leads</h3>
+      <p class="text-slate-400 text-sm">Businesses without a website are already missing out on customers. That&rsquo;s the easiest client conversation you&rsquo;ll ever start.</p>
+    </div>
+    <div class="glass rounded-xl p-6">
+      <i class="fa-solid fa-bolt text-white text-2xl mb-4"></i>
+      <h3 class="font-semibold mb-2">From lead to sale in one afternoon</h3>
+      <p class="text-slate-400 text-sm">Find them, build a complete site in 60 seconds, send the preview link, and close the deal &mdash; no cold calls or redesigns required.</p>
+    </div>
+  </div>
+</section>
+
 <!-- CALCULATOR -->
-<section id="calculator" class="max-w-4xl mx-auto px-6 py-20">
+<section id="calculator" class="max-w-4xl mx-auto px-6 py-20" data-sub-price="<?= number_format($PRO_PRICE, 2) ?>">
   <div class="text-center mb-10">
     <span class="text-sm font-semibold uppercase tracking-wide text-slate-400">Unique to Utiligo</span>
     <h2 class="text-3xl md:text-4xl font-bold mt-2">See What You Could Earn</h2>
@@ -93,6 +141,9 @@ require_once __DIR__ . '/includes/header.php';
       <div class="flex justify-between items-baseline pt-4">
         <span class="text-lg font-semibold">Your net profit</span>
         <span id="netProfit" class="text-4xl font-extrabold text-white">$2,478</span>
+      </div>
+      <div class="pt-3 mt-1 border-t border-white/5 text-right">
+        <span class="text-xs text-slate-500">That&rsquo;s roughly <span id="annualProfit" class="text-slate-300 font-semibold">$29,736</span> a year &mdash; on one repeatable service.</span>
       </div>
     </div>
     <p class="text-xs text-slate-500 mt-6 text-center">This is potential revenue. Your results depend on your hustle.</p>

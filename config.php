@@ -174,8 +174,17 @@ if (!defined('RATE_LIMIT_MANAGE_SITE'))     define('RATE_LIMIT_MANAGE_SITE',    
 // ---- Feature flags ----
 if (!defined('ENABLE_BOOKING'))        define('ENABLE_BOOKING',        false);
 if (!defined('ENABLE_ECOMMERCE'))      define('ENABLE_ECOMMERCE',      false);
-if (!defined('ENABLE_BLOG'))           define('ENABLE_BLOG',           false);
+if (!defined('ENABLE_BLOG'))           define('ENABLE_BLOG',           true);
 if (!defined('ENABLE_CUSTOM_DOMAINS')) define('ENABLE_CUSTOM_DOMAINS', false);
+
+// ---- SEO / analytics ----
+// Optional Google Analytics 4 (GA4) tag. Leave empty ("") to send nothing;
+// set a Measurement ID (G-XXXXXXX) to inject the async gtag snippet on public
+// marketing pages only. Override via env / storage/config_overrides.php.
+if (!defined('ANALYTICS_GTAG_ID')) define('ANALYTICS_GTAG_ID', getenv('ANALYTICS_GTAG_ID') ?: '');
+// Social profile URLs used for Organization.sameAs (knowledge graph).
+// e.g. ['https://twitter.com/utiligo', 'https://www.linkedin.com/company/utiligo']
+if (!defined('SEO_SOCIAL_URLS')) define('SEO_SOCIAL_URLS', []);
 
 // ============================================================
 //  SESSION BOOTSTRAP

@@ -17,6 +17,14 @@ ErrorDocument 503 /notfound/503.php
 # Public shareable site links: /s/{slug}
 RewriteRule ^s/([a-zA-Z0-9\-]+)/?$ s.php?slug=$1 [L,QSA]
 
+# SEO routes: sitemap.xml (dynamic), /blog/{slug}, /leads/{city}/{industry}
+RewriteRule ^sitemap\.xml$                                sitemap.php                                    [L,QSA]
+RewriteRule ^blog/([a-zA-Z0-9\-]+)/?$                     blog.php?slug=$1                               [L,QSA]
+RewriteRule ^leads/([a-z0-9\-]+)/([a-z0-9\-]+)/?$         leads.php?city=$1&industry=$2                  [L,QSA]
+
+# Mark app / preview paths as noindex (used by the X-Robots-Tag header below)
+RewriteRule ^(s|portal|admin|api)(/|$) - [E=UTL_NOINDEX:1]
+
 # ---------------------------------------------------------------
 # CLEAN URLs — strip .php extension
 # Exclude: api/, notfound/ (error pages must never be 301'd)
@@ -70,8 +78,9 @@ RewriteRule ^includes/   - [F,L]
     Header always set X-Frame-Options "SAMEORIGIN"
     Header always set Referrer-Policy "strict-origin-when-cross-origin"
     Header always set Cache-Control "no-store, no-cache, must-revalidate" env=IS_PORTAL
+    Header always set X-Robots-Tag "noindex, nofollow" env=UTL_NOINDEX
     Header always set X-XSS-Protection "1; mode=block"
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://js.stripe.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: https:; frame-src 'self'; connect-src 'self' https://api.brevo.com https://api.stripe.com; object-src 'none'; base-uri 'self';"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com https://cdnjs.cloudflare.com https://js.stripe.com https://www.googletagmanager.com; style-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src 'self' https://cdnjs.cloudflare.com https://fonts.gstatic.com; img-src 'self' data: https:; frame-src 'self'; connect-src 'self' https://api.brevo.com https://api.stripe.com https://www.googletagmanager.com https://www.google-analytics.com; object-src 'none'; base-uri 'self';"
     Header always unset X-Powered-By
 </IfModule>
 
@@ -80,4 +89,21 @@ ServerSignature Off
 # hosts (InfinityFree and most modern setups) don't 500 the whole site.
 <IfModule mod_php.c>
     php_value display_errors On
+</IfModule>
+
+# ---------------------------------------------------------------
+# PERFORMANCE — gzip + asset caching (safe if modules are absent)
+# ---------------------------------------------------------------
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/css text/xml application/xml application/javascript application/json image/svg+xml
+</IfModule>
+<IfModule mod_expires.c>
+    ExpiresActive On
+    ExpiresByType image/png  "access plus 30 days"
+    ExpiresByType image/jpeg "access plus 30 days"
+    ExpiresByType image/webp "access plus 30 days"
+    ExpiresByType image/svg+xml "access plus 30 days"
+    ExpiresByType text/css   "access plus 7 days"
+    ExpiresByType application/javascript "access plus 7 days"
+    ExpiresByType application/json "access plus 1 hour"
 </IfModule>
