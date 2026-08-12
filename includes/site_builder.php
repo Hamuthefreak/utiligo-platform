@@ -101,12 +101,15 @@ body{font-family:{$t['font']};background:{$bodyBg};color:{$bodyText};line-height
 a{text-decoration:none;color:inherit;}
 img{max-width:100%;display:block;}
 .container{max-width:1100px;margin:0 auto;padding:0 24px;}
-.nav{display:flex;justify-content:space-between;align-items:center;padding:20px 24px;
+.nav{position:relative;display:flex;justify-content:space-between;align-items:center;padding:20px 24px;
 background:{$t['secondary']};color:#fff;}
 .nav a{color:#fff;font-weight:600;}
 .nav .brand{font-size:1.3rem;font-weight:800;}
 .nav .links{display:flex;gap:24px;font-size:0.9rem;}
 .nav .links a:hover{color:{$t['primary']};}
+.nav-toggle{display:none;background:none;border:1px solid rgba(255,255,255,.45);color:#fff;
+border-radius:8px;width:40px;height:40px;font-size:18px;line-height:1;cursor:pointer;align-items:center;justify-content:center;}
+.nav-toggle:hover{background:rgba(255,255,255,.12);}
 .hero{background:linear-gradient(135deg, {$t['secondary']}CC, {$t['secondary']}EE), url('%HERO_IMAGE%') center/cover;padding:120px 24px;text-align:center;color:#fff;}
 .hero h1{font-size:3rem;margin-bottom:16px;max-width:800px;margin-left:auto;margin-right:auto;}
 .hero p{font-size:1.2rem;opacity:0.9;max-width:600px;margin:0 auto 32px;}
@@ -128,7 +131,14 @@ h2{font-size:2.2rem;margin-bottom:16px;}
 .footer a{text-decoration:underline;}
 .text-primary{color:{$t['primary']};}
 [data-edit-id]{outline:none;}
-@media(max-width:640px){.nav .links{display:none;} .hero h1{font-size:2rem;}}
+@media(max-width:640px){
+  .nav-toggle{display:flex;}
+  .nav .links{display:none;position:absolute;top:100%;left:16px;right:16px;background:{$t['secondary']};
+    flex-direction:column;align-items:flex-start;gap:14px;padding:18px 22px;border-radius:0 0 14px 14px;
+    box-shadow:0 16px 40px rgba(0,0,0,.28);}
+  .nav .links.open{display:flex;}
+  .hero h1{font-size:2rem;}
+}
 CSS;
 }
 
@@ -144,7 +154,14 @@ function build_nav(string $name): string
     <a href="gallery.html">Gallery</a>
     <a href="contact.html">Contact</a>
   </div>
+  <button type="button" class="nav-toggle" aria-label="Menu" aria-expanded="false">&#9776;</button>
 </nav>
+<script>
+(function(){var btn=document.querySelector('.nav-toggle'),lnk=document.querySelector('.nav .links');
+if(!btn||!lnk)return;btn.addEventListener('click',function(ev){ev.stopPropagation();
+var open=lnk.classList.toggle('open');btn.setAttribute('aria-expanded',open?'true':'false');});
+document.addEventListener('click',function(){lnk.classList.remove('open');btn.setAttribute('aria-expanded','false');});})();
+</script>
 HTML;
 }
 

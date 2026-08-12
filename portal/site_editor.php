@@ -246,7 +246,7 @@ html, body {
 #drawerOverlay.open { display: block; }
 
 /* ===================== FLOATING TOOLBARS ===================== */
-.editor-popup { position:fixed; z-index:9999; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.08); backdrop-filter:blur(18px); padding:5px 7px; display:flex; align-items:center; gap:3px; }
+.editor-popup { position:fixed; z-index:9999; border-radius:12px; box-shadow:0 8px 32px rgba(0,0,0,.5),0 0 0 1px rgba(255,255,255,.08); backdrop-filter:blur(18px); padding:5px 7px; display:flex; align-items:center; gap:3px; max-width:calc(100vw - 16px); flex-wrap:wrap; }
 .editor-popup.hidden { display:none; }
 .editor-popup { background:rgba(13,17,23,.95); color:#f1f5f9; border:1px solid rgba(255,255,255,.1); }
 .tb-btn { width:32px; height:32px; border-radius:7px; border:none; background:transparent; cursor:pointer; display:flex; align-items:center; justify-content:center; font-size:13px; transition:background .12s,color .12s; color:#f1f5f9; }
@@ -482,10 +482,17 @@ document.querySelectorAll('.preview-btn').forEach(btn => {
 const hintBox   = document.getElementById('sbHint');
 const hintBtn   = document.getElementById('hintToggleBtn');
 const hintArrow = document.getElementById('hintToggleArrow');
+const HINT_KEY  = 'utiligo_editor_hint_open';
 if (hintBtn && hintBox) {
+  // Default to minimized; only show if the user previously expanded it.
+  const saved     = window.localStorage.getItem(HINT_KEY);
+  const collapsed = saved === null || saved !== '1';
+  hintBox.classList.toggle('collapsed', collapsed);
+  if (hintArrow) hintArrow.textContent = collapsed ? '\u25b8' : '\u25be';
   hintBtn.addEventListener('click', () => {
     const hidden = hintBox.classList.toggle('collapsed');
-    hintArrow.textContent = hidden ? '\u25b8' : '\u25be';
+    window.localStorage.setItem(HINT_KEY, hidden ? '0' : '1');
+    if (hintArrow) hintArrow.textContent = hidden ? '\u25b8' : '\u25be';
   });
 }
 
