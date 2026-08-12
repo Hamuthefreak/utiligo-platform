@@ -108,6 +108,12 @@ function plan_config(): array {
             'template_limit'      => FREE_TEMPLATE_LIMIT,
             'team_seats'          => 0,
             'custom_domain_limit' => 0,
+            // New leads-workspace gates (Phase 0). Empty arrays = none.
+            'lead_sources'        => FREE_LEAD_SOURCES ?? '',
+            'export_formats'      => FREE_EXPORT_FORMATS ?? '',
+            'export_daily'        => FREE_EXPORT_DAILY ?? 0,
+            'enrich_providers'    => FREE_ENRICH_PROVIDERS ?? '',
+            'export_max_rows'     => 0,
             'features'            => ['basic_dashboard'],
         ],
         'pro' => [
@@ -120,9 +126,15 @@ function plan_config(): array {
             'template_limit'      => PRO_TEMPLATE_LIMIT,
             'team_seats'          => 0,
             'custom_domain_limit' => 0,
+            'lead_sources'        => PRO_LEAD_SOURCES ?? '',
+            'export_formats'      => PRO_EXPORT_FORMATS ?? '',
+            'export_daily'        => PRO_EXPORT_DAILY ?? 5,
+            'enrich_providers'    => PRO_ENRICH_PROVIDERS ?? '',
+            'export_max_rows'     => PRO_EXPORT_MAX_ROWS ?? 5000,
             'features'            => [
                 'basic_dashboard','website_generation','zip_export',
                 'revenue_dashboard','priority_support',
+                'lead_workspace','lead_export','lead_enrich_basic','saved_searches',
             ],
         ],
         'entrepreneur' => [
@@ -135,13 +147,32 @@ function plan_config(): array {
             'template_limit'      => ENT_TEMPLATE_LIMIT,
             'team_seats'          => ENT_TEAM_SEATS,
             'custom_domain_limit' => ENT_CUSTOM_DOMAIN_LIMIT,
+            'lead_sources'        => ENT_LEAD_SOURCES ?? '',
+            'export_formats'      => ENT_EXPORT_FORMATS ?? '',
+            'export_daily'        => ENT_EXPORT_DAILY ?? 50,
+            'enrich_providers'    => ENT_ENRICH_PROVIDERS ?? '',
+            'export_max_rows'     => ENT_EXPORT_MAX_ROWS ?? 50000,
             'features'            => [
                 'basic_dashboard','website_generation','zip_export',
                 'revenue_dashboard','priority_support',
                 'custom_domains','client_reports','team_seats',
+                'lead_workspace','lead_export','lead_enrich_full',
+                'saved_searches','scheduled_searches','bulk_unlock',
             ],
         ],
     ];
+}
+
+/**
+ * Tiny helper that turns a comma-separated string from plan_limits.php
+ * into a cleaned array. Lives outside plan_config() so it is callable as
+ * a static (PHP 8.1+ allows first-class callable on static methods, but
+ * older support targets need this to be a top-level helper).
+ */
+function _plan_split_csv(string $csv): array {
+    $csv = trim($csv);
+    if ($csv === '') return [];
+    return array_values(array_filter(array_map('trim', explode(',', $csv))));
 }
 
 function get_plan_config(string $plan): array {
@@ -224,3 +255,50 @@ function require_entrepreneur(): void {
 }
 /** @deprecated use require_paid() */
 function require_pro(): void { require_paid(); }
+
+// ── Leads-workspace accessors (Phase 0) ─────────────────────────────────────
+// Numeric gates (export daily count) honor the existing per-user override
+// table because user_limit_override() is int-typed.  String-typed gates
+// (sources / formats / enrich providers) come from plan_limits.php
+// constants (editable via Admin > Config Editor under the new keys) but
+// are NOT routed through per-user overrides for now: the override table
+// stores ints only (see line ~57 cast) and admins are unlikely to want
+// per-user source lists.  Per-row scanning still happens; the table can
+// be widened later if per-user string overrides become needed.
+
+/** Allowed lead sources (e.g. google_places, osm) for this user's plan. */
+function plan_lead_sources(string $plan): array {
+    return _plan_split_csv(get_plan_config($plan)['lead_sources'] ?? '');
+}
+
+/** Allowed export formats (csv,xlsx,vcard,json,pdf) for this user's plan. */
+function plan_export_formats(string $plan): array {
+    return _plan_split_csv(get_plan_config($plan)['export_formats'] ?? '');
+}
+
+/** Allowed export jobs per 24h for this user (0 = none). Honors per-user override. */
+function plan_export_daily_limit(string $plan, ?int $user_id = null): int {
+    $base = (int) (get_plan_config($plan)['export_daily'] ?? 0);
+    if ($user_id === null) return $base;
+    return user_limit_override($user_id, 'export_daily', $base);
+}
+
+/** Allowed enrichment providers (e.g. website_finder, email_pattern) per plan. */
+function plan_enrich_providers(string $plan): array {
+    return _plan_split_csv(get_plan_config($plan)['enrich_providers'] ?? '');
+}
+
+/** Max rows allowed in an export file (memory / abuse backstop). */
+function plan_export_max_rows(string $plan): int {
+    return (int) (get_plan_config($plan)['export_max_rows'] ?? 0);
+}
+
+/** Whether a user can use the lead workspace at all (Pro+). */
+function can_use_lead_workspace(string $plan): bool {
+    return in_array($plan, ['pro', 'entrepreneur'], true);
+}
+
+/** Whether a user is allowed to schedule recurring searches (Ent only). */
+function can_schedule_searches(string $plan): bool {
+    return $plan === 'entrepreneur';
+}
