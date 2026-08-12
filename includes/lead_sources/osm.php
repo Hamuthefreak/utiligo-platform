@@ -57,26 +57,35 @@ function _lead_sources_osm_wait(): void {
 
 /**
  * Single HTTP request.  Returns the decoded JSON body or null on any error.
- * Caches the response keyed by URL for 600s in $GLOBALS so a 3-call keyword
- * fan-out can never accidentally re-fetch a URL the request's already made.
+ * Uses POST for overpass-api.de because GET requests with long QL strings
+ * are routinely rejected by the upstream (returns 414 or empty).  Nominatim
+ * stays GET.  Caches the response keyed by URL for 600s in $GLOBALS so a
+ * 3-call keyword fan-out can never accidentally re-fetch a URL the
+ * request's already made.
  */
-function _lead_sources_osm_http(string $url, int $timeout = 15): ?array {
+function _lead_sources_osm_http(string $url, int $timeout = 15, ?string $post_data = null): ?array {
     _lead_sources_osm_wait();
     static $cache = [];
-    if (isset($cache[$url])) return $cache[$url];
+    $cache_key = $url . '|' . ($post_data ?? '');
+    if (isset($cache[$cache_key])) return $cache[$cache_key];
     $GLOBALS['__osm_last_call_at'] = microtime(true);
 
-    $ctx = stream_context_create(['http' => [
-        'method'        => 'GET',
-        'header'        => "User-Agent: Utiligo-Lead-Workspace/1.0 (contact: admin@utiligo.example)\r\n",
-        'timeout'       => $timeout,
-        'ignore_errors' => true,
-    ]]);
+    $http = ['timeout' => $timeout, 'ignore_errors' => true,
+             // Overpass's WAF rejects UAs containing "(contact: ...)" with
+             // 406 Not Acceptable (both Nominatim + Overpass), so we use a
+             // simple "Utiligo/1.0" UA per the OSM Usage Policy.
+             'header'  => "User-Agent: Utiligo/1.0\r\n"];
+    if ($post_data !== null) {
+        $http['method']      = 'POST';
+        $http['content']     = $post_data;
+        $http['header']     .= "Content-Type: application/x-www-form-urlencoded\r\n";
+    }
+    $ctx = stream_context_create(['http' => $http]);
     $raw = @file_get_contents($url, false, $ctx);
     if ($raw === false || $raw === '') return null;
     $json = json_decode($raw, true);
     if (!is_array($json)) return null;
-    return $cache[$url] = $json;
+    return $cache[$cache_key] = $json;
 }
 
 /**
@@ -117,8 +126,10 @@ function _lead_sources_osm_overpass_real(array $bbox, string $industry, string $
     $q .= ");\n";
     $q .= "out center tags 200;\n";   // cap at 200 nodes per query to bound work
 
-    $url = 'https://overpass-api.de/api/interpreter?data=' . rawurlencode($q);
-    $res = _lead_sources_osm_http($url, 25);
+    // POST with the QL in the body — GET with long QL strings is rejected
+    // by Overpass (returns 414 / empty body).  See _lead_sources_osm_http().
+    $post = 'data=' . rawurlencode($q);
+    $res = _lead_sources_osm_http('https://overpass-api.de/api/interpreter', 25, $post);
     if (!$res || empty($res['elements'])) return [];
 
     $rows = [];

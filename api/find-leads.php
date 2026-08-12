@@ -20,6 +20,8 @@ require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/error_logger.php';
 require_once __DIR__ . '/../includes/leads_logger.php';
+require_once __DIR__ . '/../includes/lead_sources/_registry.php';
+require_once __DIR__ . '/../includes/lead_sources/osm.php';
 
 api_bootstrap();
 header('Content-Type: application/json');
@@ -62,6 +64,24 @@ $industry  = trim((string)($body['industry']  ?? ''));
 $keywords  = trim((string)($body['keywords']  ?? ''));
 $force     = !empty($body['force_refresh']);
 $req_count = max(1, min(40, (int)($body['lead_count'] ?? 10)));
+
+// Phase 1: optional source multi-selector from the UI.  If the client sends
+// an array of source keys, we restrict to the intersection with the user's
+// plan-allowed sources.  Default (no sources[] in body) = all plan sources.
+$requested_sources = [];
+if (isset($body['sources']) && is_array($body['sources'])) {
+    foreach ($body['sources'] as $s) {
+        $s = trim((string)$s);
+        if ($s !== '') $requested_sources[$s] = true;
+    }
+}
+$allowed_sources = plan_lead_sources($plan);
+$active_sources = $requested_sources
+    ? array_values(array_intersect($allowed_sources, array_keys($requested_sources)))
+    : $allowed_sources;
+// Always default to at least Google if both sides are empty (the legacy
+// behavior — Google only — was the universal behavior before Phase 1).
+if (!$active_sources) $active_sources = ['google_places'];
 
 if (!csrf_verify($body['csrf_token'] ?? null)) {
     leads_log_warn('csrf_fail', ['uid'=>$uid]);
@@ -170,6 +190,18 @@ $_required_cols = [
     'opportunity_score' => "ALTER TABLE `utiligo_leads` ADD COLUMN `opportunity_score` INT UNSIGNED NOT NULL DEFAULT 0",
     'total_ratings'     => "ALTER TABLE `utiligo_leads` ADD COLUMN `total_ratings`     INT UNSIGNED NOT NULL DEFAULT 0",
     'rating'            => "ALTER TABLE `utiligo_leads` ADD COLUMN `rating`            DECIMAL(3,1) NULL",
+    // Phase 0 (migration 022 canonical) — also added here so find-leads.php
+    // self-heals on a fresh install where the migration runner hasn't run
+    // yet.  Mirror the column DDL from migrations/022 when editing.
+    'website'            => "ALTER TABLE `utiligo_leads` ADD COLUMN `website`             VARCHAR(500) NOT NULL DEFAULT ''",
+    'source'             => "ALTER TABLE `utiligo_leads` ADD COLUMN `source`              VARCHAR(24)  NOT NULL DEFAULT 'google_places'",
+    'country'            => "ALTER TABLE `utiligo_leads` ADD COLUMN `country`             VARCHAR(80)  NOT NULL DEFAULT ''",
+    'lat'                => "ALTER TABLE `utiligo_leads` ADD COLUMN `lat`                 DECIMAL(10,7) NULL",
+    'lng'                => "ALTER TABLE `utiligo_leads` ADD COLUMN `lng`                 DECIMAL(10,7) NULL",
+    'business_hours'     => "ALTER TABLE `utiligo_leads` ADD COLUMN `business_hours`      TEXT NULL",
+    'price_level'        => "ALTER TABLE `utiligo_leads` ADD COLUMN `price_level`         TINYINT NULL",
+    'international_phone'=> "ALTER TABLE `utiligo_leads` ADD COLUMN `international_phone` VARCHAR(80)  NOT NULL DEFAULT ''",
+    'enriched_at'        => "ALTER TABLE `utiligo_leads` ADD COLUMN `enriched_at`        DATETIME NULL",
 ];
 $_alter_errors = [];
 foreach ($_required_cols as $_col => $_ddl) {
@@ -254,7 +286,11 @@ if (!$is_paid) {
 }
 
 // ── 8. Cache ──────────────────────────────────────────────────────────────
-$cache_key  = strtolower(preg_replace('/\s+/',' ',$city.'|'.$industry.'|'.$req_count));
+// Cache key includes the active source set so a user who toggles the
+// OSM chip in the UI doesn't get a Google-only cached result back.
+sort($active_sources);
+$_sources_sig = implode(',', $active_sources);
+$cache_key  = strtolower(preg_replace('/\s+/',' ',$city.'|'.$industry.'|'.$req_count.'|'.$_sources_sig));
 $cache_hrs  = (int)LEAD_SEARCH_CACHE_HOURS;
 $from_cache = false; $cached_at = date('Y-m-d H:i:s'); $all_leads = [];
 if (!$force) {
@@ -399,6 +435,53 @@ if (!$from_cache) {
     $_google_ms = _leads_ms($_t_google);
     leads_log_info('google_fetch',['city'=>$city,'industry'=>$industry,'pages'=>$pages_fetched,'raw_leads'=>count($all_leads),'ms'=>$_google_ms]);
 
+    // ── 9b. OSM source merge (Phase 1) ─────────────────────────────────────
+    // 'osm' is added to the active source set by the client's source multi-
+    // selector (Phase 1) AND gated by the user's plan (google_places is the
+    // only source free plans can use; Pro/Ent add 'osm'). The merge is best-
+    // effort: a Nominatim / Overpass / network hiccup never deletes or hides
+    // Google results; we log + proceed.
+    if (in_array('osm', $active_sources, true)) {
+        $_t_osm = microtime(true);
+        try {
+            $osm_rows = lead_source_osm_find($city, $industry, [
+                'max_queries' => 3,                 // balanced policy (3-5)
+                'exclude_with_website' => !empty($body['exclude_with_website'] ?? false),
+            ]);
+            if ($osm_rows) {
+                // dedupe: skip OSM rows whose place_id already exists in $all_leads.
+                $seen_pids = [];
+                foreach ($all_leads as $row) {
+                    $pid = trim((string)($row['place_id'] ?? ''));
+                    if ($pid !== '') $seen_pids[$pid] = true;
+                }
+                $_osm_added = 0;
+                foreach ($osm_rows as $row) {
+                    $pid = trim((string)($row['place_id'] ?? ''));
+                    if ($pid === '' || isset($seen_pids[$pid])) continue;
+                    $seen_pids[$pid] = true;
+                    $row['opportunity_score'] = opportunity_score(
+                        isset($row['rating']) ? (float)$row['rating'] : null,
+                        (int)($row['total_ratings'] ?? 0),
+                        (string)($row['business_category'] ?? '')
+                    );
+                    $all_leads[] = $row;
+                    $_osm_added++;
+                }
+                leads_log_info('osm_merge', [
+                    'city' => $city, 'industry' => $industry,
+                    'osm_count' => count($osm_rows), 'added' => $_osm_added,
+                    'ms' => _leads_ms($_t_osm),
+                ]);
+            } else {
+                leads_log_info('osm_empty', ['city' => $city, 'industry' => $industry, 'ms' => _leads_ms($_t_osm)]);
+            }
+        } catch (\Throwable $e) {
+            leads_log_warn('osm_fail', $e, ['city' => $city, 'industry' => $industry]);
+            log_error('osm_fail', $e, ['city' => $city, 'industry' => $industry]);
+        }
+    }
+
     usort($all_leads, fn($a,$b)=>$b['opportunity_score']<=>$a['opportunity_score']);
     $cache_payload = array_map(function($l){$c=$l;unset($c['id']);return $c;},$all_leads);
     try {
@@ -422,6 +505,15 @@ $_col_getters=[
     'total_ratings'     =>fn($l)=>(int)($l['total_ratings']??0),
     'maps_url'          =>fn($l)=>(string)($l['maps_url']??''),
     'opportunity_score' =>fn($l)=>(int)($l['opportunity_score']??0),
+    // Phase 0 columns (only used if the column exists, thanks to $_use_cols filter).
+    'website'            =>fn($l)=>(string)($l['website']??''),
+    'source'             =>fn($l)=>(string)($l['source']??'google_places'),
+    'country'            =>fn($l)=>(string)($l['country']??''),
+    'lat'                =>fn($l)=>isset($l['lat'])?(float)$l['lat']:null,
+    'lng'                =>fn($l)=>isset($l['lng'])?(float)$l['lng']:null,
+    'business_hours'     =>fn($l)=>(string)($l['business_hours']??''),
+    'price_level'        =>fn($l)=>isset($l['price_level'])?(int)$l['price_level']:null,
+    'international_phone'=>fn($l)=>(string)($l['international_phone']??''),
 ];
 $_use_cols=array_values(array_filter(array_keys($_col_getters),fn($c)=>in_array($c,$_existing_cols,true)));
 $_ins=null;
