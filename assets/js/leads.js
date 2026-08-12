@@ -1078,6 +1078,66 @@ function _renderSlideOver(body, lead) {
 // Export the slide-over renderer so inline onclick handlers can call it.
 window._leadsRenderSlideOver = _renderSlideOver;
 
+// Phase 2: fetch enrichments from lead_enrichments table for the slide-over.
+window._leadsFetchEnrichments = function (leadId, cb) {
+    fetch('/api/lead-enrichments.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ lead_id: leadId, csrf_token: csrfToken }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+        if (!j || !j.success) return cb(j && j.error || 'error', null);
+        cb(null, j.enrichments || []);
+    })
+    .catch(function (e) { cb('network', null); });
+};
+
+// Render enrichment rows stacked at the bottom of the slide-over body.
+// We group by provider so multiple DNS/social rows from the same provider
+// show together.
+window._leadsAppendEnrichments = function (body, enrichments) {
+    if (!body || !enrichments || !enrichments.length) return;
+    var existing = body.querySelector('#enrichmentBlock');
+    if (existing) existing.remove();
+
+    var byProvider = {};
+    enrichments.forEach(function (r) {
+        var p = r.provider || 'unknown';
+        (byProvider[p] = byProvider[p] || []).push(r);
+    });
+
+    var html = '<div id="enrichmentBlock" class="pt-4 mt-4 border-t border-white/5">'
+        + '<p class="text-[9px] font-semibold text-slate-600 uppercase tracking-widest mb-3">Enrichment data</p>';
+
+    Object.keys(byProvider).forEach(function (p) {
+        html += '<div class="mb-3">';
+        html += '<p class="text-[10px] font-semibold text-slate-500 capitalize mb-1.5">' + esc(p.replace(/_/g, ' ')) + '</p>';
+        byProvider[p].forEach(function (r) {
+            var conf = r.confidence || 'medium';
+            var confColor = conf === 'high' ? 'text-emerald-400' : (conf === 'low' ? 'text-slate-600' : 'text-amber-400');
+            var label = (r.field || '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+            // For emails, render as clickable mailto:
+            var valHtml;
+            if (String(r.field).indexOf('email') !== -1 && r.value) {
+                valHtml = '<a href="mailto:' + esc(r.value) + '" class="text-sky-400 hover:text-sky-300 hover:underline break-all">' + esc(r.value) + '</a>';
+            } else if (String(r.field).indexOf('website') !== -1 && r.value) {
+                valHtml = '<a href="' + esc(r.value) + '" target="_blank" rel="noopener noreferrer" class="text-sky-400 hover:text-sky-300 hover:underline break-all">' + esc(r.value) + '</a>';
+            } else {
+                valHtml = '<span class="text-slate-200 break-words">' + esc(String(r.value || '—')) + '</span>';
+            }
+            html += '<div class="flex justify-between items-start gap-3 mb-1">'
+                + '<div class="min-w-0"><span class="text-[10px] text-slate-600 mr-1">' + esc(label) + ':</span>' + valHtml + '</div>'
+                + '<span class="text-[9px] ' + confColor + ' uppercase font-semibold shrink-0">' + esc(conf) + '</span>'
+            + '</div>';
+        });
+        html += '</div>';
+    });
+    html += '</div>';
+    body.insertAdjacentHTML('beforeend', html);
+};
+
 // ----- Export launcher (Phase 4 UI integration) -----
 (function wireExportSheet() {
     var buildBtn = document.getElementById('exportBuildBtn');

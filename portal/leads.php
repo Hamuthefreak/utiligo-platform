@@ -800,6 +800,17 @@ function openLeadSlideOver(leadData) {
   panel.setAttribute('aria-hidden', 'false');
   if (overlay) overlay.classList.add('open');
   document.body.style.overflow = 'hidden';
+
+  // Phase 2: async-fetch lead_enrichments rows + merge them into the panel.
+  // The fetched data is public-side (scraped website / public emails) so
+  // no IDOR guard beyond CSRF applies. We never block rendering on this —
+  // the static lead fields render immediately, extras append on resolve.
+  if (leadData && leadData.id && window._leadsFetchEnrichments) {
+    window._leadsFetchEnrichments(leadData.id, function (err, enrichments) {
+      if (err || !enrichments || !enrichments.length) return;
+      try { window._leadsAppendEnrichments(body, enrichments); } catch (e) {}
+    });
+  }
 }
 function closeLeadSlideOver() {
   var panel = document.getElementById('leadSlideOver');
@@ -845,7 +856,7 @@ document.addEventListener('DOMContentLoaded', function() {
   data-export-formats="<?=htmlspecialchars(implode(',', plan_export_formats($plan)), ENT_QUOTES)?>"
   data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
 ></script>
-<script src="/assets/js/leads.js?v=2102"></script>
+<script src="/assets/js/leads.js?v=2103"></script>
 
 <script>
 function openHistoryDrawer() {
