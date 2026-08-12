@@ -40,10 +40,13 @@ if (!$is_paid) {
     exit;
 }
 
-// Use helpers — limits come from config.php via plans.php.
-// plan_lead_limit() returns -1 for unlimited (entrepreneur); JS treats <=0 as unlimited.
-$lead_limit = plan_lead_limit($plan);
-$site_limit = plan_site_limit($plan);
+// Use helpers — limits come from config.php via plans.php AND honor any
+// per-user admin override (user_limit_overrides). Passing $uid is what
+// makes the bar reflect the admin-bumped value for a specific user.
+// plan_lead_limit() returns -1 for unlimited (entrepreneur); JS treats <=0
+// as unlimited.
+$lead_limit = plan_lead_limit($plan, $uid);
+$site_limit = plan_site_limit($plan, $uid);
 $lead_count = 0;
 $site_count = 0;
 $errors     = [];
@@ -51,7 +54,10 @@ $errors     = [];
 try {
     $pdo = get_platform_db();
 
-    // Ensure tables exist (safe on repeated calls)
+    // ⚠ Canonical DDL for unlocked_leads lives in migrations/006_leads_full_schema.sql.
+    // The CREATE IF NOT EXISTS here is a defensive safety-net for fresh installs
+    // where the migration runner hasn't run yet (InfinityFree first-run path).
+    // Keep it in sync with the migration if you alter the schema.
     try {
         $pdo->exec('CREATE TABLE IF NOT EXISTS `unlocked_leads` (
             `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,

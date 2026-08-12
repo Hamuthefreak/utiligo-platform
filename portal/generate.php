@@ -59,18 +59,39 @@ if (!empty($_GET['name']) || !empty($_GET['city'])) {
     $prefill['business_phone']    = trim($_GET['phone']    ?? '');
     $prefill['business_email']    = trim($_GET['email']    ?? '');
 } elseif (!empty($_GET['lead_id'])) {
-    try {
-        $stmt = $pdo->prepare('SELECT * FROM utiligo_leads WHERE id = ? LIMIT 1');
-        $stmt->execute([(int)$_GET['lead_id']]);
-        $lead = $stmt->fetch();
-        if ($lead) {
-            $prefill['business_name']     = $lead['business_name']     ?? '';
-            $prefill['business_category'] = $lead['business_category'] ?? '';
-            $prefill['business_city']     = $lead['business_city']     ?? '';
-            $prefill['business_phone']    = $lead['business_phone']    ?? '';
-            $prefill['business_email']    = $lead['business_email']    ?? '';
-        }
-    } catch (\Throwable $e) {}
+    // Pre-fill from a lead — but only if the current user has access to it.
+    // "Access" means one of:
+    //   1. the user unlocked this lead (row in unlocked_leads), or
+    //   2. the user imported this lead into their CRM (row in crm_clients.lead_id).
+    // Without this check any logged-in user could pass ?lead_id=<any id> and
+    // have the site generator pre-fill the form with another user's
+    // paid-for lead contact data (IDOR leak).
+    $_lead_id = (int)$_GET['lead_id'];
+    if ($_lead_id > 0) {
+        try {
+            // EXISTS subquery keeps it to a single round-trip and is
+            // immune to columns being renamed in utiligo_leads.
+            $stmt = $pdo->prepare(
+                'SELECT l.business_name, l.business_category, l.business_city, l.business_phone, l.business_email
+                 FROM utiligo_leads l
+                 WHERE l.id = ?
+                   AND (
+                     EXISTS (SELECT 1 FROM unlocked_leads ul WHERE ul.lead_id = l.id AND ul.user_id = ?)
+                     OR EXISTS (SELECT 1 FROM crm_clients c WHERE c.lead_id = l.id AND c.user_id = ?)
+                   )
+                 LIMIT 1'
+            );
+            $stmt->execute([$_lead_id, $user['id'], $user['id']]);
+            $lead = $stmt->fetch(PDO::FETCH_ASSOC);
+            if ($lead) {
+                $prefill['business_name']     = $lead['business_name']     ?? '';
+                $prefill['business_category'] = $lead['business_category'] ?? '';
+                $prefill['business_city']     = $lead['business_city']     ?? '';
+                $prefill['business_phone']    = $lead['business_phone']    ?? '';
+                $prefill['business_email']    = $lead['business_email']    ?? '';
+            }
+        } catch (\Throwable $e) {}
+    }
 }
 
 $templateCategories = [];

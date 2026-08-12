@@ -13,7 +13,11 @@ api_bootstrap();
 header('Content-Type: application/json');
 
 if (!is_logged_in()) {
-    echo json_encode(['success'=>false,'history'=>[]]);
+    // See api/lead-count.php for rationale: 200 + auth_failed:true rather
+    // than 401 so existing JS (assets/js/leads.js loadHistory) keep working
+    // via r.json() — adding 401 today would land in its .catch and silently
+    // hide the unauth state.
+    echo json_encode(['success'=>false,'auth_failed'=>true,'history'=>[]]);
     exit;
 }
 
@@ -21,6 +25,10 @@ $uid = (int)current_user()['id'];
 
 try {
     $pdo = get_platform_db();
+    // ⚠ Canonical DDL for this table lives in migrations/006_leads_full_schema.sql.
+    // The CREATE IF NOT EXISTS here is a defensive safety-net for fresh installs
+    // where the migration runner hasn't run yet (InfinityFree first-run path).
+    // Keep it in sync with the migration if you alter the schema.
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS `utiligo_lead_search_history` (
             `id`           INT UNSIGNED NOT NULL AUTO_INCREMENT,

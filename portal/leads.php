@@ -9,14 +9,28 @@ require_login();
 $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
+$uid     = (int)$user['id'];
 
-$FREE_LEAD_LIMIT   = (int)(defined('FREE_LEAD_LIMIT')           ? FREE_LEAD_LIMIT           : 3);
-$FREE_SEARCH_LIMIT = (int)(defined('FREE_SEARCH_DAILY_LIMIT')   ? FREE_SEARCH_DAILY_LIMIT   : 2);
+// Preload this user's admin overrides once, then read every limit through
+// the plans.php helpers.  This is the SAME path folders/api/find-leads.php,
+// api/bar-status.php and api/lead-count.php use, so the value the user sees on
+// the bar always matches the value the server actually enforces.  Reading the
+// raw *constants* here (the old pattern) silently ignored per-user overrides
+// set via Admin > Users.
+preload_user_limit_overrides($uid);
+$FREE_LEAD_LIMIT   = plan_lead_limit($plan, $uid);          // results-per-search on free (default 3)
+$FREE_SEARCH_LIMIT = plan_search_daily_limit($plan, $uid);   // free searches per 24h (default 2)
 $FREE_GEN_LIMIT    = (int)(defined('FREE_GENERATE_DAILY_LIMIT') ? FREE_GENERATE_DAILY_LIMIT : 1);
 $FREE_TMPL_LIMIT   = (int)(defined('FREE_TEMPLATE_LIMIT')       ? FREE_TEMPLATE_LIMIT       : 2);
-$PRO_LEAD_LIMIT    = (int)(defined('PRO_LEAD_LIMIT')            ? PRO_LEAD_LIMIT            : 700);
-$PRO_SITE_LIMIT    = (int)(defined('PRO_SITE_LIMIT')            ? PRO_SITE_LIMIT            : 50);
-$ENT_SITE_LIMIT    = (int)(defined('ENT_SITE_LIMIT')            ? ENT_SITE_LIMIT            : 500);
+$_raw_pro_lead     = plan_lead_limit($plan, $uid);            // -1 = unlimited
+$PRO_LEAD_LIMIT    = $_raw_pro_lead === -1 ? 0           : $_raw_pro_lead;   // 0 bars hide as unlimited
+// PRO_SITE_LIMIT / ENT_SITE_LIMIT are shown BOTH to the user as their own cap
+// (when they're already on that plan) AND as "upgrade to..." marketing copy
+// to free users.  Only the user's *own* plan limit should honor their own
+// per-user overrides — marketing copy for a plan the user is NOT on must
+// show that plan's global default.
+$PRO_SITE_LIMIT = $plan === 'pro'          ? plan_site_limit('pro', $uid)          : (int)(defined('PRO_SITE_LIMIT') ? PRO_SITE_LIMIT : 50);
+$ENT_SITE_LIMIT = $plan === 'entrepreneur' ? plan_site_limit('entrepreneur', $uid) : (int)(defined('ENT_SITE_LIMIT') ? ENT_SITE_LIMIT : 500);
 
 $lead_limit_js = match($plan) {
     'entrepreneur' => 0,

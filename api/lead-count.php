@@ -19,7 +19,12 @@ api_bootstrap();
 header('Content-Type: application/json');
 
 if (!is_logged_in()) {
-    echo json_encode(['success' => false, 'count' => 0, 'limit' => 0]);
+    // HTTP 200 + auth_failed:true is preserved on purpose: changing the status
+    // to 401 here would turn every expired-session page-load into a console
+    // .catch in assets/js/leads.js (which today does r.json() unguarded).
+    // auth_failed:true is the explicit contract marker for any future caller
+    // that wants to react to expired sessions without parsing count==0.
+    echo json_encode(['success' => false, 'auth_failed' => true, 'count' => 0, 'limit' => 0]);
     exit;
 }
 
@@ -35,7 +40,10 @@ if (!$is_paid) {
 $count = 0;
 try {
     $pdo  = get_platform_db();
-    // Ensure table exists — safe on first ever run
+    // ⚠ Canonical DDL for unlocked_leads lives in migrations/006_leads_full_schema.sql.
+    // The CREATE IF NOT EXISTS here is a defensive safety-net for fresh installs
+    // where the migration runner hasn't run yet (InfinityFree first-run path).
+    // Keep it in sync with the migration if you alter the schema.
     $pdo->exec('CREATE TABLE IF NOT EXISTS `unlocked_leads` (
         `id`          INT UNSIGNED NOT NULL AUTO_INCREMENT,
         `user_id`     INT UNSIGNED NOT NULL,
@@ -51,7 +59,11 @@ try {
     log_error('lead_count_fetch', $e, ['user_id' => $user['id'] ?? null]);
 }
 
-$limit = ($plan === 'entrepreneur') ? 0 : (defined('PRO_LEAD_LIMIT') ? (int)PRO_LEAD_LIMIT : 120);
+// Single source of truth: includes/plans.php honors config AND per-user
+// admin overrides. -1 (=unlimited, entrepreneur) is normalized to 0 for the
+// JS progress bar, exactly like api/bar-status.php does.
+$raw_limit = plan_lead_limit($plan, (int)$user['id']);
+$limit     = $raw_limit === -1 ? 0 : $raw_limit;
 
 echo json_encode([
     'success' => true,

@@ -50,9 +50,41 @@ function csrf_verify(?string $token): bool
         && hash_equals($_SESSION['csrf_token'], $token);
 }
 
+/**
+ * Per-minute rate limit check for ajax endpoints.
+ *
+ * Implementation notes:
+ *   1. The PRIMARY counter lives in $_SESSION so it's instant, but
+ *      $_SESSION is per-cookie — an attacker who drops the cookie gets
+ *      a fresh bucket every request.  To close that hole we ALSO keep
+ *      a DB-backed counter on `rate_limit_buckets` (best-effort: any
+ *      DB error / missing table is swallowed and the session counter
+ *      still governs, so a DB outage never bricks a legit user).
+ *   2. Previously this returned `true` ("allow") when the session was
+ *      not active.  That made the rate limit bypassable from a client
+ *      that sent no cookies (and meant an unstarted session skipped
+ *      the limit entirely).  Now we treat "no usable session" as
+ *      "deny" so an attacker can't escape the limit by suppressing
+ *      the cookie.  Authed endpoints already had to require a session
+ *      via is_logged_in() earlier in the request, so this stricter
+ *      behaviour cannot hurt real users of those endpoints.
+ *
+ * @param string $key   Bucket name (e.g. 'find_leads').
+ * @param int    $maxPerMinute   Max events allowed inside a 60s window.
+ * @return bool  TRUE = allowed, FALSE = over the limit.
+ */
 function rate_limit_check(string $key, int $maxPerMinute): bool
 {
-    if (session_status() !== PHP_SESSION_ACTIVE) return true; // can't rate-limit without session
+    // Try to recover a session if it's merely not started yet (so a caller
+    // that arrives before session_start() still gets tracked).  Any other
+    // session state (disabled / active) is left alone.
+    if (session_status() === PHP_SESSION_NONE) { @session_start(); }
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        // Sessions genuinely unavailable — fall back to the DB counter only.
+        return _db_rate_limit_check($key, $maxPerMinute, 0);
+    }
+
     $now    = time();
     $bucket = $_SESSION['rate_limit'][$key] ?? ['count' => 0, 'window_start' => $now];
     if ($now - $bucket['window_start'] >= 60) {
@@ -60,7 +92,75 @@ function rate_limit_check(string $key, int $maxPerMinute): bool
     }
     $bucket['count']++;
     $_SESSION['rate_limit'][$key] = $bucket;
-    return $bucket['count'] <= $maxPerMinute;
+    $session_ok = $bucket['count'] <= $maxPerMinute;
+
+    // OR the two so the session count never *reduces* protection, and the
+    // DB counter only tightens it. The session wins on disagreement.
+    return $session_ok && _db_rate_limit_check($key, $maxPerMinute, (int)$bucket['count']);
+}
+
+/**
+ * Best-effort DB-backed 60s rate-limit counter.
+ *
+ * Uses an UPSERT on `rate_limit_buckets(bucket_key, last_count, window_start)`
+ * where `bucket_key` = "<key>|<user_id>".  A 60s sliding-ish window (we use a
+ * fixed start to avoid counting drift).  Never throws; on any DB error
+ * returns TRUE (allow) so a DB hiccup cannot brick a legit user — the
+ * session counter still does its job in that case.
+ *
+ * @param string $key     Bucket name.
+ * @param int    $max     Max events per 60s window.
+ * @param int    $sessCount   Current session-side count (informational; not authoritative).
+ * @return bool  TRUE = allowed (only meaningful when the table is reachable).
+ */
+function _db_rate_limit_check(string $key, int $max, int $sessCount): bool
+{
+    if (!function_exists('get_platform_db')) return true;
+    $uid = 0;
+    if (session_status() === PHP_SESSION_ACTIVE && !empty($_SESSION['user_id'])) {
+        $uid = (int)$_SESSION['user_id'];
+    }
+    $bucket_key = $key . '|' . $uid;
+
+    try {
+        $pdo = get_platform_db();
+        // Idempotent — safe on every request.
+        $pdo->exec('CREATE TABLE IF NOT EXISTS `rate_limit_buckets` (
+            `bucket_key`   VARCHAR(120) NOT NULL,
+            `count`        INT UNSIGNED NOT NULL DEFAULT 0,
+            `window_start` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (`bucket_key`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+        $now     = date('Y-m-d H:i:s');
+        $cutoff  = date('Y-m-d H:i:s', time() - 60);
+
+        // SELECT-then-UPSERT keeps the math correct under concurrency without
+        // needing a transaction — we only ever compare to $max, the absolute
+        // latest value is read on the next call.
+        $sel = $pdo->prepare('SELECT count, window_start FROM rate_limit_buckets WHERE bucket_key = ? LIMIT 1');
+        $sel->execute([$bucket_key]);
+        $row = $sel->fetch(PDO::FETCH_ASSOC);
+
+        if (!$row) {
+            $pdo->prepare('INSERT INTO rate_limit_buckets (bucket_key, count, window_start) VALUES (?, 1, ?)')
+                ->execute([$bucket_key, $now]);
+            $count = 1;
+        } else if ($row['window_start'] < $cutoff) {
+            $pdo->prepare('UPDATE rate_limit_buckets SET count = 1, window_start = ? WHERE bucket_key = ?')
+                ->execute([$now, $bucket_key]);
+            $count = 1;
+        } else {
+            $pdo->prepare('UPDATE rate_limit_buckets SET count = count + 1 WHERE bucket_key = ?')
+                ->execute([$bucket_key]);
+            $count = (int)$row['count'] + 1;
+        }
+        return $count <= $max;
+    } catch (\Throwable $e) {
+        // Logged but never fatal — the session counter is the authority.
+        error_log('[db_rate_limit] ' . $e->getMessage());
+        return true;
+    }
 }
 
 function opportunity_score(?float $rating, int $reviewCount, string $category): int

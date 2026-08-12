@@ -90,6 +90,12 @@ if (!$pdo) {
 $_db_connect_ms = _leads_ms($_t_db);
 
 // ── 5. Table bootstrap ────────────────────────────────────────────────────
+// ⚠ Canonical DDL for these tables lives in migrations/006_leads_full_schema.sql
+// (utiligo_leads, lead_cache, unlocked_leads, utiligo_lead_search_history) and
+// migrations/007_lead_search_quota.sql (lead_search_quota). The CREATE IF NOT
+// EXISTS calls here are defensive safety-nets for fresh installs where the
+// migration runner hasn't run yet (the InfinityFree first-run path). If you
+// change a schema here, change the matching migration too.
 $_tbl_errors = [];
 foreach ([
     'utiligo_leads' => "

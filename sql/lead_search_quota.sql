@@ -1,7 +1,10 @@
 -- lead_search_quota table
 -- Tracks how many lead searches a free-plan user has made in the last 24 hours.
--- Fingerprint = 'u{user_id}_{first16charsOfIpHash}'
--- Tying to user_id ensures changing IP alone does not reset the counter.
+-- Fingerprint format written by api/find-leads.php is 'uid_{user_id}'
+-- (NOT 'u{user_id}_{ip_hash}' — that older shape was retired when the
+-- counter was tied to the authenticated user so a changed IP alone can no
+-- longer reset it).  Keeping the user_id in the fingerprint means an admin
+-- can find & reset a specific user's bucket by id.
 -- Auto-created by api/find-leads.php on first use, but you can also run this manually.
 
 CREATE TABLE IF NOT EXISTS `lead_search_quota` (

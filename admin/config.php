@@ -126,6 +126,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
                     $ival    = (int)$raw;
                     $lines[] = "define('$key', $ival);";
                     break;
+                case 'string':
+                    // Defensive: no field today is 'string' (every editable key
+                    // is int|float|bool|intm1).  But before someone adds
+                    // something like GOOGLE_MAPS_API_KEY they MUST go through
+                    // this branch — which escapes for PHP single-quoted syntax
+                    // (backslash and single quote) so the emitted define() can
+                    // never break out of the string literal and execute
+                    // arbitrary PHP.  This is the only thing standing between
+                    // admin-form input and a real PHP-injection if string
+                    // keys are added in the future.
+                    $sval    = addcslashes((string)$raw, "'\\");
+                    $lines[] = "define('$key', '$sval');";
+                    break;
                 default: // int
                     $ival    = max(0, (int)$raw);
                     $lines[] = "define('$key', $ival);";
@@ -150,7 +163,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
 function _cfg_val(string $key, string $type): mixed {
     if (!defined($key)) return ($type === 'bool' ? false : '');
     $v = constant($key);
-    return $type === 'bool' ? (bool)$v : $v;
+    if ($type === 'bool')   return (bool)$v;
+    if ($type === 'string') return (string)$v;
+    return $v;
 }
 
 $pageTitle = 'Config Editor — Admin — Utiligo';
@@ -254,6 +269,11 @@ require_once __DIR__ . '/../includes/admin_layout.php';
                    name="cfg[<?= $key ?>]" value="<?= htmlspecialchars((string)$cur) ?>"
                    class="w-full bg-slate-900/70 border border-white/10 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white rounded-xl pl-7 pr-3 py-2.5 text-sm outline-none transition">
           </div>
+
+        <?php elseif ($type === 'string'): ?>
+          <input type="text" autocomplete="off" spellcheck="false"
+                 name="cfg[<?= $key ?>]" value="<?= htmlspecialchars((string)$cur) ?>"
+                 class="w-full bg-slate-900/70 border border-white/10 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white rounded-xl px-3 py-2.5 text-sm outline-none transition font-mono">
 
         <?php else: ?>
           <input type="number" step="1" <?= $type === 'int' ? 'min="0"' : 'min="-1"' ?>
