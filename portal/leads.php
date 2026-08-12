@@ -4,12 +4,19 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/lead_sources/_registry.php';
 
 require_login();
 $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
 $is_paid = in_array($plan, ['pro','entrepreneur'], true);
 $uid     = (int)$user['id'];
+
+// Phase 1: surfaced as the source multi-select chip on the UI. The user
+// can toggle individual sources ON unless their plan doesn't include
+// them, in which case the chip renders disabled with an Upgrade tooltip.
+$lead_sources_allowed = plan_lead_sources($plan);
+$lead_sources_all     = lead_source_registry();
 
 // Preload this user's admin overrides once, then read every limit through
 // the plans.php helpers.  This is the SAME path folders/api/find-leads.php,
@@ -185,6 +192,74 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     margin-left:0;          /* override ml-auto */
   }
 }
+
+/* ---- Phase 1/3: source multi-select chip + view toggle + bulk + slide-over ---- */
+.source-chip {
+  position: relative; display:inline-flex; align-items:center; cursor:pointer;
+  user-select:none; padding:0; border:none; background:none;
+}
+.source-chip-box {
+  display:inline-flex; align-items:center; gap:.4rem;
+  padding:.4rem .7rem;
+  border-radius:9999px;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(255,255,255,.08);
+  color:#94a3b8;
+  font-size:.75rem; font-weight:600;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.source-chip:hover .source-chip-box { background:rgba(255,255,255,.06); color:#e2e8f0; }
+.source-chip-cb:checked + .source-chip-box {
+  background:rgba(124,186,52,.10);
+  border-color:rgba(124,186,52,.4);
+  color:#e2e8f0;
+}
+.source-chip-cb:checked + .source-chip-box .source-chip-check { color:#7CBA34; }
+.source-chip-check { color:#475569; font-size:9px; margin-left:.05rem; }
+.source-chip[data-locked="1"] .source-chip-box { cursor:not-allowed; }
+
+/* View toggle (card/table) */
+.view-toggle { display:inline-flex; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:10px; padding:2px; gap:2px; }
+.view-toggle button { padding:.35rem .65rem; border-radius:8px; font-size:.72rem; font-weight:600; color:#94a3b8; transition:all .15s; cursor:pointer; background:none; border:none; }
+.view-toggle button:hover { color:#fff; }
+.view-toggle button.active { background:rgba(255,255,255,.08); color:#fff; }
+
+/* Bulk-select checkbox column */
+.bulk-cb { width:16px; height:16px; cursor:pointer; accent-color:#7CBA34; }
+.leads-table { width:100%; border-collapse:collapse; }
+.leads-table th { text-align:left; padding:.5rem .65rem; color:#94a3b8; font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid rgba(255,255,255,.06); }
+.leads-table td { padding:.6rem .65rem; border-bottom:1px solid rgba(255,255,255,.04); font-size:.8rem; }
+.leads-table tr:hover td { background:rgba(255,255,255,.025); }
+.leads-table tr.is-selected td { background:rgba(124,186,52,.06); }
+
+/* Bulk action bar */
+#bulkActionBar {
+  position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(120%);
+  transition:transform .25s cubic-bezier(.4,0,.2,1);
+  background:rgba(15,23,42,.98); border:1px solid rgba(255,255,255,.1);
+  padding:.7rem 1rem; border-radius:14px; box-shadow:0 8px 28px rgba(0,0,0,.5);
+  z-index:90; display:flex; align-items:center; gap:.7rem;
+  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+}
+#bulkActionBar.show { transform:translateX(-50%) translateY(0); }
+
+/* Slide-over detail panel */
+#leadSlideOver {
+  position:fixed; top:0; right:0; bottom:0; width:min(420px, 88vw);
+  background:rgba(15,23,42,.98);
+  border-left:1px solid rgba(255,255,255,.1);
+  transform:translateX(100%);
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+  z-index:80; overflow-y:auto;
+  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+  box-shadow:-12px 0 40px rgba(0,0,0,.4);
+}
+#leadSlideOver.open { transform:translateX(0); }
+#leadSlideOverOverlay {
+  position:fixed; inset:0; background:rgba(0,0,0,.5);
+  z-index:79; opacity:0; pointer-events:none; transition:opacity .25s;
+}
+#leadSlideOverOverlay.open { opacity:1; pointer-events:auto; }
 </style>
 
 <!-- Rail (desktop) -->
@@ -450,6 +525,48 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
     </div>
 
+    <!-- Sources: Phase 1 multi-select chip strip -->
+    <?php
+      // Only render the strip if the plan has more than one source available
+      // (free plans have only Google — they get a single disabled chip plus
+      // an Upgrade tooltip; pro/ent get toggleable chips).
+      $all_sources  = $lead_sources_all;        // registry: every key/label/icon
+      $allowed_keys = array_flip($lead_sources_allowed); // plan-allowed keys
+    ?>
+    <div class="mb-5">
+      <div class="flex items-center gap-2 mb-2">
+        <i class="fa-solid fa-database text-slate-600 text-xs"></i>
+        <span class="text-[10px] font-semibold text-slate-600 uppercase tracking-widest">Sources</span>
+        <span class="text-[10px] text-slate-700 font-normal ml-1">(toggle which data providers your search draws from)</span>
+      </div>
+      <div class="flex flex-wrap gap-2" id="sourceChipStrip">
+        <?php foreach ($all_sources as $key => $meta): ?>
+          <?php
+            $enabled = isset($allowed_keys[$key]);
+            // Default state: enabled sources start checked; the rest display
+            // disabled with a lock + Upgrade tooltip.
+            $checked = $enabled ? 'checked' : '';
+            $cls     = $enabled ? '' : 'opacity-50 cursor-not-allowed';
+            $icon    = $meta['icon'] ?? 'fa-database';
+            $label   = $meta['label'] ?? $key;
+            $color   = $meta['color'] ?? '#94a3b8';
+          ?>
+          <label class="source-chip <?= htmlspecialchars($cls) ?>" data-source="<?= htmlspecialchars($key) ?>" <?= $enabled ? '' : 'title="Available on Pro and Entrepreneur plans" data-locked="1"' ?>>
+            <input type="checkbox" class="sr-only source-chip-cb" <?= $checked ?> data-source="<?= htmlspecialchars($key) ?>" <?= $enabled ? '' : 'disabled' ?>>
+            <span class="source-chip-box">
+              <i class="fa-solid <?= htmlspecialchars($icon) ?> source-chip-icon" style="color:<?= htmlspecialchars($color) ?>"></i>
+              <span class="source-chip-label"><?= htmlspecialchars($label) ?></span>
+              <?php if (!$enabled): ?>
+                <i class="fa-solid fa-lock text-[9px] text-slate-600 ml-1"></i>
+              <?php else: ?>
+                <i class="fa-solid fa-check source-chip-check"></i>
+              <?php endif; ?>
+            </span>
+          </label>
+        <?php endforeach; ?>
+      </div>
+    </div>
+
     <!-- Slider + toggle + button: stacked on mobile -->
     <div class="flex flex-col gap-4 search-actions">
       <!-- Slider -->
@@ -478,6 +595,32 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
     </div>
   </form>
+</div>
+
+
+<!-- Phase 3: view toggle + bulk-select controls (appears above results once
+     a search runs; hidden until then) -->
+<div id="resultsToolbar" class="hidden glass rounded-2xl mb-4 px-3 py-2 flex items-center gap-3 flex-wrap">
+  <div class="view-toggle" role="group" aria-label="View mode">
+    <button type="button" id="viewCardBtn" class="active" data-view="card">
+      <i class="fa-solid fa-table-cells-large mr-1"></i>Cards
+    </button>
+    <button type="button" id="viewTableBtn" data-view="table">
+      <i class="fa-solid fa-table mr-1"></i>Table
+    </button>
+  </div>
+  <div class="ml-auto flex items-center gap-3">
+    <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer select-none">
+      <input type="checkbox" id="bulkModeToggle" class="bulk-cb">
+      <span>Select leads</span>
+    </label>
+    <button type="button" id="exportLaunchBtn" class="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">
+      <i class="fa-solid fa-file-export mr-1"></i>Export
+    </button>
+    <button type="button" id="saveSearchBtn" class="text-xs font-semibold text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition">
+      <i class="fa-solid fa-star mr-1"></i>Save search
+    </button>
+  </div>
 </div>
 
 
@@ -530,6 +673,164 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <div class="xl:hidden h-20"></div>
 
 
+<!-- Phase 3: slide-over detail panel + overlay + bulk action bar + export sheet -->
+<div id="leadSlideOverOverlay" onclick="closeLeadSlideOver()"></div>
+<aside id="leadSlideOver" aria-hidden="true" aria-labelledby="slideOverTitle">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-slate-950/80 backdrop-blur z-10" style="background:rgba(15,23,42,.92)">
+    <div>
+      <p class="text-[10px] text-slate-600 uppercase tracking-widest font-semibold">Lead Detail</p>
+      <h3 id="slideOverTitle" class="text-base font-bold text-white leading-tight mt-0.5">—</h3>
+    </div>
+    <button type="button" onclick="closeLeadSlideOver()" class="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center text-slate-400 hover:text-white transition" aria-label="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+  <div id="slideOverBody" class="p-5 space-y-5">
+    <p class="text-slate-600 text-xs">No lead selected.</p>
+  </div>
+</aside>
+
+<div id="bulkActionBar">
+  <span class="text-sm font-semibold text-white"><span id="bulkCount">0</span> selected</span>
+  <button type="button" id="bulkUnlockBtn" class="text-xs font-semibold text-white bg-emerald-500/15 hover:bg-emerald-500/25 border border-emerald-400/30 px-3 py-1.5 rounded-lg transition">
+    <i class="fa-solid fa-unlock mr-1"></i>Add to CRM
+  </button>
+  <button type="button" id="bulkExportBtn" class="text-xs font-semibold text-white bg-indigo-500/15 hover:bg-indigo-500/25 border border-indigo-400/30 px-3 py-1.5 rounded-lg transition">
+    <i class="fa-solid fa-download mr-1"></i>Export
+  </button>
+  <button type="button" id="bulkClearBtn" class="text-xs text-slate-400 hover:text-white px-2 py-1.5 transition">
+    <i class="fa-solid fa-xmark"></i>
+  </button>
+</div>
+
+<!-- Export launcher sheet (Phase 4 UI) -->
+<div id="exportSheetOverlay" class="fixed inset-0 bg-black/50 z-[81] opacity-0 pointer-events-none transition-opacity duration-200"></div>
+<div id="exportSheet" class="fixed top-0 right-0 bottom-0 w-[440px] max-w-[90vw] bg-slate-950 z-[82] transform translate-x-full transition-transform duration-300 border-l border-white/10 overflow-y-auto">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-slate-950 z-10">
+    <div>
+      <p class="text-[10px] text-slate-600 uppercase tracking-widest font-semibold">Export LEADS</p>
+      <h3 class="text-base font-bold text-white leading-tight mt-0.5">Build a file</h3>
+    </div>
+    <button type="button" onclick="closeExportSheet()" class="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center text-slate-400 hover:text-white transition" aria-label="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+  <div class="p-5 space-y-5">
+    <?php if (empty(plan_export_formats($plan))): ?>
+      <div class="text-center py-8">
+        <div class="w-12 h-12 rounded-2xl bg-white/5 flex items-center justify-center mx-auto mb-3">
+          <i class="fa-solid fa-lock text-slate-600"></i>
+        </div>
+        <p class="text-sm text-slate-400 font-semibold mb-1">Exports are a Pro feature</p>
+        <p class="text-xs text-slate-600 mb-4">Upgrade to download your leads as CSV, XLSX, vCard, or PDF.</p>
+        <a href="/portal/billing.php?upgrade=1" class="inline-block text-xs font-bold text-black bg-white px-4 py-2 rounded-lg hover:bg-slate-200">
+          <i class="fa-solid fa-crown mr-1"></i>Upgrade now
+        </a>
+      </div>
+    <?php else: ?>
+      <div>
+        <p class="text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-2">Format</p>
+        <div class="grid grid-cols-3 gap-2" id="exportFormatGrid">
+          <?php foreach (plan_export_formats($plan) as $fmt): ?>
+            <button type="button" data-format="<?= htmlspecialchars($fmt) ?>" class="export-format-btn text-xs font-semibold text-slate-300 hover:text-white px-2 py-2.5 rounded-lg border border-white/10 hover:border-white/20 hover:bg-white/5 transition flex flex-col items-center gap-1.5">
+              <i class="fa-solid <?= [
+                  'csv'   => 'fa-file-csv',
+                  'xlsx'  => 'fa-file-excel',
+                  'vcard' => 'fa-address-card',
+                  'json'  => 'fa-file-code',
+                  'pdf'   => 'fa-file-pdf',
+              ][$fmt] ?? 'fa-file' ?>"></i>
+              <span><?= strtoupper($fmt) ?></span>
+            </button>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <div>
+        <p class="text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-2">Scope</p>
+        <select id="exportScopeSelect" class="leads-input" style="padding-left:.75rem">
+          <?php if (!empty($lead_sources_allowed)): ?>
+            <option value="unlocked">My unlocked leads</option>
+          <?php endif; ?>
+          <option value="<?= !empty($lead_sources_allowed) ? 'search' : 'all' ?>">Current search results</option>
+          <option value="all">All matching leads (entire table)</option>
+        </select>
+      </div>
+      <div>
+        <p class="text-[10px] font-semibold text-slate-600 uppercase tracking-widest mb-2">Columns</p>
+        <div class="grid grid-cols-2 gap-1.5">
+          <?php
+            $all_cols = ['business_name','business_category','business_city','business_address','business_phone','business_email','rating','total_ratings','maps_url','website','source','country','lat','lng','business_hours','price_level','international_phone','opportunity_score'];
+            $defaults = ['business_name','business_category','business_city','business_phone','business_email','website','opportunity_score'];
+            foreach ($all_cols as $c):
+          ?>
+            <label class="flex items-center gap-2 text-xs text-slate-400 cursor-pointer">
+              <input type="checkbox" class="bulk-cb export-col-cb" value="<?= htmlspecialchars($c) ?>" <?= in_array($c,$defaults,true) ? 'checked' : '' ?>>
+              <span><?= htmlspecialchars(str_replace('_',' ',ucfirst($c))) ?></span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <button type="button" id="exportBuildBtn" class="w-full text-sm font-bold text-black bg-white hover:bg-slate-200 px-4 py-2.5 rounded-xl transition disabled:opacity-50 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-file-export mr-2"></i>Build export
+      </button>
+      <div id="exportProgress" class="hidden text-center py-6">
+        <i class="fa-solid fa-spinner fa-spin text-slate-400 mb-2"></i>
+        <p class="text-xs text-slate-400">Building…</p>
+      </div>
+      <div id="exportResult" class="hidden"></div>
+      <p class="text-[10px] text-slate-600 leading-relaxed">Your daily export quota: <span id="exportDailyCount" class="text-slate-400 font-semibold">—</span> / <?= plan_export_daily_limit($plan) ?> exports.</p>
+    <?php endif; ?>
+  </div>
+</div>
+
+<script>
+function openLeadSlideOver(leadData) {
+  if (!leadData) return;
+  var panel = document.getElementById('leadSlideOver');
+  var overlay = document.getElementById('leadSlideOverOverlay');
+  var title = document.getElementById('slideOverTitle');
+  var body = document.getElementById('slideOverBody');
+  if (!panel) return;
+  // Body content rendered client-side by leads.js after Phase 3 init.
+  try { window._leadsRenderSlideOver(body, leadData); } catch(e) {
+    title.textContent = leadData.business_name || 'Lead';
+    body.innerHTML = '<p class="text-xs text-slate-500">Detail unavailable.</p>';
+  }
+  panel.classList.add('open');
+  panel.setAttribute('aria-hidden', 'false');
+  if (overlay) overlay.classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+function closeLeadSlideOver() {
+  var panel = document.getElementById('leadSlideOver');
+  var overlay = document.getElementById('leadSlideOverOverlay');
+  if (panel) { panel.classList.remove('open'); panel.setAttribute('aria-hidden','true'); }
+  if (overlay) overlay.classList.remove('open');
+  document.body.style.overflow = '';
+}
+function openExportSheet() {
+  var sheet = document.getElementById('exportSheet');
+  var overlay = document.getElementById('exportSheetOverlay');
+  if (sheet) sheet.style.transform = 'translateX(0)';
+  if (overlay) { overlay.style.opacity = '1'; overlay.style.pointerEvents = 'auto'; }
+  document.body.style.overflow = 'hidden';
+}
+function closeExportSheet() {
+  var sheet = document.getElementById('exportSheet');
+  var overlay = document.getElementById('exportSheetOverlay');
+  if (sheet) sheet.style.transform = 'translateX(100%)';
+  if (overlay) { overlay.style.opacity = '0'; overlay.style.pointerEvents = 'none'; }
+  document.body.style.overflow = '';
+}
+document.addEventListener('DOMContentLoaded', function() {
+  var overlay = document.getElementById('exportSheetOverlay');
+  if (overlay) overlay.addEventListener('click', closeExportSheet);
+  var launch = document.getElementById('exportLaunchBtn');
+  if (launch) launch.addEventListener('click', openExportSheet);
+});
+</script>
+
+
 <!-- PHP-baked config for JS -->
 <script id="leadsPageConfig"
   data-plan="<?=htmlspecialchars($plan,ENT_QUOTES)?>"
@@ -539,8 +840,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   data-site-limit="<?=$site_limit_js?>"
   data-quota-used="<?=$quota_used?>"
   data-quota-limit="<?=$FREE_SEARCH_LIMIT?>"
+  data-sources="<?=htmlspecialchars(implode(',', $lead_sources_allowed), ENT_QUOTES)?>"
+  data-all-sources="<?=htmlspecialchars(implode(',', array_keys($lead_sources_all)), ENT_QUOTES)?>"
+  data-export-formats="<?=htmlspecialchars(implode(',', plan_export_formats($plan)), ENT_QUOTES)?>"
+  data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
 ></script>
-<script src="/assets/js/leads.js?v=2101"></script>
+<script src="/assets/js/leads.js?v=2102"></script>
 
 <script>
 function openHistoryDrawer() {
