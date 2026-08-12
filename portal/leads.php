@@ -947,8 +947,9 @@ document.addEventListener('DOMContentLoaded', function() {
   data-all-sources="<?=htmlspecialchars(implode(',', array_keys($lead_sources_all)), ENT_QUOTES)?>"
   data-export-formats="<?=htmlspecialchars(implode(',', plan_export_formats($plan)), ENT_QUOTES)?>"
   data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
+  data-can-schedule-searches="<?=can_schedule_searches($plan) ? '1' : '0'?>"
 ></script>
-<script src="/assets/js/leads.js?v=2105"></script>
+<script src="/assets/js/leads.js?v=2106"></script>
 
 <script>
 function openHistoryDrawer() {

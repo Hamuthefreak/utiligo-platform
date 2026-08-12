@@ -39,6 +39,7 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/error_logger.php';
 require_once __DIR__ . '/../includes/mailer.php';
@@ -60,14 +61,11 @@ $hard_stop = time() + 60;
 
 $pdo = get_platform_db();
 
-// Look only at users whose subscription plan permits this feature: Pro and Ent.
-// Why: free users can't store leads in any case, so notifications would
-// be marketing and — more importantly — we'd burn Brevo sending budget on
-// free-tier accounts. The plan gate here is conservative; Phase 6 may move
-// it to plan_can_scheduled_searches($plan).
-$ALLOWED_PLANS_IN = ['pro', 'entrepreneur'];
-
-// Fetch subscription recipients + their saved searches.
+// Look only at users whose subscription plan permits this feature.
+// can_schedule_searches() returns true for Ent only today.
+// We fetch users with notify_email=1 and then double-check the plan in
+// PHP so we benefit from any future plan-config overrides without
+// touching this query.
 try {
     $stmt = $pdo->prepare(
         'SELECT ss.id AS ss_id, ss.user_id, ss.name, ss.params, ss.last_run_at,
@@ -75,16 +73,22 @@ try {
            FROM saved_searches ss
            JOIN users u ON u.id = ss.user_id
           WHERE ss.notify_email = 1
-            AND u.plan IN (' . implode(',', array_fill(0, count($ALLOWED_PLANS_IN), '?')) . ')
           ORDER BY ss.id ASC
           LIMIT 100'
     );
-    $stmt->execute($ALLOWED_PLANS_IN);
+    $stmt->execute();
     $jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) {
     log_error('scheduled_searches_pull', $e);
     echo "pull_error\n";
     exit;
+}
+
+// Filter in PHP using the plan helper — handles per-user overrides too.
+if (function_exists('can_schedule_searches')) {
+    $jobs = array_values(array_filter($jobs, function ($j) {
+        return can_schedule_searches((string)$j['plan']);
+    }));
 }
 
 if (!$jobs) {

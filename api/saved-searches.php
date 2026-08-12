@@ -27,6 +27,7 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/error_logger.php';
 require_once __DIR__ . '/../includes/lead_activity_log.php';
@@ -50,6 +51,25 @@ $uid  = (int)($_SESSION['user_id'] ?? 0);
 if ($uid <= 0) {
     http_response_code(401);
     echo json_encode(['success' => false, 'error' => 'not_logged_in']);
+    exit;
+}
+
+// Phase 6 plan gate — saved_searches feature is Pro+ only. Notify emails
+// are Ent-only (gated by can_schedule_searches()).
+$plan   = (string)($_SESSION['plan'] ?? 'free');
+// Fall back to a DB fetch if session doesn't carry plan.
+if ($plan === 'free') {
+    try {
+        $updo = get_platform_db();
+        $ps = $updo->prepare('SELECT plan FROM users WHERE id = ? LIMIT 1');
+        $ps->execute([$uid]);
+        $plan = (string)($ps->fetchColumn() ?: 'free');
+    } catch (\Throwable $e) { $plan = 'free'; }
+}
+
+if (!can_use_lead_workspace($plan)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'plan_required']);
     exit;
 }
 
@@ -131,6 +151,14 @@ case 'update':
     if ($id <= 0 || $name === '' || strlen($name) > 120) {
         http_response_code(400);
         echo json_encode(['success' => false, 'error' => 'invalid_input']);
+        exit;
+    }
+    // Phase 6: notify_email is gated by can_schedule_searches() (Ent only
+    // today). Free/Pro users can save & re-run searches but cannot
+    // subscribe to delta emails.
+    if ($notify && !can_schedule_searches($plan)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'notify_email_requires_ent']);
         exit;
     }
     // Build params if provided; otherwise re-read existing row's.

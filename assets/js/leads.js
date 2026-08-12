@@ -76,6 +76,7 @@ var cfg = document.getElementById('leadsPageConfig');
 var PLAN    = cfg ? (cfg.dataset.plan    || 'free') : 'free';
 var IS_PAID = PLAN === 'pro' || PLAN === 'entrepreneur';
 var IS_ENT  = PLAN === 'entrepreneur';
+var canScheduleSearches = (cfg && cfg.dataset.canScheduleSearches === '1');
 
 var leadCount  = parseInt((cfg && cfg.dataset.leadCount)  || '0', 10);
 var leadLimit  = parseInt((cfg && cfg.dataset.leadLimit)  || '0', 10);
@@ -1296,7 +1297,7 @@ window._leadsAppendEnrichments = function (body, enrichments) {
                 }
                 var meta = [];
                 meta.push(new Date(entry.at || entry.created_at || Date.now()).toLocaleDateString());
-                meta.push('Notify me');
+                if (withNotify) meta.push('Notify me');
                 btn.innerHTML =
                     '<div class="flex items-start justify-between gap-2">' +
                         '<div class="min-w-0 flex-1">' +
@@ -1413,7 +1414,7 @@ window._leadsAppendEnrichments = function (body, enrichments) {
                 body: JSON.stringify({ op:'list', csrf_token:csrfToken })
             }).then(function(r){ return r.json(); }).then(function(j){
                 if (j && j.success && Array.isArray(j.saved_searches) && j.saved_searches.length) {
-                    renderRows(j.saved_searches, true);
+                    renderRows(j.saved_searches, canScheduleSearches);
                 } else {
                     renderRows(read(), false);
                 }
