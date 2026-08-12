@@ -1218,6 +1218,190 @@ window._leadsAppendEnrichments = function (body, enrichments) {
     });
 })();
 
+// ----- Phase 3 polish: saved-searches drawer + keyboard navigation -----
+(function wireSavedSearchesAndShortcuts() {
+    var KEY = 'leads.savedSearches';
+
+    function read()    { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
+    function write(l)  { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} }
+
+    function refreshBadge() {
+        var list = read();
+        var badge = document.getElementById('savedSearchesCount');
+        if (badge) {
+            var n = list.length;
+            badge.textContent = n > 0 ? String(n) : '';
+            badge.style.display = n > 0 ? '' : 'none';
+        }
+    }
+
+    // Render the saved searches into the drawer body.
+    window._leadsRenderSavedSearches = function () {
+        var list = read();
+        var host    = document.getElementById('savedSearchesList');
+        var empty   = document.getElementById('savedSearchesEmpty');
+        if (!host) return;
+        host.innerHTML = '';
+        if (empty) empty.style.display = list.length ? 'none' : '';
+        if (!list.length) return;
+        list.forEach(function (entry, i) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'saved-search-item';
+            var title = (entry.city || '') + ' · ' + (entry.industry || '');
+            var meta = [];
+            if (entry.keywords) meta.push('"' + entry.keywords + '"');
+            meta.push(new Date(entry.at).toLocaleDateString());
+            btn.innerHTML =
+                '<span class="ss-title"><i class="fa-solid fa-star text-amber-400/80 mr-1 text-[11px]"></i>' + esc(title) + '</span>' +
+                '<span class="ss-meta">' + esc(meta.join(' · ')) + '</span>' +
+                '<span class="ss-del" data-idx="' + i + '"><i class="fa-solid fa-trash mr-1"></i>Remove</span>';
+            host.appendChild(btn);
+
+            // Click anywhere on the row except the Remove link re-runs the search.
+            btn.addEventListener('click', function (e) {
+                if (e.target && e.target.closest && e.target.closest('.ss-del')) {
+                    e.stopPropagation();
+                    // Delete this entry
+                    var idx = parseInt(e.target.closest('.ss-del').dataset.idx, 10) || 0;
+                    var cur = read();
+                    if (idx >= 0 && idx < cur.length) cur.splice(idx, 1);
+                    write(cur);
+                    _leadsRenderSavedSearches(); refreshBadge();
+                    return;
+                }
+                // Re-run
+                var cityEl = document.getElementById('fieldCity');
+                var indEl  = document.getElementById('fieldIndustry');
+                var keyEl  = document.getElementById('fieldKeywords');
+                if (cityEl) cityEl.value = entry.city || '';
+                if (indEl)  indEl.value  = entry.industry || '';
+                if (keyEl)  keyEl.value  = entry.keywords || '';
+                // Restore source-chip state for re-run
+                if (entry.sources && entry.sources.length) {
+                    document.querySelectorAll('.source-chip-cb').forEach(function (cb) {
+                        cb.checked = entry.sources.indexOf(cb.dataset.source) !== -1;
+                    });
+                }
+                closeSavedSearchesDrawer();
+                // Submit the form
+                var f = document.getElementById('leadSearchForm');
+                if (f) f.dispatchEvent(new Event('submit', { cancelable: true }));
+                setTimeout(function () {
+                    var sb = document.getElementById('searchBox');
+                    if (sb) sb.scrollIntoView({ behavior:'smooth', block:'start' });
+                }, 200);
+            });
+        });
+    };
+
+    // Update the badge whenever a new search is saved
+    var origSaveHandler = null;
+    var saveBtn = document.getElementById('saveSearchBtn');
+    if (saveBtn) {
+        // The earlier Phase 3 block attached a click listener that writes
+        // to localStorage; we hook BEFORE that listener by capturing a
+        // reference and re-binding it after ourselves. Simpler: just
+        // listen a second time since addEventListener stacks rather than
+        // overwriting.
+        saveBtn.addEventListener('click', refreshBadge);
+    }
+
+    // Also refresh the badge whenever the drawer is opened — important
+    // when the page first loads too.
+    refreshBadge();
+    document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') {
+            var d = document.getElementById('savedSearchesDrawer');
+            if (d && d.classList.contains('open')) closeSavedSearchesDrawer();
+        }
+    });
+
+    // ── Keyboard navigation: j/k/arrows walk cards, Enter opens slide-over,
+    // s saves current, b toggles bulk mode, / focuses city input. ──
+    var _activeIdx = -1;
+
+    function _activeCards() {
+        return Array.prototype.slice.call(leadsList.querySelectorAll('[data-lead-id]'));
+    }
+
+    function _clearActive() {
+        var cards = _activeCards();
+        cards.forEach(function (c) { c.classList.remove('card-active'); });
+    }
+
+    function _setActive(idx) {
+        var cards = _activeCards();
+        if (!cards.length) return;
+        if (idx < 0) idx = cards.length - 1;
+        if (idx >= cards.length) idx = 0;
+        _activeIdx = idx;
+        _clearActive();
+        cards[idx].classList.add('card-active');
+        cards[idx].scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    document.addEventListener('keydown', function (e) {
+        // Ignore shortcuts if focus is in an input/textarea/select.
+        var tag = (e.target && e.target.tagName || '').toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select' || (e.target && e.target.isContentEditable)) return;
+        // Slide-over/export/saved-searches drawer open → don't intercept
+        var slide = document.getElementById('leadSlideOver');
+        var sheet = document.getElementById('exportSheet');
+        var ssd   = document.getElementById('savedSearchesDrawer');
+        var anyOpen = (slide && slide.classList.contains('open'))
+                   || (sheet && sheet.style.transform === 'translateX(0)')
+                   || (ssd && ssd.classList.contains('open'));
+        if (anyOpen) return;
+
+        var cards = _activeCards();
+        switch (e.key) {
+            case 'j': case 'ArrowDown':
+                _setActive(_activeIdx + 1); e.preventDefault(); break;
+            case 'k': case 'ArrowUp':
+                _setActive(_activeIdx - 1); e.preventDefault(); break;
+            case 'Enter':
+                if (_activeIdx >= 0 && _activeIdx < cards.length) {
+                    var c = cards[_activeIdx];
+                    if (_bulkMode) {
+                        var id = parseInt(c.dataset.leadId || '0', 10) || 0;
+                        var lead = _findLeadById(id) || { id: id };
+                        if (_selectedLeads[id]) { delete _selectedLeads[id]; c.classList.remove('is-selected'); }
+                        else { _selectedLeads[id] = lead; c.classList.add('is-selected'); }
+                        _refreshBulkActionBar();
+                    } else {
+                        var id2 = parseInt(c.dataset.leadId || '0', 10) || 0;
+                        var lead2 = _findLeadById(id2);
+                        if (lead2) openLeadSlideOver(lead2);
+                    }
+                    e.preventDefault();
+                }
+                break;
+            case 's': case 'S':
+                var saveBtn = document.getElementById('saveSearchBtn');
+                if (saveBtn) { saveBtn.click(); e.preventDefault(); }
+                break;
+            case 'b': case 'B':
+                var bulkToggle = document.getElementById('bulkModeToggle');
+                if (bulkToggle) { bulkToggle.checked = !bulkToggle.checked; bulkToggle.dispatchEvent(new Event('change')); e.preventDefault(); }
+                break;
+            case '/':
+                var cityEl = document.getElementById('fieldCity');
+                if (cityEl) { cityEl.focus(); cityEl.select(); e.preventDefault(); }
+                break;
+        }
+    });
+
+    // When the cards re-render (new search, view-mode toggle, bulk toggle),
+    // reset the active highlight.
+    var origRerender = _rerenderLeadsList;
+    _rerenderLeadsList = function () {
+        origRerender.apply(this, arguments);
+        _activeIdx = -1;
+        _clearActive();
+    };
+})();
+
 // Persist the bulk / view-mode selection isn't critical; we leave bulk mode
 // implicitly off on every page load.
 

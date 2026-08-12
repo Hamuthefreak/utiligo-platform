@@ -260,6 +260,41 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   z-index:79; opacity:0; pointer-events:none; transition:opacity .25s;
 }
 #leadSlideOverOverlay.open { opacity:1; pointer-events:auto; }
+
+/* ---- Phase 3 polish: saved-searches drawer + keyboard hint ---- */
+#savedSearchesDrawer {
+  position:fixed; top:0; right:0; bottom:0; width:min(380px, 86vw);
+  background:rgba(15,23,42,.98);
+  border-left:1px solid rgba(255,255,255,.1);
+  transform:translateX(100%);
+  transition:transform .28s cubic-bezier(.4,0,.2,1);
+  z-index:82; overflow-y:auto;
+  backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
+  box-shadow:-12px 0 40px rgba(0,0,0,.4);
+  display:flex; flex-direction:column;
+}
+#savedSearchesDrawer.open { transform:translateX(0); }
+#savedSearchesDrawerOverlay { position:fixed; inset:0; z-index:81; background:rgba(0,0,0,.5); opacity:0; pointer-events:none; transition:opacity .25s; }
+#savedSearchesDrawerOverlay.open { opacity:1; pointer-events:auto; }
+.saved-search-item {
+  display:flex; flex-direction:column; gap:3px; padding:.75rem 1rem; border-radius:10px;
+  border:1px solid transparent; cursor:pointer; text-align:left;
+  background:none; width:100%;
+  transition:background .15s,border-color .15s;
+}
+.saved-search-item:hover { background:rgba(255,255,255,.06); border-color:rgba(255,255,255,.05); }
+.saved-search-item .ss-title { font-size:.82rem; font-weight:600; color:#e2e8f0; }
+.saved-search-item .ss-meta  { font-size:.7rem; color:#94a3b8; }
+.saved-search-item .ss-del  { font-size:.7rem; color:#475569; align-self:flex-start; margin-top:4px; }
+.saved-search-item .ss-del:hover { color:#ef4444; }
+.kbd { display:inline-block; min-width:1.2em; padding:1px 5px; border-radius:4px;
+       background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+       font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px;
+       color:#94a3b8; line-height:1.2; }
+.card-active {
+  outline:2px solid rgba(124,186,52,.55) !important;
+  outline-offset:1px !important;
+}
 </style>
 
 <!-- Rail (desktop) -->
@@ -280,6 +315,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <p class="text-[11px] text-slate-700 mt-1 leading-relaxed">Run your first search<br>and it'll show up here.</p>
   </div>
   <div class="px-4 py-4 border-t border-white/5 shrink-0">
+    <button type="button" id="railSavedSearchesBtn" class="w-full flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 text-left text-[11px] font-semibold text-slate-300 transition mb-3">
+      <i class="fa-solid fa-star text-slate-500 text-xs"></i>
+      <span>Saved searches</span>
+      <span id="savedSearchesCount" class="ml-auto text-[10px] font-bold text-slate-600 bg-white/5 px-1.5 py-0.5 rounded-full"></span>
+    </button>
     <p class="text-[10px] text-slate-700 text-center"><i class="fa-solid fa-hand-pointer mr-1"></i>Click any entry to re-run it</p>
   </div>
 </aside>
@@ -314,6 +354,58 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       var el=document.getElementById(id); if(el) document.body.appendChild(el);
     });
   });
+</script>
+
+<!-- Phase 3 polish: saved-searches drawer (desktop + mobile) -->
+<div id="savedSearchesDrawerOverlay" onclick="closeSavedSearchesDrawer()"></div>
+<aside id="savedSearchesDrawer" aria-hidden="true" aria-labelledby="saveSecHeader">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-slate-950/80 z-10" style="background:rgba(15,23,42,.92)">
+    <div>
+      <p class="text-[10px] text-slate-600 uppercase tracking-widest font-semibold">Favorites</p>
+      <h3 id="saveSecHeader" class="text-base font-bold text-white leading-tight mt-0.5">Saved Searches</h3>
+    </div>
+    <button type="button" onclick="closeSavedSearchesDrawer()" class="w-8 h-8 rounded-lg hover:bg-white/5 flex items-center justify-center text-slate-400 hover:text-white transition" aria-label="Close">
+      <i class="fa-solid fa-xmark"></i>
+    </button>
+  </div>
+  <div id="savedSearchesList" class="flex-1 overflow-y-auto p-2 space-y-1.5"></div>
+  <div id="savedSearchesEmpty" class="flex-1 flex flex-col items-center justify-center px-6 pb-8 text-center">
+    <div class="w-10 h-10 rounded-2xl bg-white/[.03] border border-white/5 flex items-center justify-center mb-4">
+      <i class="fa-solid fa-star text-slate-700 text-sm"></i>
+    </div>
+    <p class="text-xs font-semibold text-slate-500">No saved searches</p>
+    <p class="text-[11px] text-slate-700 mt-1 leading-relaxed">After running a search,<br>click <i class="fa-solid fa-star text-slate-500"></i> Save search to bookmark it.</p>
+  </div>
+  <div class="px-4 py-4 border-t border-white/5">
+    <p class="text-[10px] text-slate-700 text-center leading-relaxed">
+      Stored on this device · max 20 entries · clear your browser data to wipe
+    </p>
+  </div>
+</aside>
+<script>
+function openSavedSearchesDrawer(){
+  var d=document.getElementById('savedSearchesDrawer');
+  var o=document.getElementById('savedSearchesDrawerOverlay');
+  // Render list inside
+  try { window._leadsRenderSavedSearches && window._leadsRenderSavedSearches(); } catch(e){}
+  if(d){ d.classList.add('open'); d.setAttribute('aria-hidden','false'); }
+  if(o) o.classList.add('open');
+  document.body.style.overflow='hidden';
+}
+function closeSavedSearchesDrawer(){
+  var d=document.getElementById('savedSearchesDrawer');
+  var o=document.getElementById('savedSearchesDrawerOverlay');
+  if(d){ d.classList.remove('open'); d.setAttribute('aria-hidden','true'); }
+  if(o) o.classList.remove('open');
+  document.body.style.overflow='';
+}
+document.addEventListener('DOMContentLoaded', function(){
+  ['savedSearchesDrawer','savedSearchesDrawerOverlay'].forEach(function(id){
+    var el=document.getElementById(id); if(el) document.body.appendChild(el);
+  });
+  var railBtn=document.getElementById('railSavedSearchesBtn');
+  if(railBtn) railBtn.addEventListener('click', openSavedSearchesDrawer);
+});
 </script>
 
 <!-- History FAB (mobile) -->
@@ -856,7 +948,7 @@ document.addEventListener('DOMContentLoaded', function() {
   data-export-formats="<?=htmlspecialchars(implode(',', plan_export_formats($plan)), ENT_QUOTES)?>"
   data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
 ></script>
-<script src="/assets/js/leads.js?v=2103"></script>
+<script src="/assets/js/leads.js?v=2104"></script>
 
 <script>
 function openHistoryDrawer() {
