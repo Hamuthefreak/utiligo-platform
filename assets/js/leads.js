@@ -1060,6 +1060,25 @@ function _renderSlideOver(body, lead) {
         list.unshift(entry);
         if (list.length > 20) list.length = 20;
         try { localStorage.setItem(key, JSON.stringify(list)); } catch (e) {}
+
+        // Phase 5: also mirror to server via /api/saved-searches.php so the
+        // scheduled_searches cron can read it. Best-effort — silent on
+        // failure so we don't break the localStorage save path.
+        try {
+            fetch('/api/saved-searches.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    op: 'create',
+                    csrf_token: csrfToken,
+                    name: city + ' · ' + industry,
+                    params: { city: city, industry: industry, keywords: keywords, sources: entry.sources },
+                    notify_email: false
+                })
+            }).catch(function () {});
+        } catch (e) {}
+
         leadsToast('Saved', '"' + city + ' · ' + industry + '" saved to favorites', 'success');
     });
 
@@ -1226,73 +1245,184 @@ window._leadsAppendEnrichments = function (body, enrichments) {
     function write(l)  { try { localStorage.setItem(KEY, JSON.stringify(l)); } catch (e) {} }
 
     function refreshBadge() {
-        var list = read();
+        // Prefer server count; fall back to localStorage on failure.
+        try {
+            fetch('/api/saved-searches.php', {
+                method:'POST', credentials:'same-origin',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ op:'list', csrf_token:csrfToken })
+            }).then(function(r){ return r.json(); }).then(function(j){
+                var n = (j && j.success && Array.isArray(j.saved_searches)) ? j.saved_searches.length : 0;
+                if (!n) n = read().length;
+                _setBadge(n);
+            }).catch(function(){
+                _setBadge(read().length);
+            });
+        } catch (e) {
+            _setBadge(read().length);
+        }
+    }
+    function _setBadge(n) {
         var badge = document.getElementById('savedSearchesCount');
         if (badge) {
-            var n = list.length;
             badge.textContent = n > 0 ? String(n) : '';
             badge.style.display = n > 0 ? '' : 'none';
         }
     }
 
-    // Render the saved searches into the drawer body.
+    // Render the saved searches into the drawer body. Tries the server
+    // (Phase 5) and falls back to localStorage. Toggling "Notify me" issues
+    // an op=update to /api/saved-searches.php?op=update.
     window._leadsRenderSavedSearches = function () {
-        var list = read();
         var host    = document.getElementById('savedSearchesList');
         var empty   = document.getElementById('savedSearchesEmpty');
         if (!host) return;
-        host.innerHTML = '';
-        if (empty) empty.style.display = list.length ? 'none' : '';
-        if (!list.length) return;
-        list.forEach(function (entry, i) {
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'saved-search-item';
-            var title = (entry.city || '') + ' · ' + (entry.industry || '');
-            var meta = [];
-            if (entry.keywords) meta.push('"' + entry.keywords + '"');
-            meta.push(new Date(entry.at).toLocaleDateString());
-            btn.innerHTML =
-                '<span class="ss-title"><i class="fa-solid fa-star text-amber-400/80 mr-1 text-[11px]"></i>' + esc(title) + '</span>' +
-                '<span class="ss-meta">' + esc(meta.join(' · ')) + '</span>' +
-                '<span class="ss-del" data-idx="' + i + '"><i class="fa-solid fa-trash mr-1"></i>Remove</span>';
-            host.appendChild(btn);
+        host.innerHTML = '<div class="text-xs text-slate-600 px-4 py-3 text-center">Loading…</div>';
 
-            // Click anywhere on the row except the Remove link re-runs the search.
-            btn.addEventListener('click', function (e) {
-                if (e.target && e.target.closest && e.target.closest('.ss-del')) {
-                    e.stopPropagation();
-                    // Delete this entry
-                    var idx = parseInt(e.target.closest('.ss-del').dataset.idx, 10) || 0;
-                    var cur = read();
-                    if (idx >= 0 && idx < cur.length) cur.splice(idx, 1);
-                    write(cur);
-                    _leadsRenderSavedSearches(); refreshBadge();
-                    return;
+        function renderRows(list, withNotify) {
+            host.innerHTML = '';
+            if (empty) empty.style.display = list.length ? 'none' : '';
+            if (!list.length) return;
+            list.forEach(function (entry, i) {
+                var btn = document.createElement('div');
+                btn.className = 'saved-search-item';
+                var title = (entry.name || '') || ((entry.city || '') + ' · ' + (entry.industry || ''));
+                var sub   = '';
+                if (entry.params) {
+                    sub = entry.params.city + ' · ' + entry.params.industry + (entry.params.keywords ? ' / "' + entry.params.keywords + '"' : '');
+                } else {
+                    sub = (entry.city || '') + ' · ' + (entry.industry || '');
+                    if (entry.keywords) sub += ' / "' + entry.keywords + '"';
                 }
-                // Re-run
-                var cityEl = document.getElementById('fieldCity');
-                var indEl  = document.getElementById('fieldIndustry');
-                var keyEl  = document.getElementById('fieldKeywords');
-                if (cityEl) cityEl.value = entry.city || '';
-                if (indEl)  indEl.value  = entry.industry || '';
-                if (keyEl)  keyEl.value  = entry.keywords || '';
-                // Restore source-chip state for re-run
-                if (entry.sources && entry.sources.length) {
-                    document.querySelectorAll('.source-chip-cb').forEach(function (cb) {
-                        cb.checked = entry.sources.indexOf(cb.dataset.source) !== -1;
-                    });
-                }
-                closeSavedSearchesDrawer();
-                // Submit the form
-                var f = document.getElementById('leadSearchForm');
-                if (f) f.dispatchEvent(new Event('submit', { cancelable: true }));
-                setTimeout(function () {
-                    var sb = document.getElementById('searchBox');
-                    if (sb) sb.scrollIntoView({ behavior:'smooth', block:'start' });
-                }, 200);
+                var meta = [];
+                meta.push(new Date(entry.at || entry.created_at || Date.now()).toLocaleDateString());
+                meta.push('Notify me');
+                btn.innerHTML =
+                    '<div class="flex items-start justify-between gap-2">' +
+                        '<div class="min-w-0 flex-1">' +
+                            '<span class="ss-title"><i class="fa-solid fa-star text-amber-400/80 mr-1 text-[11px]"></i>' + esc(title) + '</span>' +
+                            '<span class="ss-meta block mt-1">' + esc(sub) + '</span>' +
+                        '</div>' +
+                        '<span class="ss-del" data-idx="' + i + '" title="Remove"><i class="fa-solid fa-trash"></i></span>' +
+                    '</div>' +
+                    (withNotify ? '<label class="flex items-center gap-1.5 mt-2 text-[11px] text-slate-500 cursor-pointer hover:text-slate-400">' +
+                        '<input type="checkbox" class="ss-notify" data-idx="' + i + '"' + (entry.notify_email ? ' checked' : '') + '>' +
+                        '<i class="fa-solid fa-bell text-[10px]"></i> Email me new leads on this search' +
+                    '</label>' : '') +
+                    '<span class="text-[10px] text-slate-700">' + esc(meta[0]) + '</span>';
+
+                host.appendChild(btn);
             });
-        });
+            // Bind click events for each row.
+            host.querySelectorAll('.saved-search-item').forEach(function (row, idx) {
+                row.addEventListener('click', function (e) {
+                    if (e.target && e.target.closest) {
+                        if (e.target.closest('.ss-del')) {
+                            e.stopPropagation();
+                            var entry = list[idx];
+                            var serverId = parseInt(entry.id || '0', 10) || 0;
+                            var cur = read();
+                            if (idx >= 0 && idx < cur.length) cur.splice(idx, 1);
+                            write(cur);
+                            if (serverId > 0) {
+                                try {
+                                    fetch('/api/saved-searches.php', {
+                                        method:'POST', credentials:'same-origin',
+                                        headers:{'Content-Type':'application/json'},
+                                        body: JSON.stringify({ op:'delete', csrf_token:csrfToken, id:serverId })
+                                    }).catch(function(){});
+                                } catch (e2) {}
+                            }
+                            _leadsRenderSavedSearches();
+                            refreshBadge();
+                            return;
+                        }
+                        if (e.target.closest('.ss-notify') && row.querySelector('.ss-notify')) {
+                            // Toggle handled on change below; allow propagation here
+                        }
+                    }
+                    // Otherwise re-run the search
+                    var entry = list[idx];
+                    var cityEl = document.getElementById('fieldCity');
+                    var indEl  = document.getElementById('fieldIndustry');
+                    var keyEl  = document.getElementById('fieldKeywords');
+                    var city = entry.params ? entry.params.city : entry.city;
+                    var ind  = entry.params ? entry.params.industry : entry.industry;
+                    var kws  = entry.params ? entry.params.keywords : entry.keywords;
+                    var srcs = entry.params ? entry.params.sources : entry.sources;
+                    if (cityEl) cityEl.value = city || '';
+                    if (indEl)  indEl.value  = ind  || '';
+                    if (keyEl)  keyEl.value  = kws  || '';
+                    if (srcs && srcs.length) {
+                        document.querySelectorAll('.source-chip-cb').forEach(function (cb) {
+                            cb.checked = srcs.indexOf(cb.dataset.source) !== -1;
+                        });
+                    }
+                    closeSavedSearchesDrawer();
+                    var f = document.getElementById('leadSearchForm');
+                    if (f) f.dispatchEvent(new Event('submit', { cancelable: true }));
+                    setTimeout(function () {
+                        var sb = document.getElementById('searchBox');
+                        if (sb) sb.scrollIntoView({ behavior:'smooth', block:'start' });
+                    }, 200);
+                });
+            });
+            // Bind notify-toggle changes
+            if (withNotify) {
+                host.querySelectorAll('.ss-notify').forEach(function (cb, idx) {
+                    cb.addEventListener('change', function () {
+                        var entry = list[idx];
+                        var serverId = parseInt(entry.id || '0', 10) || 0;
+                        if (!serverId) {
+                            leadsToast('Sync first', 'Save the search from the search bar to enable notifications.', 'warn');
+                            cb.checked = false;
+                            return;
+                        }
+                        try {
+                            fetch('/api/saved-searches.php', {
+                                method:'POST', credentials:'same-origin',
+                                headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({
+                                    op:'update', csrf_token:csrfToken, id:serverId,
+                                    name: entry.name, notify_email: cb.checked,
+                                    params: entry.params || {
+                                        city: entry.city, industry: entry.industry,
+                                        keywords: entry.keywords, sources: entry.sources
+                                    }
+                                })
+                            }).then(function(r){ return r.json(); }).then(function(j){
+                                leadsToast(
+                                    cb.checked ? 'Notifications on' : 'Notifications off',
+                                    cb.checked ? 'You\'ll get an email when matching leads are found.' : 'No further emails scheduled for this search.',
+                                    cb.checked ? 'success' : 'info'
+                                );
+                            }).catch(function(){});
+                        } catch (e) {}
+                    });
+                });
+            }
+        }
+
+        // Try the server first; fall back to localStorage on any network
+        // failure so the drawer still shows something to an offline guest
+        // or when the API endpoint isn't deployed yet.
+        try {
+            fetch('/api/saved-searches.php', {
+                method:'POST', credentials:'same-origin',
+                headers:{'Content-Type':'application/json'},
+                body: JSON.stringify({ op:'list', csrf_token:csrfToken })
+            }).then(function(r){ return r.json(); }).then(function(j){
+                if (j && j.success && Array.isArray(j.saved_searches) && j.saved_searches.length) {
+                    renderRows(j.saved_searches, true);
+                } else {
+                    renderRows(read(), false);
+                }
+            }).catch(function(){
+                renderRows(read(), false);
+            });
+        } catch (e) {
+            renderRows(read(), false);
+        }
     };
 
     // Update the badge whenever a new search is saved

@@ -948,7 +948,7 @@ document.addEventListener('DOMContentLoaded', function() {
   data-export-formats="<?=htmlspecialchars(implode(',', plan_export_formats($plan)), ENT_QUOTES)?>"
   data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
 ></script>
-<script src="/assets/js/leads.js?v=2104"></script>
+<script src="/assets/js/leads.js?v=2105"></script>
 
 <script>
 function openHistoryDrawer() {

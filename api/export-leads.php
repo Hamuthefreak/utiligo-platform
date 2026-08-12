@@ -40,6 +40,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/error_logger.php';
+require_once __DIR__ . '/../includes/lead_activity_log.php';
 
 api_bootstrap();
 header('Content-Type: application/json');
@@ -174,14 +175,28 @@ if ($written <= 0) {
     _fail('Export produced 0 rows. Adjust your filter and try again.');
 }
 
-// Log activity to lead_activity_log (best-effort).
-try {
-    $pdo->prepare('INSERT INTO lead_activity_log (user_id, action, target_id, meta, at) VALUES (?, ?, ?, ?, NOW())')
-        ->execute([
-            $uid, 'export', $job_id,
-            json_encode(['format'=>$format,'scope'=>$scope,'rows'=>$written,'cols'=>$cols]),
+// Phase 5: log to lead_activity_log via the proper helper (uses canonical
+// action names + bounded meta). Best-effort — never block a successful
+// export response on this write.
+if (function_exists('log_lead_activity')) {
+    try {
+        log_lead_activity($pdo, $uid, LEAD_ACT_EXPORT_RUN, $job_id, [
+            'format' => $format,
+            'scope'  => $scope,
+            'rows'   => $written,
+            'cols'   => array_slice($cols, 0, 20),    // keep small
         ]);
-} catch (\Throwable $e) {/* non-fatal */}
+    } catch (\Throwable $e) {/* non-fatal */}
+} else {
+    // Legacy fallback when the helper include is missing.
+    try {
+        $pdo->prepare('INSERT INTO lead_activity_log (user_id, action, target_id, meta, at) VALUES (?, ?, ?, ?, NOW())')
+            ->execute([
+                $uid, 'export_run', $job_id,
+                json_encode(['format'=>$format,'scope'=>$scope,'rows'=>$written,'cols'=>$cols]),
+            ]);
+    } catch (\Throwable $e) {/* non-fatal */}
+}
 
 echo json_encode([
     'success' => true,

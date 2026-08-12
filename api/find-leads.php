@@ -19,6 +19,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/error_logger.php';
+require_once __DIR__ . '/../includes/lead_activity_log.php';
 require_once __DIR__ . '/../includes/leads_logger.php';
 require_once __DIR__ . '/../includes/lead_sources/_registry.php';
 require_once __DIR__ . '/../includes/lead_sources/osm.php';
@@ -563,6 +564,18 @@ if ($is_paid) {
         $_cnt=$pdo->prepare('SELECT COUNT(DISTINCT lead_id) FROM unlocked_leads WHERE user_id=?');
         $_cnt->execute([$uid]); $pro_lead_count=(int)$_cnt->fetchColumn();
     } catch(\Throwable $e){ leads_log_error('unlock_count',$e,['uid'=>$uid]); log_error('count',$e,['uid'=>$uid]); $_unlock_errors[]='count:'.substr($e->getMessage(),0,80); }
+
+    // Phase 5: one audit row per batch summarizing unlocks (not one per
+    // lead — this keeps the log readable).
+    if (function_exists('log_lead_activity')) {
+        try {
+            log_lead_activity($pdo, $uid, LEAD_ACT_LEAD_UNLOCK, null, [
+                'attempted' => $_unlock_attempted,
+                'errors'    => count($_unlock_errors),
+                'total_unlocked' => $pro_lead_count,
+            ]);
+        } catch (\Throwable $e) {}
+    }
 }
 $_unlock_ms=_leads_ms($_t_unlock);
 
@@ -571,6 +584,20 @@ try {
     $pdo->prepare('INSERT INTO utiligo_lead_search_history (user_id,city,industry,keywords,result_count,created_at) VALUES(?,?,?,?,?,NOW()) ON DUPLICATE KEY UPDATE result_count=VALUES(result_count),created_at=NOW()')
         ->execute([$uid,$city,$industry,$keywords,count($leads_to_return)]);
 } catch(\Throwable $e){ leads_log_warn('history_write',$e,['uid'=>$uid]); }
+
+// Phase 5: write a lead_activity_log row for this search_run.
+// Best-effort — must not block a successful response.
+if (function_exists('log_lead_activity')) {
+    try {
+        log_lead_activity($pdo, $uid, LEAD_ACT_SEARCH_RUN, null, [
+            'city'    => $city,
+            'industry'=> $industry,
+            'keywords' => $keywords,
+            'count'   => count($leads_to_return),
+            'sources' => $_req_sources ?? [],
+        ]);
+    } catch (\Throwable $e) {}
+}
 
 // ── Audit log ─────────────────────────────────────────────────────────────
 $_total_ms=_leads_ms($_t_start);
