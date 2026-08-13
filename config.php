@@ -78,6 +78,13 @@ if (!defined('GOOGLE_PLACES_API_KEY'))
 if (!defined('MAX_PLACES_DETAILS_LOOKUPS'))
     define('MAX_PLACES_DETAILS_LOOKUPS', 10);
 
+// ── Optional lead-source API keys (Pro/Ent sources; degrade gracefully) ──
+// Leave these as-is (or remove the env vars) to simply disable Yelp/TomTom.
+if (!defined('YELP_API_KEY'))
+    define('YELP_API_KEY', getenv('YELP_API_KEY') ?: 'YOUR_YELP_API_KEY');
+if (!defined('TOMTOM_API_KEY'))
+    define('TOMTOM_API_KEY', getenv('TOMTOM_API_KEY') ?: 'YOUR_TOMTOM_API_KEY');
+
 if (!defined('GOOGLE_FIELDS_TIER'))
     define('GOOGLE_FIELDS_TIER', getenv('GOOGLE_FIELDS_TIER') ?: 'contact');
 

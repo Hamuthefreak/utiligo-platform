@@ -23,6 +23,9 @@ require_once __DIR__ . '/../includes/lead_activity_log.php';
 require_once __DIR__ . '/../includes/leads_logger.php';
 require_once __DIR__ . '/../includes/lead_sources/_registry.php';
 require_once __DIR__ . '/../includes/lead_sources/osm.php';
+require_once __DIR__ . '/../includes/lead_sources/yelp.php';
+require_once __DIR__ . '/../includes/lead_sources/tomtom.php';
+require_once __DIR__ . '/../includes/lead_sources/wikidata.php';
 
 api_bootstrap();
 header('Content-Type: application/json');
@@ -436,50 +439,60 @@ if (!$from_cache) {
     $_google_ms = _leads_ms($_t_google);
     leads_log_info('google_fetch',['city'=>$city,'industry'=>$industry,'pages'=>$pages_fetched,'raw_leads'=>count($all_leads),'ms'=>$_google_ms]);
 
-    // ── 9b. OSM source merge (Phase 1) ─────────────────────────────────────
-    // 'osm' is added to the active source set by the client's source multi-
-    // selector (Phase 1) AND gated by the user's plan (google_places is the
-    // only source free plans can use; Pro/Ent add 'osm'). The merge is best-
-    // effort: a Nominatim / Overpass / network hiccup never deletes or hides
-    // Google results; we log + proceed.
-    if (in_array('osm', $active_sources, true)) {
-        $_t_osm = microtime(true);
+    // ── 9b. Additional lead-source merges (OSM / Yelp / TomTom / Wikidata) ─
+    // Each engine is a registry source gated by the user's plan and the
+    // client's source multi-selector.  The merge is best-effort: any single
+    // engine's hiccup (network, API key missing, upstream throttle) never
+    // deletes or hides results from the other engines — we log + proceed.
+    // Rows are tagged with per-engine place_id prefixes (osm_, yelp_, ...)
+    // so the same real-world business from two engines stays two rows here
+    // (cross-engine dedupe of identical names is intentionally NOT applied:
+    // "Pizza Hut" can legitimately be many stores).
+    $extra_sources = [
+        'osm'      => ['fn' => 'lead_source_osm_find',      'max_q' => 3, 'opts' => ['mode' => 'radius']],
+        'yelp'     => ['fn' => 'lead_source_yelp_find',     'max_q' => 2],
+        'tomtom'   => ['fn' => 'lead_source_tomtom_find',   'max_q' => 2],
+        'wikidata' => ['fn' => 'lead_source_wikidata_find', 'max_q' => 3],
+    ];
+    foreach ($extra_sources as $src_key => $src_cfg) {
+        if (!in_array($src_key, $active_sources, true)) continue;
+        if (!function_exists($src_cfg['fn'])) continue;   // engine file not loaded
+        $_t_src = microtime(true);
         try {
-            $osm_rows = lead_source_osm_find($city, $industry, [
-                'max_queries' => 3,                 // balanced policy (3-5)
-                'exclude_with_website' => !empty($body['exclude_with_website'] ?? false),
-            ]);
-            if ($osm_rows) {
-                // dedupe: skip OSM rows whose place_id already exists in $all_leads.
-                $seen_pids = [];
+            $src_opts = array_merge($src_cfg['opts'] ?? [], ['max_queries' => $src_cfg['max_q']]);
+            if (!empty($body['exclude_with_website'] ?? false)) $src_opts['exclude_with_website'] = true;
+            $src_rows = call_user_func($src_cfg['fn'], $city, $industry, $src_opts);
+            if ($src_rows) {
+                // dedupe: skip rows whose place_id already exists in $all_leads.
+                $_seen_pids = [];
                 foreach ($all_leads as $row) {
-                    $pid = trim((string)($row['place_id'] ?? ''));
-                    if ($pid !== '') $seen_pids[$pid] = true;
+                    $_pid = trim((string)($row['place_id'] ?? ''));
+                    if ($_pid !== '') $_seen_pids[$_pid] = true;
                 }
-                $_osm_added = 0;
-                foreach ($osm_rows as $row) {
-                    $pid = trim((string)($row['place_id'] ?? ''));
-                    if ($pid === '' || isset($seen_pids[$pid])) continue;
-                    $seen_pids[$pid] = true;
+                $_added = 0;
+                foreach ($src_rows as $row) {
+                    $_pid = trim((string)($row['place_id'] ?? ''));
+                    if ($_pid === '' || isset($_seen_pids[$_pid])) continue;
+                    $_seen_pids[$_pid] = true;
                     $row['opportunity_score'] = opportunity_score(
                         isset($row['rating']) ? (float)$row['rating'] : null,
                         (int)($row['total_ratings'] ?? 0),
                         (string)($row['business_category'] ?? '')
                     );
                     $all_leads[] = $row;
-                    $_osm_added++;
+                    $_added++;
                 }
-                leads_log_info('osm_merge', [
+                leads_log_info($src_key . '_merge', [
                     'city' => $city, 'industry' => $industry,
-                    'osm_count' => count($osm_rows), 'added' => $_osm_added,
-                    'ms' => _leads_ms($_t_osm),
+                    'count' => count($src_rows), 'added' => $_added,
+                    'ms' => _leads_ms($_t_src),
                 ]);
             } else {
-                leads_log_info('osm_empty', ['city' => $city, 'industry' => $industry, 'ms' => _leads_ms($_t_osm)]);
+                leads_log_info($src_key . '_empty', ['city' => $city, 'industry' => $industry, 'ms' => _leads_ms($_t_src)]);
             }
         } catch (\Throwable $e) {
-            leads_log_warn('osm_fail', $e, ['city' => $city, 'industry' => $industry]);
-            log_error('osm_fail', $e, ['city' => $city, 'industry' => $industry]);
+            leads_log_warn($src_key . '_fail', $e, ['city' => $city, 'industry' => $industry]);
+            log_error($src_key . '_fail', $e, ['city' => $city, 'industry' => $industry]);
         }
     }
 

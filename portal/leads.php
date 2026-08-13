@@ -241,6 +241,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .mono-avatar.sm { width: 34px; height: 34px; border-radius: 10px; font-size: .72rem; }
 .mono-avatar.ga { background: linear-gradient(150deg, rgba(66,133,244,.32), rgba(15,23,42,.4) 70%); border-color: rgba(66,133,244,.3); }
 .mono-avatar.os { background: linear-gradient(150deg, rgba(124,186,52,.30), rgba(15,23,42,.4) 70%); border-color: rgba(124,186,52,.32); }
+.mono-avatar.yelp { background: linear-gradient(150deg, rgba(211,35,35,.32), rgba(15,23,42,.4) 70%); border-color: rgba(211,35,35,.32); }
+.mono-avatar.tomtom { background: linear-gradient(150deg, rgba(230,51,18,.32), rgba(15,23,42,.4) 70%); border-color: rgba(230,51,18,.32); }
+.mono-avatar.wikidata { background: linear-gradient(150deg, rgba(140,160,220,.25), rgba(15,23,42,.4) 70%); border-color: rgba(140,160,220,.3); }
 
 /* ---- Source pill ---- */
 .src-pill {
@@ -251,6 +254,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 }
 .src-pill.ga { color: #93b4f5; background: rgba(66,133,244,.12); border-color: rgba(66,133,244,.22); }
 .src-pill.os { color: #a9d97a; background: rgba(124,186,52,.12); border-color: rgba(124,186,52,.22); }
+.src-pill.yelp { color: #ff8a7a; background: rgba(211,35,35,.12); border-color: rgba(211,35,35,.25); }
+.src-pill.tomtom { color: #ff9474; background: rgba(230,51,18,.13); border-color: rgba(230,51,18,.28); }
+.src-pill.wikidata { color: #dbe2f0; background: rgba(220,230,255,.08); border-color: rgba(220,230,255,.16); }
 
 /* ---- Score meter chip ---- */
 .score-chip {
@@ -630,7 +636,7 @@ document.addEventListener('DOMContentLoaded', function(){
 
 <!-- PAGE HERO -->
 <div class="mb-6">
-  <?php $hero_src_cnt = count($lead_sources_allowed); $hero_engines = in_array('osm', $lead_sources_allowed, true) ? 2 : 1; ?>
+  <?php $hero_src_cnt = count($lead_sources_allowed); $hero_engines = $hero_src_cnt; ?>
   <div class="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
     <div class="min-w-0">
       <span class="eyebrow"><span class="dot"></span>Lead Intelligence</span>
@@ -958,7 +964,7 @@ document.addEventListener('DOMContentLoaded', function(){
   <?php endfor;?>
   <p class="text-xs text-slate-500 text-center pt-1 flex items-center justify-center gap-2 animate-pulse">
     <i class="fa-solid fa-satellite-dish text-indigo-300"></i>
-    <span id="loadingScanLabel">Scanning <?= count($lead_sources_allowed)>1 ? 'Google Places + OpenStreetMap' : 'Google Places' ?>&hellip;</span>
+    <span id="loadingScanLabel">Scanning <?= count($lead_sources_allowed)>1 ? (count($lead_sources_allowed).' data sources') : 'Google Places' ?>&hellip;</span>
   </p>
 </div>
 
@@ -1174,7 +1180,7 @@ document.addEventListener('DOMContentLoaded', function() {
   data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
   data-can-schedule-searches="<?=can_schedule_searches($plan) ? '1' : '0'?>"
 ></script>
-<script src="/assets/js/leads.js?v=2107"></script>
+<script src="/assets/js/leads.js?v=2108"></script>
 
 <script>
 function openHistoryDrawer() {

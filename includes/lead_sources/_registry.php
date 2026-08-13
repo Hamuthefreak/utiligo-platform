@@ -53,6 +53,27 @@ function lead_source_registry(): array {
             'color' => '#7CBA34',
             'file'  => __DIR__ . '/osm.php',
         ],
+        'yelp' => [
+            'key'   => 'yelp',
+            'label' => 'Yelp',
+            'icon'  => 'fa-yelp',
+            'color' => '#D32323',
+            'file'  => __DIR__ . '/yelp.php',
+        ],
+        'tomtom' => [
+            'key'   => 'tomtom',
+            'label' => 'TomTom',
+            'icon'  => 'fa-location-crosshairs',
+            'color' => '#E63312',
+            'file'  => __DIR__ . '/tomtom.php',
+        ],
+        'wikidata' => [
+            'key'   => 'wikidata',
+            'label' => 'Wikidata',
+            'icon'  => 'fa-wikipedia-w',
+            'color' => '#FFFFFF',
+            'file'  => __DIR__ . '/wikidata.php',
+        ],
     ];
     return $reg;
 }

@@ -44,8 +44,8 @@ if (!defined('ENTREPRENEUR_PLAN_PRICE'))   define('ENTREPRENEUR_PLAN_PRICE', 49.
 // 'google_places' is always available; 'osm' (OpenStreetMap / Overpass) is
 // the keyless free second source unlocked on Pro+. See includes/lead_sources/.
 if (!defined('FREE_LEAD_SOURCES'))  define('FREE_LEAD_SOURCES',  'google_places');
-if (!defined('PRO_LEAD_SOURCES'))   define('PRO_LEAD_SOURCES',   'google_places,osm');
-if (!defined('ENT_LEAD_SOURCES'))   define('ENT_LEAD_SOURCES',   'google_places,osm');
+if (!defined('PRO_LEAD_SOURCES'))   define('PRO_LEAD_SOURCES',   'google_places,osm,yelp,tomtom,wikidata');
+if (!defined('ENT_LEAD_SOURCES'))   define('ENT_LEAD_SOURCES',   'google_places,osm,yelp,tomtom,wikidata');
 
 // Export formats available by plan. CSV is the lightest; XLSX is hand-rolled
 // (no external lib); vCard + JSON are cheap; PDF degrades to print-friendly

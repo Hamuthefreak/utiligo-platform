@@ -21,6 +21,7 @@
  * total_ratings, maps_url, website, source, lat, lng, business_hours, ...).
  * Empty array on any failure (callers must tolerate zero results).
  */
+require_once __DIR__ . '/_keywords.php';
 
 /**
  * Process-wide OSM last-call timestamp (microtime float).  Static so every
@@ -131,9 +132,67 @@ function _lead_sources_osm_overpass_real(array $bbox, string $industry, string $
     $post = 'data=' . rawurlencode($q);
     $res = _lead_sources_osm_http('https://overpass-api.de/api/interpreter', 25, $post);
     if (!$res || empty($res['elements'])) return [];
+    return _lead_sources_osm_rows_from_elements($res['elements'], $city);
+}
 
+/**
+ * Radius "sweep" mode: instead of a strict bounding-box keyword match, sweep
+ * a circular radius around the city centre and match the industry keyword set
+ * against OSM business keys via the key/value regex form — this catches venues
+ * just outside a bbox as well as amenities whose schema differs from a
+ * name-only match.
+ */
+function _lead_sources_osm_overpass_radius(array $bbox, string $kw, string $city): array {
+    $center = _lead_sources_osm_center_radius($bbox);
+    if (!$center) return [];
+    [$lat_c, $lon_c, $radius] = $center;
+
+    // Escape the OSM tag values (plain lowercase words, but be safe anyway).
+    $vals = array_map(function ($v) { return addcslashes($v, '\\^|()[]{}.*+?$'); },
+                       lead_sources_expand_keywords($kw, 6));
+    $vals = array_filter($vals, fn($v) => $v !== '');
+    if (!$vals) $vals = [$kw];
+    $kw_regex = implode('|', array_unique($vals));
+
+    $q  = "[out:json][timeout:25];\n";
+    $q .= "(\n";
+    $q .= sprintf("  node[~\"^(shop|amenity|craft|office|tourism)$\"~\"^(%s)$\"][\"name\"](around:%d,%.6f,%.6f);\n",
+                  addcslashes($kw_regex, '"'), $radius, $lat_c, $lon_c);
+    $q .= sprintf("  way[~\"^(shop|amenity|craft|office|tourism)$\"~\"^(%s)$\"][\"name\"](around:%d,%.6f,%.6f);\n",
+                  addcslashes($kw_regex, '"'), $radius, $lat_c, $lon_c);
+    $q .= ");\n";
+    $q .= "out center tags 250;\n";
+
+    $post = 'data=' . rawurlencode($q);
+    $res = _lead_sources_osm_http('https://overpass-api.de/api/interpreter', 25, $post);
+    if (!$res || empty($res['elements'])) return [];
+    return _lead_sources_osm_rows_from_elements($res['elements'], $city);
+}
+
+/**
+ * City centre + a sensible sweep radius derived from the Nominatim bbox.
+ * Returns [lat, lon, radius_m] or null.
+ */
+function _lead_sources_osm_center_radius(array $bbox): ?array {
+    [$s, $n, $w, $e] = $bbox;
+    $lat_c = ($s + $n) / 2;
+    $lon_c = ($w + $e) / 2;
+    if (!is_finite($lat_c) || !is_finite($lon_c)) return null;
+    $lat_deg_m = 111320.0;
+    $w_m = abs($e - $w) * $lat_deg_m * max(0.01, cos(deg2rad($lat_c)));
+    $h_m = abs($n - $s) * $lat_deg_m;
+    $r = max($w_m, $h_m) / 2;
+    $r = max(2500.0, min(20000.0, $r));   // never absurd, never tiny
+    return [(float)$lat_c, (float)$lon_c, (int)round($r)];
+}
+
+/**
+ * Normalize OSM elements (node/way/relation with lat|lon or center) into the
+ * shared lead-row shape used by api/find-leads.php.
+ */
+function _lead_sources_osm_rows_from_elements(array $elements, string $city): array {
     $rows = [];
-    foreach ($res['elements'] as $el) {
+    foreach ($elements as $el) {
         $tags = $el['tags'] ?? [];
         $name = $tags['name'] ?? '';
         if ($name === '') continue;
@@ -194,17 +253,20 @@ function _lead_sources_osm_address(array $tags): string {
  */
 function lead_source_osm_find(string $city, string $industry, array $opts = []): array {
     $max_queries = max(1, min(5, (int)($opts['max_queries'] ?? 3)));
+    $mode        = ($opts['mode'] ?? 'bbox') === 'radius' ? 'radius' : 'bbox';
     $bbox = _lead_sources_osm_bbox($city);
     if (!$bbox) return [];
 
     // Keyword fans out with the city only once.  We keep the original
     // industry + generate (`restaurant` => ['restaurant','takeaway','cafe'])
-    // via _lead_sources_osm_expand_keywords and dedupe by place_id at the end.
+    // via lead_sources_expand_keywords and dedupe by place_id at the end.
     $keywords = _lead_sources_osm_expand_keywords($industry, $max_queries);
     $all = [];
     $seen = [];
     foreach ($keywords as $kw) {
-        $rows = _lead_sources_osm_overpass_real($bbox, $kw, $city);
+        $rows = ($mode === 'radius')
+            ? _lead_sources_osm_overpass_radius($bbox, $kw, $city)
+            : _lead_sources_osm_overpass_real($bbox, $kw, $city);
         foreach ($rows as $r) {
             $pid = $r['place_id'];
             if (isset($seen[$pid])) continue;
@@ -222,31 +284,5 @@ function lead_source_osm_find(string $city, string $industry, array $opts = []):
  * including the original.
  */
 function _lead_sources_osm_expand_keywords(string $industry, int $max): array {
-    static $dict = [
-        'restaurant'   => ['restaurant', 'cafe', 'takeaway', 'bistro'],
-        'cafe'         => ['cafe', 'coffee', 'bakery'],
-        'plumber'      => ['plumber', 'plumbing'],
-        'electrician'  => ['electrician', 'electrical'],
-        'hairdresser'  => ['hairdresser', 'barber', 'salon', 'hair'],
-        'salon'        => ['salon', 'hairdresser', 'barber', 'beauty'],
-        'barber'       => ['barber', 'hairdresser', 'salon'],
-        'gym'          => ['gym', 'fitness', 'sport'],
-        'dentist'      => ['dentist', 'dental'],
-        'lawyer'       => ['lawyer', 'attorney', 'solicitor'],
-        'accountant'   => ['accountant', 'accounting', 'bookkeeper'],
-        'florist'      => ['florist', 'flowers'],
-        'pharmacy'     => ['pharmacy', 'chemist'],
-        'bakery'       => ['bakery', 'bread', 'pastry'],
-        'beauty'       => ['beauty', 'salon', 'spa'],
-        'spa'          => ['spa', 'beauty', 'wellness'],
-        'mechanic'     => ['mechanic', 'car_repair', 'garage'],
-        'real estate'  => ['estate_agent', 'real_estate', 'realtor'],
-        'estate_agent' => ['estate_agent', 'real_estate'],
-        'vet'          => ['vet', 'veterinary', 'animal'],
-        'car'          => ['car', 'car_repair', 'car_wash', 'garage'],
-    ];
-    $kw = strtolower(trim($industry));
-    $extras = $dict[$kw] ?? [];
-    $list = array_unique(array_merge([$kw], $extras));
-    return array_slice($list, 0, $max);
+    return lead_sources_expand_keywords($industry, $max);
 }

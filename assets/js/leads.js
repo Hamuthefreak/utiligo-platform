@@ -263,6 +263,18 @@ function scoreClass(s) {
     return s >= 80 ? 'bg-white/10 text-white' : s >= 60 ? 'bg-amber-500/15 text-amber-400' : 'bg-red-500/15 text-red-400';
 }
 function scoreLabel(s) { return s >= 80 ? 'High' : s >= 60 ? 'Med' : 'Low'; }
+// Source → pill/avatar styling metadata (mirrors includes/lead_sources/_registry.php).
+var SRC_META = {
+    google_places: { cls: 'ga',      lbl: 'Google',   ico: 'fa-google' },
+    osm:           { cls: 'os',      lbl: 'OSM',      ico: 'fa-map-location-dot' },
+    yelp:          { cls: 'yelp',    lbl: 'Yelp',     ico: 'fa-yelp' },
+    tomtom:        { cls: 'tomtom',  lbl: 'TomTom',   ico: 'fa-location-crosshairs' },
+    wikidata:      { cls: 'wikidata', lbl: 'Wikidata', ico: 'fa-wikipedia-w' }
+};
+function srcMeta(s) {
+    var m = SRC_META[s] || { cls: 'ga', lbl: s || 'Google', ico: 'fa-database' };
+    return m;
+}
 function fmtTime(dateStr) {
     var d   = new Date(dateStr.replace(' ','T'));
     var now = new Date();
@@ -306,9 +318,10 @@ function renderLeadCard(lead, seenSet, idx) {
         ? '\u2605'.repeat(Math.round(parseFloat(lead.rating)))
           + '\u2606'.repeat(5 - Math.round(parseFloat(lead.rating)))
         : '';
-    var srcKey  = (lead.source === 'osm') ? 'os' : 'ga';
-    var srcLbl  = (lead.source === 'osm') ? 'OSM' : 'Google';
-    var srcIco  = (lead.source === 'osm') ? 'fa-map-location-dot' : 'fa-google';
+    var _sm     = srcMeta(lead.source);
+    var srcKey  = _sm.cls;
+    var srcLbl  = _sm.lbl;
+    var srcIco  = _sm.ico;
     var initials = String(lead.business_name || '?').trim().split(/\s+/).map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 2) || '?';
     var genUrl = '/portal/generate.php'
         + '?lead_id='   + encodeURIComponent(lead.id)
@@ -523,7 +536,10 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
     setSearchBusy(true);
     var scanTxt = document.getElementById('loadingScanLabel');
     var activeNow = (getActiveSources() || []);
-    if (scanTxt) scanTxt.textContent = 'Scanning ' + (activeNow.length > 1 ? 'Google Places + OpenStreetMap' : 'Google Places') + '\u2026';
+    if (scanTxt) {
+        var scanNames = activeNow.slice(0, 3).map(function (s) { return srcMeta(s).lbl; });
+        scanTxt.textContent = 'Scanning ' + scanNames.join(', ') + '\u2026';
+    }
     var hsc = document.getElementById('heroSourcesCount');
     if (hsc) hsc.textContent = String(activeNow.length || 1);
 
@@ -784,8 +800,9 @@ function _renderLeadsAsTable(leads, seenSet) {
         var tr = document.createElement('tr');
         tr.dataset.leadId = lead.id || '';
         tr.className = _bulkMode && _selectedLeads[lead.id] ? 'is-selected' : '';
-        var srcKey = (lead.source === 'osm') ? 'os' : 'ga';
-        var srcLbl = (lead.source === 'osm') ? 'OSM' : 'Google';
+        var _sm    = srcMeta(lead.source);
+        var srcKey = _sm.cls;
+        var srcLbl = _sm.lbl;
         var cells = '';
         if (_bulkMode) {
             var sel = _selectedLeads[lead.id] ? 'checked' : '';
@@ -875,8 +892,10 @@ function _renderSlideOver(body, lead) {
     if (!body || !lead) return;
     document.getElementById('slideOverTitle').textContent = lead.business_name || 'Lead';
     var html = '';
-    var srcKey = (lead.source === 'osm') ? 'os' : 'ga';
-    var srcIco = (lead.source === 'osm') ? 'fa-map-location-dot' : 'fa-google';
+    var _sm    = srcMeta(lead.source);
+    var srcKey = _sm.cls;
+    var srcIco = _sm.ico;
+    var srcLbl = _sm.lbl;
     var initials = String(lead.business_name || '?').trim().split(/\s+/).map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 2) || '?';
 
     function row(label, val) {
@@ -897,7 +916,7 @@ function _renderSlideOver(body, lead) {
         + '<div class="min-w-0 flex-1">'
             + '<div class="flex items-center gap-2 flex-wrap">'
                 + '<h3 class="font-bold text-white text-base leading-tight">' + esc(lead.business_name) + '</h3>'
-                + '<span class="src-pill ' + srcKey + '"><i class="fa-brands ' + srcIco + '"></i>' + (lead.source === 'osm' ? 'OSM' : 'Google') + '</span>'
+                + '<span class="src-pill ' + srcKey + '"><i class="fa-brands ' + srcIco + '"></i>' + esc(srcLbl) + '</span>'
             + '</div>'
             + '<div class="flex flex-wrap gap-1.5 mt-2">'
                 + '<span class="score-chip ' + scoreClass(lead.opportunity_score) + '">'
