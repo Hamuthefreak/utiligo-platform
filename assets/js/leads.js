@@ -123,10 +123,17 @@ function wasSeen(id, seenSet) {
 //  3. SLIDER
 // ============================================================
 if (slider) {
+    function paintSlider() {
+        var min = parseFloat(slider.min) || 1, max = parseFloat(slider.max) || 10;
+        var pct = max > min ? Math.round((slider.value - min) / (max - min) * 100) : 50;
+        slider.style.setProperty('--fill', pct + '%');
+    }
     slider.addEventListener('input', function () {
         if (sliderDisp) sliderDisp.textContent = slider.value;
         if (sliderHid)  sliderHid.value        = slider.value;
+        paintSlider();
     });
+    paintSlider();
 }
 
 // ============================================================
@@ -171,7 +178,7 @@ function syncBars(lc, ll, sc, sl) {
             var lp = Math.min(100, Math.round(leadCount / leadLimit * 100));
             var atLimit = lp >= 100;
             elLeadBar.style.width = lp + '%';
-            elLeadBar.className   = 'q-fill ' + (atLimit ? 'bg-red-400' : lp >= 80 ? 'bg-amber-400' : 'bg-white/40');
+            elLeadBar.className   = 'q-fill ' + (atLimit ? 'bg-red-400' : lp >= 80 ? 'bg-amber-400' : 'q-fill-acc');
             if (elLeadSub)   elLeadSub.textContent   = atLimit ? 'Limit reached' : leadCount + ' of ' + leadLimit + ' used';
             if (elLeadNote)  elLeadNote.textContent  = atLimit ? 'Upgrade to get more' : Math.max(0, leadLimit - leadCount) + ' remaining';
             if (elLeadCount) elLeadCount.textContent = leadCount + ' / ' + leadLimit;
@@ -184,7 +191,7 @@ function syncBars(lc, ll, sc, sl) {
     if (elSiteBar && siteLimit > 0) {
         var sp = Math.min(100, Math.round(siteCount / siteLimit * 100));
         elSiteBar.style.width = sp + '%';
-        elSiteBar.className   = 'q-fill ' + (sp >= 100 ? 'bg-red-400' : sp >= 80 ? 'bg-amber-400' : 'bg-white/40');
+        elSiteBar.className   = 'q-fill ' + (sp >= 100 ? 'bg-red-400' : sp >= 80 ? 'bg-amber-400' : 'q-fill-acc');
         if (elSiteSub)   elSiteSub.textContent   = siteCount + ' of ' + siteLimit + ' used';
         if (elSiteNote)  elSiteNote.textContent  = Math.max(0, siteLimit - siteCount) + ' remaining';
         if (elSiteCount) elSiteCount.textContent = siteCount + ' / ' + siteLimit;
@@ -242,7 +249,7 @@ function updateQuotaBar(newUsed) {
             (rem === 0 ? 'bg-red-500/10 text-red-400' : rem === 1 ? 'bg-amber-500/10 text-amber-400' : 'bg-white/5 text-slate-400');
         badge.textContent = rem === 0 ? 'No searches left' : rem + ' search' + (rem !== 1 ? 'es' : '') + ' left';
     }
-    if (bar)  { bar.style.width = pct + '%'; bar.className = 'q-fill ' + (pct >= 100 ? 'bg-red-400' : pct >= 50 ? 'bg-amber-400' : 'bg-white/40'); }
+    if (bar)  { bar.style.width = pct + '%'; bar.className = 'q-fill ' + (pct >= 100 ? 'bg-red-400' : pct >= 50 ? 'bg-amber-400' : 'q-fill-acc'); }
     if (text) text.textContent = quotaUsed + ' of ' + quotaLimit + ' used';
 }
 
@@ -288,7 +295,7 @@ function setSearchBusy(on) {
 function renderLeadCard(lead, seenSet, idx) {
     var seen = wasSeen(lead.id, seenSet);
     var card = document.createElement('div');
-    card.className = 'lead-in glass rounded-2xl p-4 transition-all hover:border-white/[.15]'
+    card.className = 'lead-in gb gb-hover rounded-2xl p-4'
                    + (seen ? ' opacity-50' : '');
     card.style.animationDelay = (idx * 45) + 'ms';
     card.dataset.leadId = lead.id;
@@ -299,6 +306,10 @@ function renderLeadCard(lead, seenSet, idx) {
         ? '\u2605'.repeat(Math.round(parseFloat(lead.rating)))
           + '\u2606'.repeat(5 - Math.round(parseFloat(lead.rating)))
         : '';
+    var srcKey  = (lead.source === 'osm') ? 'os' : 'ga';
+    var srcLbl  = (lead.source === 'osm') ? 'OSM' : 'Google';
+    var srcIco  = (lead.source === 'osm') ? 'fa-map-location-dot' : 'fa-google';
+    var initials = String(lead.business_name || '?').trim().split(/\s+/).map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 2) || '?';
     var genUrl = '/portal/generate.php'
         + '?lead_id='   + encodeURIComponent(lead.id)
         + '&name='      + encodeURIComponent(lead.business_name     || '')
@@ -329,25 +340,31 @@ function renderLeadCard(lead, seenSet, idx) {
         : '';
 
     card.innerHTML =
-        '<div class="flex flex-col sm:flex-row sm:items-start gap-3">'
+        '<div class="flex items-start gap-3">'
+          + '<div class="mono-avatar ' + srcKey + '">' + esc(initials) + '</div>'
           + '<div class="flex-1 min-w-0">'
-            + '<div class="flex items-center gap-2 flex-wrap mb-1.5">'
+            + '<div class="flex items-center gap-2 flex-wrap mb-1">'
               + '<h3 class="font-bold text-white text-sm leading-tight">'+esc(lead.business_name)+'</h3>'
-              + '<span class="text-[10px] px-1.5 py-0.5 rounded font-bold '+sc+'">' + scoreLabel(lead.opportunity_score)+' &middot; '+lead.opportunity_score+'</span>'
-              + (lead.no_website ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-500 font-semibold">No Website</span>' : '')
-              + (seen ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/[.04] text-slate-600 font-semibold">Seen</span>' : '')
+              + '<span class="src-pill ' + srcKey + '"><i class="fa-brands ' + srcIco + '"></i>' + srcLbl + '</span>'
             + '</div>'
             + '<div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-slate-500">'
               + '<span><i class="fa-solid fa-location-dot mr-1 text-slate-600"></i>'+esc(lead.business_address || 'Address unavailable')+'</span>'
               + (hasRating ? '<span class="text-amber-500/70 text-[11px]">'+stars+' <span class="text-slate-500">'+lead.rating+'</span></span>' : '')
               + (lead.total_ratings ? '<span class="text-slate-600">'+lead.total_ratings+' reviews</span>' : '')
-              + (lead.business_category ? '<span class="text-slate-600"><i class="fa-solid fa-tag mr-1"></i>'+esc(lead.business_category)+'</span>' : '')
             + '</div>'
           + '</div>'
-          + '<a href="'+genUrl+'" class="inline-flex items-center gap-1.5 text-xs bg-white hover:bg-slate-200 active:scale-95 text-black px-3 py-2 rounded-xl font-bold whitespace-nowrap transition-all shrink-0">'
+          + '<div class="flex flex-col items-end gap-1.5 shrink-0">'
+            + '<span class="score-chip ' + sc + '">' + scoreLabel(lead.opportunity_score)
+              + '<span class="score-bar"><i style="width:' + Math.max(0, Math.min(100, parseInt(lead.opportunity_score || 0, 10))) + '%"></i></span></span>'
+            + (lead.no_website ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/5 text-slate-500 font-semibold">No Website</span>' : '')
+            + (seen ? '<span class="text-[10px] px-1.5 py-0.5 rounded bg-white/[.04] text-slate-600 font-semibold">Seen</span>' : '')
+          + '</div>'
+        + '</div>'
+        + '<div class="flex flex-col sm:flex-row sm:items-center gap-2 mt-3">'
+          + '<a href="'+genUrl+'" class="btn-primary text-xs px-4 py-2 flex-1 sm:flex-none">'
             + '<i class="fa-solid fa-bolt text-[10px]"></i> Build Site'
           + '</a>'
-          + '<button type="button" class="crm-add-from-lead inline-flex items-center gap-1.5 text-xs bg-white/5 hover:bg-white/10 active:scale-95 text-slate-300 hover:text-white border border-white/10 px-3 py-2 rounded-xl font-bold whitespace-nowrap transition-all shrink-0" data-lead-id="'+lead.id+'">'
+          + '<button type="button" class="crm-add-from-lead btn-ghost text-xs px-4 py-2 flex-1 sm:flex-none" data-lead-id="'+lead.id+'">'
             + '<i class="fa-solid fa-address-book text-[10px]"></i> Add to CRM'
           + '</button>'
         + '</div>'
@@ -504,6 +521,11 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
     lockedList.innerHTML = '';
     if (statusChip) { statusChip.textContent = ''; statusChip.classList.add('hidden'); }
     setSearchBusy(true);
+    var scanTxt = document.getElementById('loadingScanLabel');
+    var activeNow = (getActiveSources() || []);
+    if (scanTxt) scanTxt.textContent = 'Scanning ' + (activeNow.length > 1 ? 'Google Places + OpenStreetMap' : 'Google Places') + '\u2026';
+    var hsc = document.getElementById('heroSourcesCount');
+    if (hsc) hsc.textContent = String(activeNow.length || 1);
 
     fetch('/api/find-leads.php', {
         method: 'POST',
@@ -747,6 +769,8 @@ function _rerenderLeadsList() {
 }
 
 function _renderLeadsAsTable(leads, seenSet) {
+    var wrap = document.createElement('div');
+    wrap.className = 'table-scroll';
     var table = document.createElement('table');
     table.className = 'leads-table';
     var thead = document.createElement('thead');
@@ -760,6 +784,8 @@ function _renderLeadsAsTable(leads, seenSet) {
         var tr = document.createElement('tr');
         tr.dataset.leadId = lead.id || '';
         tr.className = _bulkMode && _selectedLeads[lead.id] ? 'is-selected' : '';
+        var srcKey = (lead.source === 'osm') ? 'os' : 'ga';
+        var srcLbl = (lead.source === 'osm') ? 'OSM' : 'Google';
         var cells = '';
         if (_bulkMode) {
             var sel = _selectedLeads[lead.id] ? 'checked' : '';
@@ -770,13 +796,14 @@ function _renderLeadsAsTable(leads, seenSet) {
         cells += '<td>' + esc(lead.business_city || '—') + '</td>';
         cells += '<td>' + esc(lead.business_phone || '—') + '</td>';
         cells += '<td>' + (lead.rating || '—') + (lead.total_ratings ? ' <span class="text-slate-600">(' + lead.total_ratings + ')</span>' : '') + '</td>';
-        cells += '<td><span class="text-' + scoreClass(lead.opportunity_score) + '">' + (lead.opportunity_score || 0) + '</span></td>';
-        cells += '<td><span class="text-slate-500 text-[10px] uppercase">' + esc(lead.source || 'google_places') + '</span></td>';
+        cells += '<td><span class="score-chip ' + scoreClass(lead.opportunity_score) + '">' + (lead.opportunity_score || 0) + '</span></td>';
+        cells += '<td><span class="src-pill ' + srcKey + '">' + srcLbl + '</span></td>';
         tr.innerHTML = cells;
         tbody.appendChild(tr);
     });
     table.appendChild(tbody);
-    leadsList.appendChild(table);
+    wrap.appendChild(table);
+    leadsList.appendChild(wrap);
     // Wire up the per-row bulk checkbox + detail links
     table.querySelectorAll('.bulk-row-cb').forEach(function (cb) {
         cb.addEventListener('change', function () {
@@ -848,6 +875,10 @@ function _renderSlideOver(body, lead) {
     if (!body || !lead) return;
     document.getElementById('slideOverTitle').textContent = lead.business_name || 'Lead';
     var html = '';
+    var srcKey = (lead.source === 'osm') ? 'os' : 'ga';
+    var srcIco = (lead.source === 'osm') ? 'fa-map-location-dot' : 'fa-google';
+    var initials = String(lead.business_name || '?').trim().split(/\s+/).map(function (w) { return w.charAt(0); }).join('').toUpperCase().slice(0, 2) || '?';
+
     function row(label, val) {
         if (!val) return '';
         return '<div class="flex flex-col gap-0.5">'
@@ -855,29 +886,35 @@ function _renderSlideOver(body, lead) {
             + '<p class="text-sm text-slate-200 break-words">' + esc(String(val)) + '</p></div>';
     }
     function linkrow(label, val, href) {
-        if (!val) return '';
+        if (!val || !href) return '';
         return '<div class="flex flex-col gap-0.5">'
             + '<p class="text-[9px] font-semibold text-slate-600 uppercase tracking-widest">' + esc(label) + '</p>'
             + '<a href="' + esc(href) + '" target="_blank" rel="noopener noreferrer" class="text-sm text-sky-400 hover:text-sky-300 hover:underline break-all">' + esc(String(val)) + '</a></div>';
     }
-    function chip(text, color) {
-        if (!text) return '';
-        return '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full" style="background:' + (color || 'rgba(148,163,184,.1)') + ';color:#cbd5e1">' + esc(String(text)) + '</span>';
-    }
 
-    html += '<div class="flex flex-wrap gap-1.5 mb-4">' +
-        chip(lead.source || 'google_places', lead.source === 'osm' ? 'rgba(124,186,52,.15)' : 'rgba(66,133,244,.15)') +
-        chip((lead.opportunity_score || 0) + ' score', 'rgba(99,102,241,.15)') +
-        (lead.business_category ? chip(lead.business_category, 'rgba(245,158,11,.15)') : '') +
-    '</div>';
+    html += '<div class="flex items-start gap-3 mb-4 pb-4 border-b border-white/5">'
+        + '<div class="mono-avatar ' + srcKey + '">' + esc(initials) + '</div>'
+        + '<div class="min-w-0 flex-1">'
+            + '<div class="flex items-center gap-2 flex-wrap">'
+                + '<h3 class="font-bold text-white text-base leading-tight">' + esc(lead.business_name) + '</h3>'
+                + '<span class="src-pill ' + srcKey + '"><i class="fa-brands ' + srcIco + '"></i>' + (lead.source === 'osm' ? 'OSM' : 'Google') + '</span>'
+            + '</div>'
+            + '<div class="flex flex-wrap gap-1.5 mt-2">'
+                + '<span class="score-chip ' + scoreClass(lead.opportunity_score) + '">'
+                    + (lead.opportunity_score || 0) + ' score'
+                    + '<span class="score-bar"><i style="width:' + Math.max(0, Math.min(100, parseInt(lead.opportunity_score || 0, 10))) + '%"></i></span></span>'
+                + (lead.business_category ? '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full" style="background:rgba(245,158,11,.12);color:#fbbf24">' + esc(lead.business_category) + '</span>' : '')
+            + '</div>'
+        + '</div>'
+    + '</div>';
 
+    html += '<div class="grid grid-cols-1 gap-4">';
     html += row('Address', lead.business_address || (lead.business_city ? lead.business_city : ''));
     html += row('Phone', lead.business_phone);
     html += row('International phone', lead.international_phone);
     html += row('Email', lead.business_email);
     html += linkrow('Website', lead.website, lead.website);
     html += linkrow('Google Maps', (lead.maps_url) ? 'View on Maps' : '', lead.maps_url);
-    html += row('Category', lead.business_category);
     html += row('City', lead.business_city);
     html += row('Hours', lead.business_hours);
     html += row('Price level', lead.price_level);
@@ -886,10 +923,8 @@ function _renderSlideOver(body, lead) {
         var href = 'https://www.openstreetmap.org/?mlat=' + lead.lat + '&mlon=' + lead.lng + '#map=15/' + lead.lat + '/' + lead.lng;
         html += linkrow('Coordinates', lead.lat + ', ' + lead.lng, href);
     }
-    html += row('Source', lead.source);
+    html += '</div>';
     body.innerHTML = html;
-
-    // Click on the name if address is empty doesn't navigate anyway.
 }
 
 // ----- Wire up the toolbar + bulk + slide-over + view-mode buttons -----
@@ -1129,14 +1164,18 @@ window._leadsAppendEnrichments = function (body, enrichments) {
     });
 
     var html = '<div id="enrichmentBlock" class="pt-4 mt-4 border-t border-white/5">'
-        + '<p class="text-[9px] font-semibold text-slate-600 uppercase tracking-widest mb-3">Enrichment data</p>';
+        + '<div class="flex items-center gap-2 mb-3">'
+            + '<div class="w-6 h-6 rounded-md bg-white/5 border border-white/10 flex items-center justify-center"><i class="fa-solid fa-wand-magic-sparkles text-indigo-300 text-[10px]"></i></div>'
+            + '<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Enrichment data</p>'
+        + '</div>';
 
     Object.keys(byProvider).forEach(function (p) {
-        html += '<div class="mb-3">';
-        html += '<p class="text-[10px] font-semibold text-slate-500 capitalize mb-1.5">' + esc(p.replace(/_/g, ' ')) + '</p>';
+        html += '<div class="mb-3.5">';
+        html += '<p class="text-[10px] font-semibold text-slate-400 capitalize mb-1.5 flex items-center gap-1.5">'
+             + '<span class="inline-block w-1.5 h-1.5 rounded-full bg-indigo-400"></span>' + esc(p.replace(/_/g, ' ')) + '</p>';
         byProvider[p].forEach(function (r) {
             var conf = r.confidence || 'medium';
-            var confColor = conf === 'high' ? 'text-emerald-400' : (conf === 'low' ? 'text-slate-600' : 'text-amber-400');
+            var confCls = conf === 'high' ? 'text-indigo-300 bg-indigo-500/10' : (conf === 'low' ? 'text-slate-500 bg-white/5' : 'text-amber-300 bg-amber-500/10');
             var label = (r.field || '').replace(/_/g, ' ').replace(/\b\w/g, function (c) { return c.toUpperCase(); });
             // For emails, render as clickable mailto:
             var valHtml;
@@ -1147,9 +1186,9 @@ window._leadsAppendEnrichments = function (body, enrichments) {
             } else {
                 valHtml = '<span class="text-slate-200 break-words">' + esc(String(r.value || '—')) + '</span>';
             }
-            html += '<div class="flex justify-between items-start gap-3 mb-1">'
+            html += '<div class="flex justify-between items-start gap-3 mb-1.5">'
                 + '<div class="min-w-0"><span class="text-[10px] text-slate-600 mr-1">' + esc(label) + ':</span>' + valHtml + '</div>'
-                + '<span class="text-[9px] ' + confColor + ' uppercase font-semibold shrink-0">' + esc(conf) + '</span>'
+                + '<span class="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ' + confCls + ' shrink-0">' + esc(conf) + '</span>'
             + '</div>';
         });
         html += '</div>';
@@ -1535,5 +1574,40 @@ window._leadsAppendEnrichments = function (body, enrichments) {
 
 // Persist the bulk / view-mode selection isn't critical; we leave bulk mode
 // implicitly off on every page load.
+
+// ── UI polish: keep the hero "sources" counter in sync + animate stat numbers ──
+(function polishHero() {
+    function refreshHeroSources() {
+        var hsc = document.getElementById('heroSourcesCount');
+        if (!hsc) return;
+        var n = 0;
+        document.querySelectorAll('.source-chip-cb').forEach(function (cb) {
+            if (cb.checked && !cb.disabled) n++;
+        });
+        hsc.textContent = String(n || 1);
+    }
+    document.querySelectorAll('.source-chip-cb').forEach(function (cb) {
+        cb.addEventListener('change', refreshHeroSources);
+    });
+    refreshHeroSources();
+
+    // Gentle count-up for [data-count] stat numbers (respects prefers-reduced-motion).
+    var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (!reduce) {
+        document.querySelectorAll('[data-count]').forEach(function (el) {
+            var target = parseInt(el.getAttribute('data-count'), 10) || 0;
+            if (target <= 0) return;
+            var t0 = null, dur = 700;
+            function step(ts) {
+                if (t0 === null) t0 = ts;
+                var p = Math.min(1, (ts - t0) / dur);
+                var eased = 1 - Math.pow(1 - p, 3);
+                el.textContent = String(Math.round(target * eased));
+                if (p < 1) requestAnimationFrame(step);
+            }
+            requestAnimationFrame(step);
+        });
+    }
+})();
 
 }); // end DOMContentLoaded
