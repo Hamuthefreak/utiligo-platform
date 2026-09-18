@@ -6,3 +6,7 @@
 # Build artifacts
 /Utiligo.zip
 /UTILIGO.zip
+
+# Test-run scratch: sessions, Stripe stub fixtures, captured requests, logs.
+# The suite recreates all of it on every run, so nothing here is worth keeping.
+/tests/tmp/

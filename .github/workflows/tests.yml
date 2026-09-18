@@ -1,0 +1,92 @@
+name: tests
+
+# The payment-path suite is the reason this exists: it is the only automated
+# check on the code that decides what a customer is entitled to. It needs a
+# MySQL to be meaningful, because most of what it asserts is the result of a
+# real UPDATE — the guards in the SQL, not just their text.
+#
+# No secrets are required. Stripe is replaced by tests/lib/stripe_stub.php and
+# signatures are made with a test webhook secret, so the suite never reaches the
+# network and cannot touch a live payment account.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  payment-path:
+    name: payment path
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: 'yes'
+          MYSQL_DATABASE: utiligo_test_users
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+
+    env:
+      APP_ENV: test
+      USERDB_HOST: 127.0.0.1
+      USERDB_NAME: utiligo_test_users
+      USERDB_USER: root
+      USERDB_PASS: ''
+      DB_HOST: 127.0.0.1
+      DB_NAME: utiligo_test_platform
+      DB_USER: root
+      DB_PASS: ''
+      STRIPE_SECRET_KEY: sk_test_stub_key
+      STRIPE_WEBHOOK_SECRET: whsec_test_stub_secret
+      STRIPE_PRO_PRICE_ID: price_test_pro
+      STRIPE_ENT_PRICE_ID: price_test_ent
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+          # pdo_mysql for the database, curl for the HTTP-driven tests, which
+          # drive the real pages through the built-in server.
+          extensions: pdo_mysql, curl, mbstring
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -u root --silent 2>/dev/null; then
+              echo "MySQL is up"; exit 0
+            fi
+            sleep 2
+          done
+          echo "MySQL never became ready"; exit 1
+
+      - name: Syntax check every PHP file
+        run: |
+          fail=0
+          while IFS= read -r file; do
+            php -l "$file" > /dev/null || { echo "::error file=$file::syntax error"; fail=1; }
+          done < <(git ls-files '*.php')
+          exit $fail
+
+      # --require-db turns a missing database into a failure: a green run must
+      # mean the entitlement UPDATE really executed, not that it was skipped.
+      - name: Run the payment-path suite
+        run: php tests/run.php --require-db
+
+      - name: Upload the application error log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-errors
+          path: tests/tmp/app_errors.log
+          if-no-files-found: ignore
