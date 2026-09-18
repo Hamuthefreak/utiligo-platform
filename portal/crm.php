@@ -2,6 +2,7 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 require_login();
@@ -10,7 +11,7 @@ $uid     = (int)$user['id'];
 $plan    = $user['plan'] ?? 'free';
 $is_pro  = $plan === 'pro';
 $is_ent  = $plan === 'entrepreneur';
-$is_paid = $is_pro || $is_ent;
+$is_paid = is_paid_plan($plan);
 
 // ── Stage config (defined early — used in both AJAX + render paths) ────────────
 $stages = [
@@ -132,9 +133,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
             }
 
             // Plan-aware client cap. -1 = unlimited (Entrepreneur).
-            $client_limit = $is_ent
-                ? (defined('ENT_CLIENT_LIMIT') ? (int)ENT_CLIENT_LIMIT : -1)
-                : (defined('PRO_CLIENT_LIMIT') ? (int)PRO_CLIENT_LIMIT : 50);
+            $client_limit = plan_client_limit($plan, $uid);
             if ($client_limit > 0) {
                 $cap_stmt = $pdo->prepare('SELECT COUNT(*) FROM crm_clients WHERE user_id = ?');
                 $cap_stmt->execute([$uid]);
@@ -411,9 +410,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
             if (!$lead) { echo json_encode(['ok'=>false,'error'=>'Lead not found in cache.']); exit; }
 
             // Plan cap check (mirrors add_client)
-            $client_limit = $is_ent
-                ? (defined('ENT_CLIENT_LIMIT') ? (int)ENT_CLIENT_LIMIT : -1)
-                : (defined('PRO_CLIENT_LIMIT') ? (int)PRO_CLIENT_LIMIT : 50);
+            $client_limit = plan_client_limit($plan, $uid);
             if ($client_limit > 0) {
                 $cap_stmt = $pdo->prepare('SELECT COUNT(*) FROM crm_clients WHERE user_id = ?');
                 $cap_stmt->execute([$uid]);
@@ -543,9 +540,7 @@ if ($is_paid && isset($_GET['client'])) {
 }
 
 // Plan cap for the "Clients" tab status line
-$client_limit      = $is_ent
-    ? (defined('ENT_CLIENT_LIMIT') ? (int)ENT_CLIENT_LIMIT : -1)
-    : (defined('PRO_CLIENT_LIMIT') ? (int)PRO_CLIENT_LIMIT : 50);
+$client_limit      = plan_client_limit($plan, $uid);
 $client_limit_label = $is_ent
     ? 'unlimited'
     : ($client_limit > 0 ? $client_limit . ' client cap' : 'no cap');
@@ -659,6 +654,11 @@ select.crm-input option { background:#0f172a; }
 </div>
 
 <?php if (!$is_paid): ?>
+<?php
+  // Prices come from the admin-editable constants, never hardcoded copy.
+  $_crm_pro_price = '$' . number_format(defined('PRO_PLAN_PRICE') ? (float)PRO_PLAN_PRICE : 21.99, 2);
+  $_crm_ent_price = '$' . number_format(defined('ENTREPRENEUR_PLAN_PRICE') ? (float)ENTREPRENEUR_PLAN_PRICE : 49.99, 2);
+?>
 <div class="upgrade-wall">
   <div class="w-16 h-16 rounded-2xl bg-white/5 border border-white/8 flex items-center justify-center mx-auto mb-5">
     <i class="fa-solid fa-address-book text-3xl text-slate-500"></i>
@@ -667,10 +667,10 @@ select.crm-input option { background:#0f172a; }
   <p class="text-slate-400 text-sm max-w-sm mx-auto mb-6">Track your entire sales pipeline, monitor revenue, manage tasks, and keep notes on every client &mdash; all in one place. Available on Pro and Entrepreneur plans.</p>
   <div class="flex flex-col sm:flex-row items-center justify-center gap-3 mb-6">
     <a href="/portal/billing?upgrade=1&plan=pro" class="bg-white hover:bg-slate-200 text-black px-6 py-2.5 rounded-full font-bold text-sm transition">
-      <i class="fa-solid fa-crown mr-2"></i>Go Pro &mdash; $21.99/mo
+      <i class="fa-solid fa-crown mr-2"></i>Go Pro &mdash; <?= $_crm_pro_price ?>/mo
     </a>
     <a href="/portal/billing?upgrade=1&plan=entrepreneur" class="bg-white/10 hover:bg-white/20 text-white px-6 py-2.5 rounded-full font-bold text-sm transition">
-      <i class="fa-solid fa-rocket mr-2"></i>Entrepreneur &mdash; $49.99/mo
+      <i class="fa-solid fa-rocket mr-2"></i>Entrepreneur &mdash; <?= $_crm_ent_price ?>/mo
     </a>
   </div>
   <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 max-w-lg mx-auto text-left">

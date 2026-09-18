@@ -420,6 +420,30 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 <?php endif; ?>
 
+<?php
+// ── Onboarding splashes ────────────────────────────────────────────────────
+// These two overlays were fully written (assets/css/onboarding.css +
+// assets/js/onboarding-{login,purchase}.js) but NOTHING ever loaded the JS, so
+// neither splash could run. This page is their single mount point:
+//   • welcome splash  — login.php / verify-2fa.php redirect here with ?welcome=1
+//   • purchase splash — purchase-success.php stores the plan in the session
+// A purchase right after a login shows the purchase animation only (it is the
+// more meaningful of the two); the login flag is left for the next page load.
+// The matching onboarding.css is included in the <head> by
+// includes/portal_layout.php when either flag is present.
+$obPurchasePlan = (string)($_SESSION['purchase_animation_plan'] ?? '');
+$obShowWelcome  = isset($_GET['welcome']) && $obPurchasePlan === '';
+?>
+<?php if ($obShowWelcome): ?>
+<script defer src="/assets/js/onboarding-login.js"></script>
+<?php elseif ($obPurchasePlan !== ''): ?>
+<script defer src="/assets/js/onboarding-purchase.js"></script>
+<?php
+    // Consumed — without this the splash script would be re-served on every
+    // portal page load until the session expired.
+    unset($_SESSION['purchase_animation_plan']);
+endif; ?>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
 (function(){

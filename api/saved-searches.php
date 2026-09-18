@@ -54,18 +54,15 @@ if ($uid <= 0) {
     exit;
 }
 
-// Phase 6 plan gate — saved_searches feature is Pro+ only. Notify emails
-// are Ent-only (gated by can_schedule_searches()).
-$plan   = (string)($_SESSION['plan'] ?? 'free');
-// Fall back to a DB fetch if session doesn't carry plan.
-if ($plan === 'free') {
-    try {
-        $updo = get_platform_db();
-        $ps = $updo->prepare('SELECT plan FROM users WHERE id = ? LIMIT 1');
-        $ps->execute([$uid]);
-        $plan = (string)($ps->fetchColumn() ?: 'free');
-    } catch (\Throwable $e) { $plan = 'free'; }
-}
+// Phase 6 plan gate — saved_searches is a PAID feature (Pro and Entrepreneur).
+// Notify emails are Ent-only (can_schedule_searches()).
+//
+// Read the plan from the user record.  This used to read $_SESSION['plan'],
+// which nothing ever writes, and its "fallback" queried a `users` table in the
+// PLATFORM db — accounts live in `utiligo_users` in the USER db — so the
+// fallback always threw and $plan stayed 'free'.  Result: every paid user,
+// Entrepreneur included, was rejected here with plan_required.
+$plan = (string)(current_user()['plan'] ?? 'free');
 
 if (!can_use_lead_workspace($plan)) {
     http_response_code(403);

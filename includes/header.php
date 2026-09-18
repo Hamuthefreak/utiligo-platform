@@ -1,4 +1,11 @@
 <?php
+// The <body> tag below renders a data-plan-info attribute (limits + prices)
+// that the marketing/onboarding JS reads instead of hardcoding plan copy.
+// Pages like index.php don't otherwise need plans.php, so load it on demand.
+if (!function_exists('plan_info_data_attr')) {
+    require_once __DIR__ . '/plans.php';
+}
+
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.'; }
 $loggedIn = function_exists('is_logged_in') && is_logged_in();
 $_logo_path = __DIR__ . '/../assets/images/utiligoheaderlogo.png';
@@ -142,7 +149,7 @@ $_seo_ld = array_filter(array_merge([
   }
 </style>
 </head>
-<body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
+<body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>" <?= function_exists('plan_info_data_attr') ? plan_info_data_attr() : '' ?>>
 
 <!-- ─── Transition Loader Overlay ───────────────────────────── -->
 <div id="utl-loader" role="status" aria-label="Loading" aria-live="polite">

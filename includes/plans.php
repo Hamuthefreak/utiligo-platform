@@ -12,6 +12,34 @@
 require_once __DIR__ . '/../config.php';
 
 /**
+ * True when $plan is any paid tier (Pro or Entrepreneur).
+ *
+ * USE THIS — not `$plan === 'pro'` — for every "is this a paying customer?"
+ * decision.  The two paid tiers are a ladder, not a set: Entrepreneur is the
+ * TOP tier and inherits every Pro capability.  Several endpoints historically
+ * tested `=== 'pro'`, which silently locked Entrepreneur (the $49.99 plan)
+ * out of image uploads, site-editor saves and share-link extensions that Pro
+ * users got.  Anything gated on "paid" must accept both.
+ *
+ * @param string|null $plan
+ */
+function is_paid_plan(?string $plan): bool {
+    return in_array((string)$plan, ['pro', 'entrepreneur'], true);
+}
+
+/**
+ * True when $plan unlocks Pro-tier features.  Today that is exactly the paid
+ * set (Entrepreneur is a superset of Pro), but keeping this name separate
+ * from is_paid_plan() lets "paid" and "has Pro features" diverge later
+ * without hunting down every call site.
+ *
+ * @param string|null $plan
+ */
+function plan_has_pro_features(?string $plan): bool {
+    return is_paid_plan($plan);
+}
+
+/**
  * Look up a per-admin-set limit override for one user+key.  Returns the
  * override value when present, otherwise the $default passed in.  Never
  * throws — on any DB error / missing table / unavailable connection, the
@@ -78,23 +106,64 @@ function preload_user_limit_overrides(int $user_id): void
     if ($user_id > 0) _load_user_limit_overrides($user_id);
 }
 
-if (!defined('FREE_LEAD_LIMIT'))            define('FREE_LEAD_LIMIT',            3);
-if (!defined('FREE_SITE_LIMIT'))            define('FREE_SITE_LIMIT',            1);
-if (!defined('FREE_SEARCH_DAILY_LIMIT'))    define('FREE_SEARCH_DAILY_LIMIT',    2);
-if (!defined('FREE_GENERATE_DAILY_LIMIT'))  define('FREE_GENERATE_DAILY_LIMIT',  1);
-if (!defined('FREE_TEMPLATE_LIMIT'))        define('FREE_TEMPLATE_LIMIT',        2);
-if (!defined('PRO_LEAD_LIMIT'))             define('PRO_LEAD_LIMIT',           700);
-if (!defined('PRO_SITE_LIMIT'))             define('PRO_SITE_LIMIT',            50);
-if (!defined('PRO_GENERATE_DAILY_LIMIT'))   define('PRO_GENERATE_DAILY_LIMIT',  -1);
-if (!defined('PRO_TEMPLATE_LIMIT'))         define('PRO_TEMPLATE_LIMIT',        -1);
-if (!defined('ENT_LEAD_LIMIT'))             define('ENT_LEAD_LIMIT',            -1);
-if (!defined('ENT_SITE_LIMIT'))             define('ENT_SITE_LIMIT',           500);
-if (!defined('ENT_GENERATE_DAILY_LIMIT'))   define('ENT_GENERATE_DAILY_LIMIT',  -1);
-if (!defined('ENT_TEMPLATE_LIMIT'))         define('ENT_TEMPLATE_LIMIT',        -1);
-if (!defined('ENT_TEAM_SEATS'))             define('ENT_TEAM_SEATS',             5);
-if (!defined('ENT_CUSTOM_DOMAIN_LIMIT'))    define('ENT_CUSTOM_DOMAIN_LIMIT',   -1);
-if (!defined('PRO_PLAN_PRICE'))             define('PRO_PLAN_PRICE',          21.99);
-if (!defined('ENTREPRENEUR_PLAN_PRICE'))    define('ENTREPRENEUR_PLAN_PRICE', 49.99);
+// ── Plan limit constants live in ONE place ────────────────────────────────
+// Every FREE_*/PRO_*/ENT_* constant is defined in includes/plan_limits.php,
+// which config.php loads before this file.  This file used to redeclare them
+// behind `if (!defined(...))` guards, which made those copies dead code that
+// silently drifted from the real values (PRO_SITE_LIMIT was 50 here and 20 in
+// plan_limits.php).  Do NOT reintroduce local copies — and never hardcode a
+// plan limit or price in a page or script; read it from these constants (or
+// the plan_*() helpers below) so the Admin > Config Editor keeps working.
+require_once __DIR__ . '/plan_limits.php';
+
+/**
+ * Machine-readable plan facts (limits + prices) for the front-end.
+ *
+ * Marketing/onboarding copy used to hardcode these ("50 generated sites",
+ * "120 leads • 200 active sites", "$21.99") which silently rotted as the real
+ * limit in includes/plan_limits.php changed.  Pages render this as a single
+ * `data-plan-info` JSON attribute on <body> and JS reads it, so the Config
+ * Editor stays the only place anyone edits a limit or a price.
+ *
+ * -1 means unlimited.  Sentinels are preserved so callers can format them.
+ */
+function plan_info(): array {
+    $int = static fn(string $k, int $d): int     => defined($k) ? (int)constant($k)   : $d;
+    $flt = static fn(string $k, float $d): float => defined($k) ? (float)constant($k) : $d;
+
+    return [
+        'free' => [
+            'leads'     => $int('FREE_LEAD_LIMIT', 3),
+            'sites'     => $int('FREE_SITE_LIMIT', 1),
+            'searches'  => $int('FREE_SEARCH_DAILY_LIMIT', 2),
+            'templates' => $int('FREE_TEMPLATE_LIMIT', 2),
+            'price'     => 0.0,
+        ],
+        'pro' => [
+            'leads'     => $int('PRO_LEAD_LIMIT', 700),
+            'sites'     => $int('PRO_SITE_LIMIT', 20),
+            'templates' => $int('PRO_TEMPLATE_LIMIT', -1),
+            'price'     => $flt('PRO_PLAN_PRICE', 21.99),
+        ],
+        'entrepreneur' => [
+            'leads'     => $int('ENT_LEAD_LIMIT', -1),
+            'sites'     => $int('ENT_SITE_LIMIT', 500),
+            'seats'     => $int('ENT_TEAM_SEATS', 5),
+            'templates' => $int('ENT_TEMPLATE_LIMIT', -1),
+            'price'     => $flt('ENTREPRENEUR_PLAN_PRICE', 49.99),
+        ],
+    ];
+}
+
+/**
+ * Ready-to-echo `data-plan-info` attribute (quoted JSON) for a <body> tag.
+ * Returns '' if encoding fails so a caller can never emit broken HTML.
+ */
+function plan_info_data_attr(): string {
+    $json = json_encode(plan_info(), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+    if ($json === false) return '';
+    return 'data-plan-info="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '"';
+}
 
 function plan_config(): array {
     return [
@@ -239,7 +308,7 @@ function require_paid(): void {
     if (!function_exists('require_login')) require_once __DIR__ . '/auth.php';
     require_login();
     $user = current_user();
-    if (!in_array($user['plan'] ?? 'free', ['pro', 'entrepreneur'], true)) {
+    if (!is_paid_plan($user['plan'] ?? 'free')) {
         header('Location: /portal/billing?upgrade=1');
         exit;
     }
@@ -295,7 +364,7 @@ function plan_export_max_rows(string $plan): int {
 
 /** Whether a user can use the lead workspace at all (Pro+). */
 function can_use_lead_workspace(string $plan): bool {
-    return in_array($plan, ['pro', 'entrepreneur'], true);
+    return plan_has_pro_features($plan);
 }
 
 /** Whether a user is allowed to schedule recurring searches (Ent only). */

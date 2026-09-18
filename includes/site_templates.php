@@ -1,7 +1,9 @@
 <?php
 /**
  * includes/site_templates.php
- * Template definitions for generated websites (80 total).
+ * Template definitions for generated websites.
+ * Count is not duplicated here — index.php derives it with
+ * count(get_all_site_templates()) so the marketing copy can't drift.
  */
 
 const SITE_TEMPLATES = [

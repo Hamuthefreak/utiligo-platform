@@ -78,7 +78,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($rememberMe) {
                     set_remember_me_cookie($u['id']);
                 }
-                header('Location: /portal/index.php');
+                // ?welcome=1 tells the portal to play the welcome-back splash
+                // (portal/index.php is the only page that loads it).
+                header('Location: /portal/index.php?welcome=1');
                 exit;
             }
         } else {

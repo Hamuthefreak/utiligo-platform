@@ -38,6 +38,7 @@
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
+require_once __DIR__ . '/../userdb.php';   // get_user_db() — owner email + plan
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
@@ -61,17 +62,20 @@ $hard_stop = time() + 60;
 
 $pdo = get_platform_db();
 
-// Look only at users whose subscription plan permits this feature.
-// can_schedule_searches() returns true for Ent only today.
-// We fetch users with notify_email=1 and then double-check the plan in
-// PHP so we benefit from any future plan-config overrides without
-// touching this query.
+// saved_searches lives in the PLATFORM db; accounts live in utiligo_users in
+// the USER db.  Those are two different databases (and on some hosts two
+// different servers), so this must NOT be a SQL JOIN.  It used to be
+// `JOIN users u ON u.id = ss.user_id` — a table that exists nowhere in this
+// codebase — so the query always threw, the catch echoed pull_error, and the
+// Ent-only scheduled-search notifications never ran for anybody.
+//
+// Read the jobs here, then resolve each owner's email + plan from the user db
+// in one IN(...) round-trip.
 try {
     $stmt = $pdo->prepare(
         'SELECT ss.id AS ss_id, ss.user_id, ss.name, ss.params, ss.last_run_at,
-                ss.last_count, u.email, u.plan
+                ss.last_count, ss.notify_email
            FROM saved_searches ss
-           JOIN users u ON u.id = ss.user_id
           WHERE ss.notify_email = 1
           ORDER BY ss.id ASC
           LIMIT 100'
@@ -84,12 +88,42 @@ try {
     exit;
 }
 
-// Filter in PHP using the plan helper — handles per-user overrides too.
-if (function_exists('can_schedule_searches')) {
-    $jobs = array_values(array_filter($jobs, function ($j) {
-        return can_schedule_searches((string)$j['plan']);
-    }));
+if (!$jobs) {
+    echo "nothing_to_do\n";
+    exit;
 }
+
+$owners = [];
+try {
+    $ids = array_values(array_unique(array_map(static fn($j) => (int)$j['user_id'], $jobs)));
+    $ph  = implode(',', array_fill(0, count($ids), '?'));
+    $us  = get_user_db()->prepare("SELECT id, email, plan FROM utiligo_users WHERE id IN ($ph)");
+    $us->execute($ids);
+    foreach ($us->fetchAll(PDO::FETCH_ASSOC) as $u) {
+        $owners[(int)$u['id']] = $u;
+    }
+} catch (\Throwable $e) {
+    log_error('scheduled_searches_owners', $e);
+    echo "pull_error\n";
+    exit;
+}
+
+// Keep only jobs whose owner still exists, has an email, and whose plan
+// permits scheduled searches — can_schedule_searches() is Ent-only today, so
+// an Ent subscription is what unlocks this.  Applies the plan helper (not a
+// hardcoded string) so future plan-config changes are picked up here.
+$eligible = [];
+foreach ($jobs as $j) {
+    $uid = (int)$j['user_id'];
+    if (!isset($owners[$uid])) continue;                       // owner deleted
+    $owner = $owners[$uid];
+    if (($owner['email'] ?? '') === '') continue;              // nothing to send to
+    if (!can_schedule_searches((string)($owner['plan'] ?? 'free'))) continue;
+    $j['email'] = (string)$owner['email'];
+    $j['plan']  = (string)($owner['plan'] ?? 'free');
+    $eligible[] = $j;
+}
+$jobs = $eligible;
 
 if (!$jobs) {
     echo "nothing_to_do\n";

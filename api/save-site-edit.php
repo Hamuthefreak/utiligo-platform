@@ -21,8 +21,11 @@ require_login();
 header('Content-Type: application/json');
 
 $user = current_user();
-if ($user['plan'] !== 'pro') {
-    json_response(['success' => false, 'error' => 'The site editor is a Pro feature.'], 403);
+// Pro AND Entrepreneur — the site editor is part of every paid tier, and
+// Entrepreneur (the top tier) was previously rejected here with a confusing
+// 403 even though portal/site_editor.php let it open the editor.
+if (!plan_has_pro_features($user['plan'] ?? 'free')) {
+    json_response(['success' => false, 'error' => 'The site editor is available on the Pro and Entrepreneur plans.'], 403);
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];

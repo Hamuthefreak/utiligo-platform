@@ -63,7 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !isset($_POST['resend'])) {
                 set_remember_me_cookie($pendingUserId);
             }
 
-            header('Location: /portal/index.php');
+            // See login.php — ?welcome=1 triggers the welcome-back splash.
+            header('Location: /portal/index.php?welcome=1');
             exit;
         }
         $error = $method === 'totp'

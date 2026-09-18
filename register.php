@@ -9,7 +9,14 @@ require_once __DIR__ . '/includes/mailer.php';
 if (is_logged_in()) { header('Location: /portal/index.php'); exit; }
 
 $_plan_param  = isset($_GET['plan']) && in_array($_GET['plan'], ['pro','entrepreneur']) ? $_GET['plan'] : 'free';
-$_plan_labels = ['free' => 'Free', 'pro' => 'Pro — $21.99/mo', 'entrepreneur' => 'Entrepreneur — $49.99/mo'];
+// Prices come from the admin-editable constants, never hardcoded copy.
+$_pro_price_fmt = '$' . number_format(defined('PRO_PLAN_PRICE') ? (float)PRO_PLAN_PRICE : 21.99, 2);
+$_ent_price_fmt = '$' . number_format(defined('ENTREPRENEUR_PLAN_PRICE') ? (float)ENTREPRENEUR_PLAN_PRICE : 49.99, 2);
+$_plan_labels = [
+    'free'         => 'Free',
+    'pro'          => 'Pro — ' . $_pro_price_fmt . '/mo',
+    'entrepreneur' => 'Entrepreneur — ' . $_ent_price_fmt . '/mo',
+];
 
 $_logo_path = __DIR__ . '/assets/images/utiligoheaderlogo.png';
 $_logo_url  = '/assets/images/utiligoheaderlogo.png';

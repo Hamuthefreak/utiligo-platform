@@ -15,7 +15,7 @@ require_once __DIR__ . '/../includes/mailer.php';
 require_login();
 $user    = current_user();
 $plan    = $user['plan'] ?? 'free';
-$is_paid = in_array($plan, ['pro','entrepreneur'], true);
+$is_paid = is_paid_plan($plan);
 
 $message = '';
 $error   = '';
@@ -447,7 +447,17 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <div>
           <p class="font-bold text-sm"><?= plan_label($plan) ?> Plan</p>
           <p class="text-xs text-slate-500">
-            <?= $plan==='entrepreneur' ? 'Unlimited leads &bull; 500 active sites' : ($plan==='pro' ? '120 leads &bull; 200 active sites' : '3 leads &bull; 1 site/day') ?>
+            <?php
+              // Read the live limits (honoring any per-user admin override)
+              // instead of the stale hardcoded copy that used to sit here.
+              $_own_leads = plan_lead_limit($plan, (int)$user['id']);
+              $_own_sites = plan_site_limit($plan, (int)$user['id']);
+              echo ($_own_leads === -1 ? 'Unlimited leads' : number_format($_own_leads) . ' leads')
+                 . ' &bull; '
+                 . ($_own_sites === -1
+                      ? 'unlimited active sites'
+                      : number_format($_own_sites) . ' active site' . ($_own_sites === 1 ? '' : 's'));
+            ?>
           </p>
         </div>
       </div>

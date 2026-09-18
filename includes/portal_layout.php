@@ -2,13 +2,20 @@
 /**
  * includes/portal_layout.php
  */
+// Plan helpers feed the data-plan-info attribute on <body> and the paid-plan
+// predicates used below. Portal pages normally load plans.php already; this
+// on-demand load keeps the layout safe to include on its own.
+if (!function_exists('plan_info_data_attr')) {
+    require_once __DIR__ . '/plans.php';
+}
+
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo Portal'; }
 $loggedIn  = function_exists('is_logged_in') && is_logged_in();
 $_user     = function_exists('current_user')  ? current_user()  : [];
 $_plan     = $_user['plan'] ?? 'free';
 $_is_pro   = $_plan === 'pro';
 $_is_ent   = $_plan === 'entrepreneur';
-$_is_paid  = $_is_pro || $_is_ent;
+$_is_paid  = is_paid_plan($_plan);
 $_name     = htmlspecialchars(trim($_user['full_name'] ?? 'User'));
 $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
@@ -39,6 +46,12 @@ if (!function_exists('_nav_active')) {
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="/assets/css/style.css">
+<?php if (isset($_GET['welcome']) || !empty($_SESSION['purchase_animation_plan'])): ?>
+<?php /* Onboarding splash stylesheet — loaded here (not at the end of the body)
+         so the overlay is already styled by the time its deferred script runs.
+         portal/index.php is the only page that includes the matching script. */ ?>
+<link rel="stylesheet" href="/assets/css/onboarding.css">
+<?php endif; ?>
 <style>
   /* ── Nav ── */
   .nav-link { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; font-size:.875rem; font-weight:500; color:#94a3b8; transition:all .15s; white-space:nowrap; }
@@ -116,7 +129,11 @@ if (!function_exists('_nav_active')) {
   }
 </style>
 </head>
-<body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>">
+<body class="antialiased bg-slate-950 text-white"
+      data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>"
+      <?= function_exists('plan_info_data_attr') ? plan_info_data_attr() : '' ?>
+      data-ob-plan="<?= htmlspecialchars((string)($_SESSION['purchase_animation_plan'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
+      data-ob-name="<?= htmlspecialchars(trim((string)($_user['full_name'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
 
 <!-- Transition Loader Overlay -->
 <div id="utl-loader" role="status" aria-label="Loading">
@@ -186,7 +203,7 @@ if (!function_exists('_nav_active')) {
   <?php elseif ($_is_pro): ?>
   <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8 shrink-0">
     <p class="text-xs font-bold text-white mb-0.5">Pro Plan</p>
-    <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; 500 sites</p>
+    <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; <?= (int)(defined('ENT_SITE_LIMIT') ? ENT_SITE_LIMIT : 500) ?> sites</p>
     <a href="/portal/billing?plan=entrepreneur"
        class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
       <i class="fa-solid fa-rocket mr-1"></i> Go Entrepreneur

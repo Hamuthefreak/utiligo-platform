@@ -492,7 +492,10 @@ function send_payment_reminder_email(string $to, string $fullName, string $reaso
             'preheader' => "Heads-up: your Utiligo Pro subscription renews soon.",
             'heading'   => 'Upcoming renewal',
             'icon'      => '🔔',
-            'msg'       => "Your <strong>Utiligo Pro</strong> subscription will renew soon at <strong>\$21.99 / month</strong>. No action needed if your payment method is up to date.",
+            // Price comes from the admin-editable constant, not hardcoded copy.
+            'msg'       => "Your <strong>Utiligo Pro</strong> subscription will renew soon at <strong>"
+                           . '$' . number_format(defined('PRO_PLAN_PRICE') ? (float)PRO_PLAN_PRICE : 21.99, 2)
+                           . " / month</strong>. No action needed if your payment method is up to date.",
             'cta_label' => 'View billing',
         ],
         'cancelled_access_ending' => [

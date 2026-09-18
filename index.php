@@ -3,23 +3,33 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
-$FREE_LEAD_LIMIT   = defined('FREE_LEAD_LIMIT')          ? FREE_LEAD_LIMIT          : 3;
-$FREE_SEARCH_LIMIT = defined('FREE_SEARCH_DAILY_LIMIT')  ? FREE_SEARCH_DAILY_LIMIT  : 2;
-$FREE_SITE_LIMIT   = defined('FREE_SITE_LIMIT')          ? FREE_SITE_LIMIT          : 1;
-$PRO_LEAD_LIMIT    = defined('PRO_LEAD_LIMIT')           ? PRO_LEAD_LIMIT           : 120;
-$PRO_SITE_LIMIT    = defined('PRO_SITE_LIMIT')           ? PRO_SITE_LIMIT           : 200;
-$ENT_SITE_LIMIT    = defined('ENT_SITE_LIMIT')           ? ENT_SITE_LIMIT           : 500;
-$PRO_PRICE         = defined('PRO_PLAN_PRICE')           ? PRO_PLAN_PRICE           : 21.99;
-$ENT_PRICE         = defined('ENTREPRENEUR_PLAN_PRICE')  ? ENTREPRENEUR_PLAN_PRICE  : 49.99;
-$TMPL_COUNT        = defined('TEMPLATE_COUNT')           ? TEMPLATE_COUNT           : 25;
+// Plan limits and prices are admin-editable (Admin > Config Editor writes
+// storage/config_overrides.php, loaded by config.php before these constants).
+// Read them straight from the constants — the `defined() ? : default` guards
+// that used to sit here drifted from the real values (Pro was advertised as
+// 120 leads / 200 sites when plan_limits.php says 700 / 20).
+$FREE_LEAD_LIMIT   = FREE_LEAD_LIMIT;
+$FREE_SEARCH_LIMIT = FREE_SEARCH_DAILY_LIMIT;
+$FREE_GEN_LIMIT    = FREE_GENERATE_DAILY_LIMIT;
+$FREE_TMPL_LIMIT   = FREE_TEMPLATE_LIMIT;
+$PRO_LEAD_LIMIT    = PRO_LEAD_LIMIT;
+$PRO_SITE_LIMIT    = PRO_SITE_LIMIT;
+$ENT_SITE_LIMIT    = ENT_SITE_LIMIT;
+$PRO_PRICE         = PRO_PLAN_PRICE;
+$ENT_PRICE         = ENTREPRENEUR_PLAN_PRICE;
 
-$faq_pro_leads  = defined('PRO_LEAD_LIMIT')           ? PRO_LEAD_LIMIT          : 120;
-$faq_pro_sites  = defined('PRO_SITE_LIMIT')           ? PRO_SITE_LIMIT          : 200;
-$faq_ent_sites  = defined('ENT_SITE_LIMIT')           ? ENT_SITE_LIMIT          : 500;
-$faq_free_leads = defined('FREE_LEAD_LIMIT')          ? FREE_LEAD_LIMIT         : 3;
-$faq_free_sites = defined('FREE_SITE_LIMIT')          ? FREE_SITE_LIMIT         : 1;
-$faq_pro_price  = defined('PRO_PLAN_PRICE')           ? PRO_PLAN_PRICE          : 21.99;
-$faq_ent_price  = defined('ENTREPRENEUR_PLAN_PRICE')  ? ENTREPRENEUR_PLAN_PRICE : 49.99;
+// Count the templates we actually ship instead of trusting a constant that
+// was never defined (this used to always print "25", we ship 86).
+require_once __DIR__ . '/includes/site_templates.php';
+$TMPL_COUNT = count(get_all_site_templates());
+
+$faq_pro_leads  = $PRO_LEAD_LIMIT;
+$faq_pro_sites  = $PRO_SITE_LIMIT;
+$faq_ent_sites  = $ENT_SITE_LIMIT;
+$faq_free_leads = $FREE_LEAD_LIMIT;
+$faq_free_sites = $FREE_GEN_LIMIT;
+$faq_pro_price  = $PRO_PRICE;
+$faq_ent_price  = $ENT_PRICE;
 
 $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.';
 $seoTitle  = 'Utiligo | Lead Generation & Website Builder for Freelancers & Agencies';
@@ -237,31 +247,35 @@ require_once __DIR__ . '/includes/header.php';
     <h2 class="text-3xl md:text-4xl font-bold">Simple Pricing. Real Value.</h2>
     <p class="text-slate-400 mt-3 text-sm">Start free. Upgrade when you&rsquo;re ready to scale.</p>
   </div>
-  <div class="grid md:grid-cols-3 gap-6 items-start">
+  <?php /* Cards stretch (no items-start) so the three CTAs land on one
+           baseline; the feature lists grow to absorb the difference. */ ?>
+  <div class="grid md:grid-cols-3 gap-6 items-stretch">
 
     <!-- FREE -->
-    <div class="backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-8">
+    <div class="relative flex flex-col backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-8 transition-colors hover:bg-white/[0.07] focus-within:border-white/50">
       <h3 class="text-xl font-bold mb-1">Free</h3>
       <p class="text-slate-400 text-sm mb-6">Explore Utiligo with no commitment.</p>
       <p class="text-4xl font-extrabold mb-6">$0</p>
-      <ul class="space-y-3 text-sm text-slate-300 mb-8">
+      <ul class="space-y-3 text-sm text-slate-300 mb-8 flex-1">
         <li><i class="fa-solid fa-check text-white mr-2"></i><?= $FREE_LEAD_LIMIT ?> leads per search</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $FREE_SITE_LIMIT ?> site generation / day</li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>2 free templates</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $FREE_GEN_LIMIT ?> site generation / day</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i><?= $FREE_TMPL_LIMIT ?> free templates</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Basic dashboard</li>
         <li><i class="fa-solid fa-xmark text-slate-600 mr-2"></i>ZIP export locked</li>
         <li><i class="fa-solid fa-xmark text-slate-600 mr-2"></i>No priority support</li>
       </ul>
-      <a href="/register.php" class="block text-center bg-white/10 hover:bg-white/20 py-3 rounded-full font-semibold transition">Start Free</a>
+      <a href="/register.php" class="mt-auto block text-center bg-white/10 hover:bg-white/20 py-3 rounded-full font-semibold transition focus-visible:outline-none focus-visible:bg-white focus-visible:text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Start Free</a>
     </div>
 
     <!-- PRO -->
-    <div class="relative backdrop-blur-lg bg-white/8 border-2 border-white rounded-2xl p-8">
+    <?php /* Pro's border is already solid white, so its keyboard affordance is a
+             slightly lifted fill on focus-within plus the ring on the CTA. */ ?>
+    <div class="relative flex flex-col backdrop-blur-lg bg-white/8 border-2 border-white rounded-2xl p-8 transition-colors hover:bg-white/10 focus-within:bg-white/10">
       <span class="absolute -top-3 right-8 bg-white text-black text-xs font-bold px-3 py-1 rounded-full">Most Popular</span>
       <h3 class="text-xl font-bold mb-1">Pro</h3>
       <p class="text-slate-400 text-sm mb-6">For freelancers ready to land real clients.</p>
       <p class="text-4xl font-extrabold mb-6">$<?= number_format($PRO_PRICE, 2) ?><span class="text-base font-medium text-slate-400">/mo</span></p>
-      <ul class="space-y-3 text-sm text-slate-200 mb-8">
+      <ul class="space-y-3 text-sm text-slate-200 mb-8 flex-1">
         <li><i class="fa-solid fa-check text-white mr-2"></i><?= $PRO_LEAD_LIMIT ?> leads unlocked / period</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i><?= $PRO_SITE_LIMIT ?> active websites</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= $TMPL_COUNT ?> templates</li>
@@ -269,16 +283,16 @@ require_once __DIR__ . '/includes/header.php';
         <li><i class="fa-solid fa-check text-white mr-2"></i>Full revenue dashboard</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Priority support</li>
       </ul>
-      <a href="/register.php?plan=pro" class="block text-center bg-white hover:bg-slate-200 text-black py-3 rounded-full font-semibold transition">Go Pro</a>
+      <a href="/register.php?plan=pro" class="mt-auto block text-center bg-white hover:bg-slate-200 text-black py-3 rounded-full font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Pro</a>
     </div>
 
     <!-- ENTREPRENEUR -->
-    <div class="relative backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-8">
+    <div class="relative flex flex-col backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-8 transition-colors hover:bg-white/[0.07] focus-within:border-white/50">
       <span class="absolute -top-3 right-8 bg-slate-700 text-white text-xs font-bold px-3 py-1 rounded-full">Best for Agencies</span>
       <h3 class="text-xl font-bold mb-1">Entrepreneur</h3>
       <p class="text-slate-400 text-sm mb-6">Scale with a full agency operation.</p>
       <p class="text-4xl font-extrabold mb-6">$<?= number_format($ENT_PRICE, 2) ?><span class="text-base font-medium text-slate-400">/mo</span></p>
-      <ul class="space-y-3 text-sm text-slate-200 mb-8">
+      <ul class="space-y-3 text-sm text-slate-200 mb-8 flex-1">
         <li><i class="fa-solid fa-infinity text-white mr-2"></i>Unlimited leads</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i><?= $ENT_SITE_LIMIT ?> active websites</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= $TMPL_COUNT ?> templates</li>
@@ -293,7 +307,7 @@ require_once __DIR__ . '/includes/header.php';
         <li><i class="fa-solid fa-check text-white mr-2"></i>Client reports</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Team seats</li>
       </ul>
-      <a href="/register.php?plan=entrepreneur" class="block text-center bg-white/10 hover:bg-white/20 py-3 rounded-full font-semibold transition">Go Entrepreneur</a>
+      <a href="/register.php?plan=entrepreneur" class="mt-auto block text-center bg-white/10 hover:bg-white/20 py-3 rounded-full font-semibold transition focus-visible:outline-none focus-visible:bg-white focus-visible:text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Entrepreneur</a>
     </div>
 
   </div>

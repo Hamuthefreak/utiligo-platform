@@ -15,14 +15,15 @@ require_login();
 header('Content-Type: application/json');
 
 $user   = current_user();
-$is_pro = ($user['plan'] ?? 'free') === 'pro';
+// Pro AND Entrepreneur — Entrepreneur is the higher tier and inherits this.
+$is_pro = plan_has_pro_features($user['plan'] ?? 'free');
 
 // Free users get a clear, friendly message instead of a silent failure
 if (!$is_pro) {
     json_response([
         'success' => false,
         'pro_required' => true,
-        'error' => 'Custom image uploads are available on the Pro plan. Your site will be generated with beautiful stock photos instead — upgrade anytime to use your own images.',
+        'error' => 'Custom image uploads are available on the Pro and Entrepreneur plans. Your site will be generated with beautiful stock photos instead — upgrade anytime to use your own images.',
     ], 403);
 }
 

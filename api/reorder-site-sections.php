@@ -17,8 +17,9 @@ require_login();
 header('Content-Type: application/json');
 
 $user = current_user();
-if ($user['plan'] !== 'pro') {
-    json_response(['success' => false, 'error' => 'The site editor is a Pro feature.'], 403);
+// Pro AND Entrepreneur — Entrepreneur is the higher tier and inherits this.
+if (!plan_has_pro_features($user['plan'] ?? 'free')) {
+    json_response(['success' => false, 'error' => 'The site editor is available on the Pro and Entrepreneur plans.'], 403);
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? [];

@@ -36,8 +36,10 @@ $PRO_LEAD_LIMIT    = $_raw_pro_lead === -1 ? 0           : $_raw_pro_lead;   // 
 // to free users.  Only the user's *own* plan limit should honor their own
 // per-user overrides — marketing copy for a plan the user is NOT on must
 // show that plan's global default.
-$PRO_SITE_LIMIT = $plan === 'pro'          ? plan_site_limit('pro', $uid)          : (int)(defined('PRO_SITE_LIMIT') ? PRO_SITE_LIMIT : 50);
-$ENT_SITE_LIMIT = $plan === 'entrepreneur' ? plan_site_limit('entrepreneur', $uid) : (int)(defined('ENT_SITE_LIMIT') ? ENT_SITE_LIMIT : 500);
+// plan_site_limit($plan) with no user id returns that plan's global default,
+// so the "upgrade to..." copy can never drift from plan_limits.php.
+$PRO_SITE_LIMIT = $plan === 'pro'          ? plan_site_limit('pro', $uid)          : plan_site_limit('pro');
+$ENT_SITE_LIMIT = $plan === 'entrepreneur' ? plan_site_limit('entrepreneur', $uid) : plan_site_limit('entrepreneur');
 
 $lead_limit_js = match($plan) {
     'entrepreneur' => 0,

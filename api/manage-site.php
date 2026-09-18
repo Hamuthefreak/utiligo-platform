@@ -30,9 +30,10 @@ if (!$siteId || !in_array($action, ['extend', 'delete'], true)) {
     json_response(['success' => false, 'error' => 'Invalid request.'], 400);
 }
 
-// Extend is Pro-only; delete is allowed for all users
-if ($action === 'extend' && ($user['plan'] ?? 'free') !== 'pro') {
-    json_response(['success' => false, 'error' => 'Extending share links is a Pro feature.'], 403);
+// Extending a share link is a paid feature (Pro and Entrepreneur);
+// delete is allowed for all users.
+if ($action === 'extend' && !plan_has_pro_features($user['plan'] ?? 'free')) {
+    json_response(['success' => false, 'error' => 'Extending share links is available on the Pro and Entrepreneur plans.'], 403);
 }
 
 $pdo  = get_platform_db();
