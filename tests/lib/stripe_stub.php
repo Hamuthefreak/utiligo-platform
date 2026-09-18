@@ -36,7 +36,14 @@ $record = [
     'form'   => [],
     'auth'   => $_SERVER['PHP_AUTH_USER'] ?? '',
 ];
-parse_str((string)$raw, $parsed);
+
+// PHP consumes the body of an application/x-www-form-urlencoded request while
+// populating $_POST, so php://input can come back empty even though the request
+// carried fields. Prefer $_POST and keep php://input for anything else.
+$parsed = $_POST ?: [];
+if (!$parsed) {
+    parse_str((string)$raw, $parsed);
+}
 $record['form'] = $parsed;
 
 if (!is_dir($tmpDir)) {

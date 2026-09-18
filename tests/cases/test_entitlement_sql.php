@@ -83,10 +83,24 @@ t_section('The never-downgrade guard');
 
 t_like($sql, "FIELD(COALESCE(NULLIF(LOWER(TRIM(plan)), ''), 'free'), 'free', 'pro', 'entrepreneur') > 0",
     'an unrecognised stored plan is left alone');
-t_like($sql, "< FIELD(?, 'free', 'pro', 'entrepreneur')", 'the target must rank above the current plan');
+t_like($sql, "<= FIELD(?, 'free', 'pro', 'entrepreneur')",
+    'the target must not rank below the current plan (equal is allowed, a re-purchase of the same plan)');
 
 [$freeSql, ] = t_stmt(['user_id' => 7, 'plan' => 'free', 'allow_downgrade' => true]);
-t_unlike($freeSql, '< FIELD(', 'a downgrade is allowed when the caller says so');
+t_unlike($freeSql, '<= FIELD(', 'a downgrade is allowed when the caller says so');
+
+t_section('A same-plan re-purchase is not a downgrade');
+
+// This is the case that left a paying customer reading as cancelled: they
+// cancel, then buy the plan they had again. The stored plan is unchanged, so a
+// strict `<` refused the write and the status stayed 'cancelled'.
+[$samePlanSql, ] = t_stmt(['user_id' => 7, 'plan' => 'pro', 'status' => 'active']);
+t_like($samePlanSql, '<= FIELD(', 'an equal rank passes the rank guard');
+
+[$lowerSql, ] = t_stmt(['user_id' => 7, 'plan' => 'pro']);
+t_like($lowerSql, '<= FIELD(?, ', 'so a higher stored plan is what blocks it');
+t_is(entitlement_plan_rank('entrepreneur') > entitlement_plan_rank('pro'), true,
+    'and Entrepreneur really does rank above Pro');
 
 t_section('There is no cancelled-status guard, on purpose');
 
@@ -109,8 +123,8 @@ t_like($cancelSql, 'subscription_status = ?', 'a cancellation writes the status'
 t_section('Placeholders and parameter order');
 
 t_is(substr_count($sql, '?'), count($params), 'every placeholder has exactly one bound parameter');
-t_is($params, ['pro', 'active', 'cus_1', 'sub_1', 1700000000, 7, 'pro', 1700000000],
-    'parameters are in the order the placeholders appear');
+t_is($params, ['pro', 'active', 'cus_1', 'sub_1', '1700000000.000000', 7, 'pro', '1700000000.000000'],
+    'parameters are in the order the placeholders appear, event time at microsecond precision');
 
 t_section('Subscription identity (the re-subscribe case)');
 
@@ -160,7 +174,7 @@ $local = entitlement_statement(
 );
 t_like($local[0], 'subscription_event_at = FROM_UNIXTIME(?)',
     'an admin or test-mode change still moves the ordering clock');
-t_unlike($local[0], '< FIELD(', 'and, being authoritative, is not held back by the rank guard');
+t_unlike($local[0], '<= FIELD(', 'and, being authoritative, is not held back by the rank guard');
 
 // A moderation-only status change leaves the clock alone, so it cannot silently
 // block a genuine cancellation Stripe has already sent.

@@ -5,10 +5,15 @@
 --
 --   subscription_event_at    the unix timestamp of the last change applied,
 --                            from Stripe's event `created` for webhook work and
---                            from NOW() for local/admin changes. A write is only
---                            allowed when it is strictly newer than this, so
---                            out-of-order delivery and replayed events both
+--                            from the wall clock for local/admin changes. A write
+--                            is only allowed when it is strictly newer than this,
+--                            so out-of-order delivery and replayed events both
 --                            resolve to the newest change winning.
+--
+--                            Microseconds, because Stripe timestamps are whole
+--                            seconds while local changes are not: two operator
+--                            actions inside one second would otherwise collide and
+--                            the second would be refused by its own guard.
 --
 --   stripe_subscription_id   which subscription the account is actually on.
 --                            customer.subscription.deleted used to be matched by
@@ -24,7 +29,7 @@
 -- does not exist and both ALTERs fail with 42S02 (also ignorable).
 
 ALTER TABLE utiligo_users
-  ADD COLUMN subscription_event_at DATETIME NULL DEFAULT NULL
+  ADD COLUMN subscription_event_at DATETIME(6) NULL DEFAULT NULL
   AFTER subscription_started_at;
 
 ALTER TABLE utiligo_users

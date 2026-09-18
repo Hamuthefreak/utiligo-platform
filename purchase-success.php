@@ -70,12 +70,45 @@ if ($grant !== null && $grant['verified']) {
     ]);
 }
 
-// The animation itself stays one-shot per session id.
+// The animation stays one-shot per session id, and only fires when the account
+// really is — or already was — on the plan this session paid for.
+//
+// Verifying a session is not the same as being entitled to celebrate it, and
+// the reconcile's return value cannot tell the two cases apart: in production
+// the webhook normally wins the race, so the reconcile is refused as a no-op
+// and still means the customer has their plan. What must NOT celebrate is a
+// purchase the account no longer holds — a cancelled customer revisiting a
+// saved success URL, whose plan reads 'free'. So ask the account, not the write.
 $celebrate = null;
 if ($grant !== null && !_purchase_is_replay($sessionId, $_SESSION['purchase_ob_session'] ?? null)) {
-    $_SESSION['purchase_animation_plan'] = $grant['plan'];
-    $_SESSION['purchase_ob_session']     = $sessionId;
-    $celebrate                           = $grant['plan'];
+    // The dev fallback never writes, so there is nothing to check it against.
+    $confirmed = !$grant['verified'] || _purchase_account_holds_plan($userId, $grant['plan']);
+
+    if ($confirmed) {
+        $_SESSION['purchase_animation_plan'] = $grant['plan'];
+        $_SESSION['purchase_ob_session']     = $sessionId;
+        $celebrate                           = $grant['plan'];
+    }
+}
+
+/**
+ * Does the account actually hold this plan (or better)?
+ *
+ * Read after the reconcile rather than inferred from it. A failed database read
+ * returns false, which suppresses the animation rather than showing a customer
+ * a plan we cannot prove they have.
+ */
+function _purchase_account_holds_plan(int $userId, string $plan): bool
+{
+    $wantRank = entitlement_plan_rank($plan);
+    if ($wantRank === null) {
+        return false;
+    }
+
+    $current  = entitlement_current_plan($userId);
+    $haveRank = $current === null ? null : entitlement_plan_rank($current);
+
+    return $haveRank !== null && $haveRank >= $wantRank;
 }
 
 /**

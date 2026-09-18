@@ -127,6 +127,20 @@ $again = entitlement_set_status($buyer, 'cancelled', ['source' => 'test.self_ser
 t_is($again['reason'], 'no change', 'a second cancel is reported as a no-op');
 t_is(t_cancel_state($buyer)['plan'], 'pro', 'and still does not drop the plan');
 
+// 'no change' is the right thing to return, but the log should distinguish a
+// guarded refusal from a genuine nothing-to-do, or an incident cannot be read.
+t_like(
+    entitlement_no_change_detail(
+        t_db(),
+        ['user_id' => $buyer, 'status' => 'cancelled'],
+        t_user($buyer),
+        null,
+        'cancelled'
+    ),
+    'already in the requested state',
+    'the no-op is explained as already being in that state'
+);
+
 t_section('Re-subscribing after cancelling works, through both writers');
 
 // The self-service cancel, then a genuine new purchase. This is the case a
@@ -168,6 +182,25 @@ t_post_webhook($app, t_cancel_deleted('cus_again', 'sub_again', time()));
 t_is(t_cancel_state($buyer)['plan'], 'entrepreneur',
     'a second deletion for the old subscription changes nothing');
 t_is(t_cancel_state($buyer)['status'], 'active', 'and the account stays active');
+
+// That refusal is correct, and the log has to say WHICH guard refused it: a
+// support engineer sees no change either way, and the difference between "this
+// was a replay" and "this names a subscription we replaced" is the whole bug.
+t_like(
+    entitlement_no_change_detail(
+        t_db(),
+        [
+            'user_id'            => $buyer,
+            'subscription_id'    => 'sub_again',
+            'match_subscription' => true,
+        ],
+        t_user($buyer),
+        null,
+        'cancelled'
+    ),
+    'it names subscription sub_again, but the account is on sub_third',
+    'and the explanation names both subscriptions'
+);
 
 t_section('An admin change is authoritative and immediate');
 

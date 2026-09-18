@@ -52,10 +52,12 @@ $sent = t_last_stripe_request();
 t_is($sent['method'] ?? '', 'POST', 'the stub received a POST');
 t_is($sent['path'] ?? '', '/v1/checkout/sessions', 'at the sessions endpoint');
 t_is($sent['auth'] ?? '', STRIPE_SECRET_KEY, 'the secret key is sent as basic auth');
-t_is($sent['form']['metadata[plan]'] ?? '', 'entrepreneur', 'the plan really travelled to Stripe');
+// parse_str() expands the bracket notation into nested arrays, so these are
+// asserted the way a form decoder sees them rather than as flat keys.
+t_is($sent['form']['metadata']['plan'] ?? '', 'entrepreneur', 'the plan really travelled to Stripe');
 t_is($sent['form']['client_reference_id'] ?? '', '42', 'so did the payer');
 t_is($sent['form']['mode'] ?? '', 'subscription', 'and the mode');
-t_is($sent['form']['subscription_data[metadata][plan]'] ?? '', 'entrepreneur',
+t_is($sent['form']['subscription_data']['metadata']['plan'] ?? '', 'entrepreneur',
     'and the subscription metadata');
 
 t_section('Pro uses the Pro price, not the Entrepreneur one');

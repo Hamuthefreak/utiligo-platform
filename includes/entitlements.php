@@ -77,6 +77,30 @@ require_once __DIR__ . '/plans.php';
 require_once __DIR__ . '/../userdb.php';
 
 /**
+ * The account's stored plan, or null when it cannot be read.
+ *
+ * Exists so a caller can ask "what does this account actually have?" without
+ * duplicating the column name. purchase-success.php uses it to decide whether a
+ * verified purchase is reflected in the account before celebrating it.
+ */
+function entitlement_current_plan(int $userId): ?string
+{
+    if ($userId <= 0) {
+        return null;
+    }
+
+    try {
+        $stmt = get_user_db()->prepare('SELECT plan FROM utiligo_users WHERE id = ? LIMIT 1');
+        $stmt->execute([$userId]);
+        $row = $stmt->fetch();
+        return $row ? (string)($row['plan'] ?? '') : null;
+    } catch (\Throwable $e) {
+        entitlement_log('read', 'could not read the plan for user ' . $userId . ': ' . $e->getMessage());
+        return null;
+    }
+}
+
+/**
  * Canonical plan order, cheapest first.
  *
  * Taken from plan_config() rather than duplicated, so this module cannot drift
@@ -191,8 +215,15 @@ function entitlement_statement(array $c, ?string $plan, ?string $status, array $
             // The never-downgrade rule, restated in SQL so it is atomic against
             // a concurrent writer. `rank > 0` leaves an unrecognised stored
             // plan alone rather than guessing at it.
+            //
+            // The comparison is `<=`, not `<`: buying the SAME plan again is
+            // not a downgrade, and it has real work to do — a customer who
+            // cancelled and re-subscribed to the plan they had is stored as
+            // 'pro' with status 'cancelled', so a strict `<` would refuse the
+            // purchase and leave them reading as cancelled despite paying. The
+            // event clock still refuses a replayed older purchase.
             $rank    = entitlement_rank_sql('plan');
-            $where[] = "$rank > 0 AND $rank < FIELD(?, " . entitlement_plan_sql_list() . ")";
+            $where[] = "$rank > 0 AND $rank <= FIELD(?, " . entitlement_plan_sql_list() . ")";
             $wparams[] = $plan;
         }
     }
@@ -229,9 +260,16 @@ function entitlement_statement(array $c, ?string $plan, ?string $status, array $
         $sets[] = 'subscription_started_at = NOW()';
     }
 
-    $eventAt = $c['event_at'] === null ? null : (int)$c['event_at'];
+    // Formatted as a fixed-precision decimal string rather than passed as a
+    // float: microsecond precision is what makes two local changes in the same
+    // second distinguishable, and PDO's default float rendering would drop it
+    // (PHP's precision setting is 14 significant digits, and these values have
+    // 10 to the left of the point). Stripe's whole-second timestamps arrive as
+    // ints and format to an exact .000000, which is why they need no special
+    // case here.
+    $eventAt = $c['event_at'] === null ? null : sprintf('%.6F', (float)$c['event_at']);
     if ($eventAt !== null && !in_array('subscription_event_at', $omit, true)) {
-        // FROM_UNIXTIME() and NOW() both resolve in MySQL's session time zone,
+        // FROM_UNIXTIME() and NOW(6) both resolve in MySQL's session time zone,
         // so a Stripe timestamp and a local one are directly comparable. The
         // migration backfills the column from subscription_started_at, which
         // NOW() also wrote, so pre-existing rows keep the same frame.
@@ -336,10 +374,12 @@ function entitlement_apply(array $change): array
                     ? entitlement_plan_rank(entitlement_default_plan())
                     : null;
             }
-            if ($from === null || $to === null || $to <= $from) {
-                entitlement_log($source, "refused: {$plan} is not an upgrade (currently "
+            // Strictly lower is a downgrade and is refused. Equal is allowed —
+            // see the SQL guard above for why a same-plan re-purchase matters.
+            if ($from === null || $to === null || $to < $from) {
+                entitlement_log($source, "refused: {$plan} would be a downgrade (currently "
                     . (string)($current['plan'] ?? '?') . ")");
-                return entitlement_result(false, 'not an upgrade', 0, $plan, $source);
+                return entitlement_result(false, 'would be a downgrade', 0, $plan, $source);
             }
         }
     }
@@ -374,6 +414,14 @@ function entitlement_apply(array $change): array
             if ($affected > 0) {
                 entitlement_log($source, 'applied plan=' . ($plan ?? '(unchanged)')
                     . ' status=' . ($status ?? '(unchanged)') . ' affected=' . $affected);
+            } else {
+                // A guarded no-op and an unguarded one both return 0 rows. Two of
+                // the three cases behind that are exactly the ones worth being
+                // able to see in an incident review — a replay, and an event for a
+                // subscription the account has since replaced — so say which.
+                // Explanatory only: the guards in the SQL are authoritative.
+                entitlement_log($source, 'matched no rows: '
+                    . entitlement_no_change_detail($pdo, $c, $current, $plan, $status));
             }
 
             return entitlement_result($affected > 0, $affected > 0 ? 'applied' : 'no change', $affected, $plan, $source);
@@ -396,6 +444,75 @@ function entitlement_apply(array $change): array
 
     entitlement_log($source, 'write failed: ' . $lastError);
     return entitlement_result(false, 'write failed', 0, $plan, $source);
+}
+
+/**
+ * Explain a guarded UPDATE that matched no rows. Never throws.
+ *
+ * 'no change' is the right thing to RETURN — callers treat it as a no-op — but it
+ * conflates three situations the log should not conflate: a replayed event, an
+ * event for a subscription the account has replaced, and a genuine nothing-to-do.
+ * The first two are the bug class this module exists to fix, so a support engineer
+ * needs to be able to tell them apart without reading the SQL.
+ *
+ * The timestamp comparison is done by MySQL rather than in PHP on purpose: the
+ * guard compares in the session time zone, and a PHP-side comparison of a string
+ * timestamp against a unix one would not necessarily agree with it.
+ */
+function entitlement_no_change_detail(PDO $pdo, array $c, ?array $current, ?string $plan, ?string $status): string
+{
+    if ($current === null) {
+        return 'no matching account, or the row could not be read';
+    }
+
+    $detail = ['stored plan=' . (string)($current['plan'] ?? '?')
+        . ' status=' . (string)($current['subscription_status'] ?? '?')];
+
+    try {
+        $userId     = (int)$c['user_id'];
+        $customerId = trim((string)$c['customer_id']);
+        $eventAt    = $c['event_at'] === null ? null : sprintf('%.6F', (float)$c['event_at']);
+
+        $sql = 'SELECT stripe_subscription_id'
+             . ($eventAt === null
+                    ? ', 0 AS event_not_newer'
+                    : ', (subscription_event_at IS NOT NULL AND subscription_event_at >= FROM_UNIXTIME(?)) AS event_not_newer')
+             . ' FROM utiligo_users WHERE '
+             . ($userId > 0 ? 'id = ?' : 'stripe_customer_id = ?') . ' LIMIT 1';
+
+        $params = $eventAt === null ? [] : [$eventAt];
+        $params[] = $userId > 0 ? $userId : $customerId;
+
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        $row = $stmt->fetch();
+
+        if ($row) {
+            if (!empty($row['event_not_newer'])) {
+                $detail[] = 'its event is not newer than the one already applied (replayed or out of order)';
+            }
+
+            $requested = trim((string)$c['subscription_id']);
+            $stored    = trim((string)($row['stripe_subscription_id'] ?? ''));
+            if (!empty($c['match_subscription']) && $requested !== '' && $stored !== '' && $stored !== $requested) {
+                $detail[] = 'it names subscription ' . $requested . ', but the account is on ' . $stored;
+            }
+        }
+    } catch (\Throwable $e) {
+        $detail[] = 'could not explain (' . $e->getMessage() . ')';
+    }
+
+    // The third case: the account already is what was asked for, so nothing was
+    // refused and there is genuinely nothing to do.
+    $planMatches = $plan === null
+        || entitlement_plan_rank((string)($current['plan'] ?? '')) === entitlement_plan_rank($plan);
+    $statusMatches = $status === null
+        || strtolower(trim((string)($current['subscription_status'] ?? ''))) === $status;
+    if ($planMatches && $statusMatches) {
+        $detail[] = 'the account is already in the requested state';
+    }
+
+    return implode('; ', $detail);
 }
 
 /**
@@ -482,6 +599,19 @@ function entitlement_is_schema_error(\Throwable $e): bool
  */
 function entitlement_grant_from_stripe(int $userId, string $plan, array $opts = []): array
 {
+    $source    = (string)($opts['source'] ?? 'stripe-grant');
+    $requested = $plan;
+    $plan      = entitlement_normalize_plan($plan);
+
+    // A purchase can only buy a paid plan. Without this, a checkout event whose
+    // metadata says 'free' would be treated as a change to the free tier
+    // instead of as nonsense, and would reset the account's subscription status
+    // to 'active' on the way through.
+    if ($plan === null || !is_paid_plan($plan)) {
+        entitlement_log($source, 'refused: not a paid plan ("' . $requested . '")');
+        return entitlement_result(false, 'not a paid plan', 0, $plan, $source);
+    }
+
     return entitlement_apply([
         'user_id'         => $userId,
         'plan'            => $plan,
@@ -491,7 +621,7 @@ function entitlement_grant_from_stripe(int $userId, string $plan, array $opts = 
         'event_at'        => $opts['event_at'] ?? null,
         'store_customer'  => true,
         'started_at'      => true,
-        'source'          => (string)($opts['source'] ?? 'stripe-grant'),
+        'source'          => $source,
     ]);
 }
 
@@ -556,7 +686,11 @@ function entitlement_set_plan_local(int $userId, string $plan, array $opts = [])
         'user_id'         => $userId,
         'plan'            => $plan,
         'status'          => $isFree ? 'none' : 'active',
-        'event_at'        => time(),
+        // A real instant, not a whole second: two local changes inside the same
+        // second must both be able to land (an operator clearing a plan and
+        // granting it back), and at second resolution the second one would lose
+        // its own ordering guard and be refused.
+        'event_at'        => microtime(true),
         'allow_downgrade' => true,
         'started_at'      => !$isFree,
         'source'          => (string)($opts['source'] ?? 'local'),
@@ -587,7 +721,7 @@ function entitlement_set_status(int $userId, string $status, array $opts = []): 
         'user_id'         => $userId,
         'plan'            => null,
         'status'          => $status,
-        'event_at'        => !empty($opts['stamp_clock']) ? time() : null,
+        'event_at'        => !empty($opts['stamp_clock']) ? microtime(true) : null,
         'allow_downgrade' => true,
         'source'          => (string)($opts['source'] ?? 'local-status'),
     ]);

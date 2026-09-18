@@ -33,18 +33,26 @@ test run into a production write.
 ```bash
 docker run -d --name utiligo-test-mysql \
   -p 3306:3306 \
-  -e MYSQL_ALLOW_EMPTY_PASSWORD=yes \
+  -e MYSQL_ROOT_PASSWORD=utiligo_test_pw \
   -e MYSQL_DATABASE=utiligo_test_users \
   mysql:8.0
 ```
+
+Or use `tests/mysql.sh start`, which does the same thing and waits until the
+server accepts connections.
+
+**Give it a real password.** `config.php` reads credentials as
+`getenv('USERDB_PASS') ?: 'CHANGE_ME'`, and an empty string is falsy — so an
+empty password silently becomes the literal `CHANGE_ME` and every connection is
+refused with a confusing "Access denied".
 
 Normally nothing else is needed. To point the suite somewhere else, set the
 environment variables `config.php` already reads — `USERDB_HOST`, `USERDB_NAME`,
 `USERDB_USER`, `USERDB_PASS`, and the matching `DB_*` for the platform database:
 
 ```bash
-USERDB_NAME=my_test_users DB_USER=root DB_PASS= DB_NAME=my_test_platform \
-php tests/run.php
+USERDB_NAME=my_test_users DB_USER=root DB_PASS=utiligo_test_pw \
+DB_NAME=my_test_platform USERDB_PASS=utiligo_test_pw php tests/run.php
 ```
 
 Publish the container on **3306**: `userdb.php` builds its DSN from host, name

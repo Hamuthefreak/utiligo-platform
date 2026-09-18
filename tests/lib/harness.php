@@ -108,6 +108,50 @@ function t_show($value): string
  * Database
  * ──────────────────────────────────────────────────────────────────────────── */
 
+/**
+ * Create the test databases if they are missing.
+ *
+ * This runs BEFORE config.php is loaded, and so reads the environment directly
+ * rather than the constants config.php defines. config.php applies every
+ * pending migration as it loads, and a migration cannot create the database it
+ * needs to run in. Getting this order wrong produces a confusing failure —
+ * "Table 'utiligo_test_users.utiligo_users' doesn't exist" — on a fresh
+ * checkout, while passing on any machine where the databases already existed.
+ *
+ * @return array [bool ready, string why]
+ */
+function t_bootstrap_databases(): array
+{
+    $host = (string)(getenv('USERDB_HOST') ?: '127.0.0.1');
+    $user = (string)(getenv('USERDB_USER') ?: 'root');
+    $pass = getenv('USERDB_PASS');
+    $pass = $pass === false ? '' : (string)$pass;
+
+    $names = [
+        (string)(getenv('USERDB_NAME') ?: 'utiligo_users_db'),
+        (string)(getenv('DB_NAME') ?: 'utiligo_platform'),
+    ];
+
+    try {
+        t_assert_loopback($host, 'USERDB');
+        t_assert_loopback((string)(getenv('DB_HOST') ?: '127.0.0.1'), 'DB');
+
+        $pdo = new PDO('mysql:host=' . $host, $user, $pass,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
+
+        foreach ($names as $name) {
+            $pdo->exec('CREATE DATABASE IF NOT EXISTS `' . str_replace('`', '', $name) . '`
+                        DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+        }
+
+        return [true, ''];
+    } catch (T_Skip $e) {
+        return [false, $e->getMessage()];
+    } catch (Throwable $e) {
+        return [false, $e->getMessage()];
+    }
+}
+
 /** Loopback-only guard: a test run must never reach a remote database. */
 function t_assert_loopback(string $host, string $which): void
 {
@@ -221,13 +265,29 @@ function t_server(string $rootDir, ?string $router, array $env, string $label, a
 
     $env['APP_BASE_URL'] = 'http://127.0.0.1:' . $port;
 
-    $descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+    // Output goes to a file rather than a pipe. Two reasons: a pipe is
+    // inherited by the server process and keeps the parent's stdout open, which
+    // leaves a wrapper (a shell, or a CI runner) waiting for EOF after the suite
+    // has already finished; and a file leaves a readable record of what the
+    // server said when a test fails.
+    $logPath    = t_tmp_dir() . '/server-' . preg_replace('/[^a-z0-9]+/i', '-', $label) . '.log';
+    $nullDevice = DIRECTORY_SEPARATOR === '\\' ? 'nul' : '/dev/null';
+    $descriptors = [
+        0 => ['file', $nullDevice, 'r'],
+        1 => ['file', $logPath, 'a'],
+        2 => ['file', $logPath, 'a'],
+    ];
     $proc = proc_open($cmd, $descriptors, $pipes, $rootDir, array_merge(getenv(), $env));
     if (!is_resource($proc)) {
         throw new T_Skip('could not start the ' . $label . ' server');
     }
 
-    $server = ['proc' => $proc, 'pipes' => $pipes, 'port' => $port, 'url' => 'http://127.0.0.1:' . $port];
+    $server = [
+        'proc' => $proc,
+        'port' => $port,
+        'url'  => 'http://127.0.0.1:' . $port,
+        'log'  => $logPath,
+    ];
     t_wait_for_server($server);
     t_servers()[] = $server;
 
@@ -458,9 +518,24 @@ function t_post_webhook(string $appUrl, array $event, ?string $secret = null, ?a
     ]);
 }
 
-/** Extensions the suite needs, as command-line flags. */
+/**
+ * Extensions the suite needs, as command-line flags for a child PHP process.
+ *
+ * Checking extension_loaded() in the current process is not enough: run.php
+ * re-executes itself with the extensions enabled, so by the time tests run they
+ * are loaded here — while a freshly spawned `php -S` still has them switched
+ * off. That produced a server with no database driver, which failed every
+ * database-backed assertion for a reason nothing in the output explained.
+ * run.php therefore records the flags it re-executed with, and children reuse
+ * them.
+ */
 function t_php_flags(): array
 {
+    $inherited = getenv('UTILIGO_TEST_PHP_FLAGS');
+    if (is_string($inherited) && trim($inherited) !== '') {
+        return array_values(array_filter(explode(' ', trim($inherited)), fn($f) => $f !== ''));
+    }
+
     $flags = [];
     foreach (['curl', 'pdo_mysql'] as $ext) {
         if (!extension_loaded($ext)) {

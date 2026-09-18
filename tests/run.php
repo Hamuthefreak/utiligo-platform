@@ -33,13 +33,19 @@ if ($missing && PHP_SAPI === 'cli' && getenv('UTILIGO_TESTS_REEXEC') !== '1' && 
         }
     }
     if ($loadable) {
+        $extensionFlags = array_merge(...array_map(fn($e) => ['-d', 'extension=' . $e], $loadable));
         $command = array_merge(
             [PHP_BINARY],
-            array_merge(...array_map(fn($e) => ['-d', 'extension=' . $e], $loadable)),
+            $extensionFlags,
             [__FILE__],
             $requireDb ? ['--require-db'] : []
         );
         putenv('UTILIGO_TESTS_REEXEC=1');
+        // Hand the flags to the child servers this run spawns. They are new
+        // processes: without this they come up with no database driver, and
+        // every database-backed assertion fails for a reason the output cannot
+        // explain.
+        putenv('UTILIGO_TEST_PHP_FLAGS=' . implode(' ', $extensionFlags));
         $process = proc_open($command, [0 => STDIN, 1 => STDOUT, 2 => STDERR], $pipes, __DIR__);
         exit($process === false ? 1 : proc_close($process));
     }
@@ -54,11 +60,15 @@ $defaults = [
     'DB_HOST'               => '127.0.0.1',
     'DB_NAME'               => 'utiligo_test_platform',
     'DB_USER'               => 'root',
-    'DB_PASS'               => '',
+    // Deliberately NOT empty. config.php reads credentials as
+    // `getenv('USERDB_PASS') ?: 'CHANGE_ME'`, and an empty string is falsy — so
+    // an empty password here silently becomes the literal 'CHANGE_ME' and every
+    // connection is refused. Give the test server a real password instead.
+    'DB_PASS'               => 'utiligo_test_pw',
     'USERDB_HOST'           => '127.0.0.1',
     'USERDB_NAME'           => 'utiligo_test_users',
     'USERDB_USER'           => 'root',
-    'USERDB_PASS'           => '',
+    'USERDB_PASS'           => 'utiligo_test_pw',
     'STRIPE_SECRET_KEY'     => 'sk_test_stub_key',
     'STRIPE_WEBHOOK_SECRET' => 'whsec_test_stub_secret',
     'STRIPE_PRO_PRICE_ID'   => 'price_test_pro',
@@ -76,6 +86,11 @@ foreach ($defaults as $key => $value) {
 require_once __DIR__ . '/lib/prepend.php';
 
 require_once __DIR__ . '/lib/harness.php';
+
+// The databases have to exist before config.php loads: it applies every pending
+// migration on the way in, and that is where the schema comes from.
+[$dbReady, $dbWhy] = t_bootstrap_databases();
+
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/entitlements.php';
 require_once __DIR__ . '/../includes/stripe_api.php';
@@ -99,29 +114,19 @@ echo "  user DB: " . USERDB_HOST . '/' . USERDB_NAME . "\n";
  * own runner, so the tests always run against the real, current schema —
  * including any migration added later.
  */
-$dbReady = true;
-$dbWhy   = '';
-try {
-    t_assert_loopback((string)USERDB_HOST, 'USERDB');
-    t_assert_loopback((string)DB_HOST, 'DB');
-
-    $bootstrap = new PDO('mysql:host=' . USERDB_HOST, USERDB_USER, USERDB_PASS,
-        [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION]);
-    foreach ([USERDB_NAME, DB_NAME] as $dbName) {
-        $bootstrap->exec('CREATE DATABASE IF NOT EXISTS `' . str_replace('`', '', $dbName) . '`
-                          DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci');
+if ($dbReady) {
+    try {
+        // config.php has just applied migrations/ to both databases. This only
+        // proves the user table is really there before the first test assumes it.
+        t_db()->query('SELECT 1 FROM utiligo_users LIMIT 1');
+        echo "  schema:  applied from migrations/\n";
+    } catch (T_Skip $e) {
+        $dbReady = false;
+        $dbWhy   = $e->getMessage();
+    } catch (Throwable $e) {
+        $dbReady = false;
+        $dbWhy   = 'schema not applied: ' . $e->getMessage();
     }
-
-    // config.php already ran the migrations against both databases; this just
-    // proves the user table really exists before the first test assumes it does.
-    t_db()->query('SELECT 1 FROM utiligo_users LIMIT 1');
-    echo "  schema:  applied from migrations/\n";
-} catch (T_Skip $e) {
-    $dbReady = false;
-    $dbWhy   = $e->getMessage();
-} catch (Throwable $e) {
-    $dbReady = false;
-    $dbWhy   = $e->getMessage();
 }
 
 /* ── Stripe stub + application server under test ───────────────────────────── */

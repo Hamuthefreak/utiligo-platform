@@ -30,6 +30,30 @@ function t_plan_of(int $userId): string
     return (string)(t_user($userId)['plan'] ?? '?');
 }
 
+/**
+ * The page hands off with a client-side redirect, not a Location header: it
+ * renders a minimal document that calls window.location.replace(). So a
+ * successful visit is a 200 whose body contains that call.
+ */
+function t_assert_handoff(array $res, string $label): void
+{
+    t_is($res['status'], 200, $label . ': the page renders');
+    t_like($res['body'], "window.location.replace('/portal/index.php')",
+        $label . ': and hands off to the dashboard');
+}
+
+/**
+ * The page signals the animation by setting a per-plan sessionStorage key, and
+ * it emits the key as a concatenation — 'utl_purchase_ob_' + "pro" — which is
+ * the same expression onboarding-purchase.js builds. So the plan name is not
+ * adjacent to the prefix in the markup, and an assertion has to match the
+ * expression rather than the final key.
+ */
+function t_assert_celebrates(array $res, string $plan, string $label): void
+{
+    t_like($res['body'], 'utl_purchase_ob_\' + "' . $plan . '"', $label);
+}
+
 /** Local copy so this file does not depend on another test file's helpers. */
 function t_rec_checkout_event(int $userId, string $plan, string $customer, string $sub, int $created): array
 {
@@ -49,10 +73,9 @@ t_set_stripe_sessions([
 ]);
 
 $res = t_success_page($app, $buyer, '?plan=pro&session_id=cs_test_paid_pro');
-t_is($res['status'], 302, 'the page hands off to the portal');
-t_is($res['location'], '/portal/index.php', 'to the dashboard');
+t_assert_handoff($res, 'A verified session');
 t_is(t_plan_of($buyer), 'pro', 'the plan is reconciled from the Stripe session');
-t_like($res['body'], 'utl_purchase_ob_pro', 'the purchase animation is signalled');
+t_assert_celebrates($res, 'pro', 'the purchase animation is signalled for pro');
 t_unlike($res['body'], 'onboarding.css', 'and the unused onboarding stylesheet is not loaded');
 
 $user = t_user($buyer);
@@ -86,7 +109,7 @@ t_is(t_plan_of($buyer), 'free', 'the account is cancelled first');
 // it must lose — and it loses on time, not on a status check that would also
 // have blocked a genuine re-purchase.
 $res = t_success_page($app, $buyer, '?plan=pro&session_id=cs_test_cancelled_replay');
-t_is($res['status'], 302, 'the page still redirects rather than erroring');
+t_assert_handoff($res, 'A stale session');
 t_is(t_plan_of($buyer), 'free', 'a stale success URL cannot resurrect the subscription');
 t_unlike($res['body'], 'utl_purchase_ob', 'and it does not celebrate either');
 
@@ -102,7 +125,7 @@ t_set_stripe_sessions([
 ]);
 $res = t_success_page($app, $buyer, '?plan=pro&session_id=cs_test_rebuy');
 t_is(t_plan_of($buyer), 'pro', 'a new purchase re-grants the plan');
-t_like($res['body'], 'utl_purchase_ob_pro', 'and celebrates it');
+t_assert_celebrates($res, 'pro', 'and celebrates it');
 t_is(t_user($buyer)['subscription_status'], 'active', 'the account is active again');
 
 t_section('The ?plan parameter decides nothing');
@@ -219,8 +242,8 @@ t_post_webhook($app, t_rec_checkout_event($buyer, 'pro', 'cus_both', 'sub_test_b
 t_is(t_plan_of($buyer), 'pro', 'the webhook grants the plan');
 
 $res = t_success_page($app, $buyer, '?plan=pro&session_id=cs_test_both');
-t_is($res['status'], 302, 'the success page still redirects');
-t_is($res['location'], '/portal/index.php', 'to the dashboard');
+t_assert_handoff($res, 'After the webhook already granted');
+t_assert_celebrates($res, 'pro', 'and the customer still gets the purchase animation');
 t_is(t_plan_of($buyer), 'pro', 'and the plan is unchanged by the second writer');
 t_is(t_user($buyer)['subscription_status'], 'active', 'the subscription is still active');
 
