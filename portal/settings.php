@@ -8,6 +8,7 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../userdb.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
+require_once __DIR__ . '/../includes/entitlements.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/totp.php';
 require_once __DIR__ . '/../includes/mailer.php';
@@ -295,13 +296,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try { $userdb->prepare('DELETE FROM lead_search_quota WHERE user_id = ?')->execute([$user['id']]); } catch (\Throwable $e) {}
             try { $userdb->prepare('DELETE FROM utiligo_remember_tokens WHERE user_id = ?')->execute([$user['id']]); } catch (\Throwable $e) {}
 
+            // Drop entitlement through the module, with no ordering guard:
+            // deleting an account is authoritative and must take effect whatever
+            // else is in flight.
+            entitlement_apply([
+                'user_id'         => (int)$user['id'],
+                'plan'            => entitlement_default_plan(),
+                'status'          => 'cancelled',
+                'allow_downgrade' => true,
+                'source'          => 'settings.delete_account',
+            ]);
+
+            // Anonymise the row. Not an entitlement change, so it stays local —
+            // but the plan and subscription_status columns are deliberately
+            // absent from it, so there is still exactly one writer for those.
             try {
-                $userdb->prepare("UPDATE utiligo_users SET plan='free', subscription_status='cancelled',
+                $userdb->prepare("UPDATE utiligo_users SET
                     email=CONCAT('deleted_',id,'_',email), full_name='Deleted Account',
                     two_factor_secret=NULL, two_factor_enabled=0 WHERE id=?")
                     ->execute([$user['id']]);
             } catch (\Throwable $e) {
-                $userdb->prepare("UPDATE utiligo_users SET plan='free', subscription_status='cancelled',
+                $userdb->prepare("UPDATE utiligo_users SET
                     email=CONCAT('deleted_',id,'_',email), full_name='Deleted Account' WHERE id=?")
                     ->execute([$user['id']]);
             }

@@ -5,6 +5,7 @@ require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../userdb.php';
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
+require_once __DIR__ . '/../includes/entitlements.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/mailer.php';
 
@@ -33,14 +34,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             $error = 'Please enter a valid CVC.';
         } else {
             try {
-                $userdb = get_user_db();
-                try {
-                    $userdb->prepare("UPDATE utiligo_users SET plan=?, subscription_status='active', subscription_started_at=NOW() WHERE id=?")
-                        ->execute([$subscribePlan, $user['id']]);
-                } catch (\PDOException $e) {
-                    $userdb->prepare("UPDATE utiligo_users SET plan=?, subscription_status='active' WHERE id=?")
-                        ->execute([$subscribePlan, $user['id']]);
-                }
+                // Test-mode activation. There is no Stripe event behind this, so
+                // it is applied as a local change: immediate, downgrade allowed
+                // (this is the plan-switch path), and it still stamps the
+                // ordering clock so a stale Stripe event cannot overturn it.
+                entitlement_set_plan_local((int)$user['id'], $subscribePlan, [
+                    'source' => 'billing.test_subscribe',
+                ]);
+
                 $listIds = [BREVO_LIST_ALL_USERS, BREVO_LIST_PRO_USERS];
                 brevo_upsert_contact($user['email'], ['FIRSTNAME' => $user['full_name']], $listIds);
                 send_welcome_email($user['email'], $user['full_name']);
@@ -51,13 +52,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
     } elseif ($_POST['action'] === 'cancel') {
-        try {
-            $userdb = get_user_db();
-            $userdb->prepare("UPDATE utiligo_users SET subscription_status='cancelled' WHERE id=?")->execute([$user['id']]);
+        // Self-service cancel. Status only — the plan is deliberately left alone
+        // so the paid features run to the end of the period, which is what the
+        // message below promises. The Stripe customer.subscription.deleted event
+        // finalises the downgrade when the period actually ends.
+        // stamp_clock: the customer decided at this moment, so a saved success
+        // URL replayed afterwards must lose to this decision on time.
+        $result = entitlement_set_status((int)$user['id'], 'cancelled', [
+            'source'      => 'billing.cancel',
+            'stamp_clock' => true,
+        ]);
+
+        if ($result['applied'] || $result['reason'] === 'no change') {
             $message = 'Subscription cancelled. Your plan features remain active until the end of your billing period.';
             $user['subscription_status'] = 'cancelled';
-        } catch (\Throwable $ex) {
-            error_log('[billing] cancel failed: ' . $ex->getMessage());
+        } else {
+            error_log('[billing] cancel failed: ' . $result['reason']);
             $error = 'Could not cancel subscription right now. Please try again.';
         }
     }

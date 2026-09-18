@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../userdb.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/admin_auth.php';
+require_once __DIR__ . '/../includes/entitlements.php';
 
 require_admin();
 $admin = $GLOBALS['admin_user'];
@@ -62,8 +63,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && db_csrf_ok()) {
             $flash_err = 'Invalid edit request.';
         } else {
             try {
-                $post_pdo->prepare("UPDATE `$post_table` SET `$col`=? WHERE id=?")->execute([$val, $row_id]);
-                $flash_ok = "Row #$row_id &rarr; <code>$col</code> updated.";
+                if ($post_table === 'utiligo_users' && in_array($col, ['plan', 'subscription_status'], true)) {
+                    // This editor is a deliberate escape hatch, so it keeps its
+                    // immediacy and its ability to move in either direction — but
+                    // sending plan/status through the entitlement module means the
+                    // ordering clock is moved too. Without that, a stale Stripe
+                    // event arriving afterwards would silently undo a repair made
+                    // here, which is the bug this module exists to prevent.
+                    $result = $col === 'plan'
+                        ? entitlement_set_plan_local($row_id, (string)$val, ['source' => 'admin.db_editor.plan'])
+                        : entitlement_set_status($row_id, (string)$val, ['source' => 'admin.db_editor.status']);
+
+                    if (!$result['applied'] && $result['reason'] === 'unrecognised plan') {
+                        $flash_err = 'Not a known plan: ' . htmlspecialchars((string)$val);
+                    } else {
+                        $flash_ok = "Row #$row_id &rarr; <code>$col</code> updated.";
+                    }
+                } else {
+                    $post_pdo->prepare("UPDATE `$post_table` SET `$col`=? WHERE id=?")->execute([$val, $row_id]);
+                    $flash_ok = "Row #$row_id &rarr; <code>$col</code> updated.";
+                }
             } catch (Throwable $e) { $flash_err = $e->getMessage(); }
         }
 

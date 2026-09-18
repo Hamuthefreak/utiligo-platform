@@ -3,6 +3,7 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../userdb.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/admin_auth.php';
+require_once __DIR__ . '/../includes/entitlements.php';
 require_once __DIR__ . '/../includes/functions.php';
 
 require_admin();
@@ -28,10 +29,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'set_plan' && $targetId > 0) {
-        $plan   = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur']) ? $_POST['plan'] : 'free';
-        $status = in_array($plan, ['pro','entrepreneur']) ? 'active' : 'none';
-        $udb->prepare('UPDATE utiligo_users SET plan=?, subscription_status=? WHERE id=?')
-            ->execute([$plan, $status, $targetId]);
+        $plan   = in_array($_POST['plan'] ?? '', ['free','pro','entrepreneur'], true) ? (string)$_POST['plan'] : 'free';
+        // An operator pressing a button is not a Stripe event: it is authoritative
+        // and immediate, and may go up or down the plan order. It still stamps the
+        // ordering clock, so an event that describes something that already
+        // happened cannot overturn the decision afterwards.
+        entitlement_set_plan_local($targetId, $plan, ['source' => 'admin.set_plan']);
+        $status = in_array($plan, ['pro','entrepreneur'], true) ? 'active' : 'none';
         _admin_log('INFO', "Set plan={$plan} status={$status} for user_id={$targetId}");
         if ($targetId === (int)$admin['id']) {
             $_SESSION['user_id']                          = $targetId;
@@ -42,13 +46,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
     if ($action === 'ban' && $targetId > 0) {
-        $udb->prepare("UPDATE utiligo_users SET subscription_status='banned' WHERE id=?")->execute([$targetId]);
+        entitlement_set_status($targetId, 'banned', ['source' => 'admin.ban']);
         _admin_log('WARN', "Banned user_id={$targetId}");
         header('Location: ' . $base . '&flash=' . urlencode('User banned.'));
         exit;
     }
     if ($action === 'unban' && $targetId > 0) {
-        $udb->prepare("UPDATE utiligo_users SET subscription_status='active' WHERE id=?")->execute([$targetId]);
+        entitlement_set_status($targetId, 'active', ['source' => 'admin.unban']);
         _admin_log('INFO', "Unbanned user_id={$targetId}");
         header('Location: ' . $base . '&flash=' . urlencode('User unbanned.'));
         exit;

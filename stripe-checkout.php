@@ -7,6 +7,7 @@
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/stripe_api.php';
 
 require_login();
 
@@ -35,46 +36,22 @@ if (!$priceId || str_starts_with($priceId, 'YOUR_')) {
     exit;
 }
 
-$user       = current_user();
-$successUrl = APP_BASE_URL . '/purchase-success.php?plan=' . urlencode($plan) . '&session_id={CHECKOUT_SESSION_ID}';
-$cancelUrl  = APP_BASE_URL . '/portal/billing.php?upgrade=1&plan=' . urlencode($plan) . '&cancelled=1';
+$user = current_user();
 
-// Build Stripe Checkout Session via raw cURL (no Composer required)
-$payload = http_build_query([
-    'mode'                                    => 'subscription',
-    'line_items[0][price]'                    => $priceId,
-    'line_items[0][quantity]'                 => '1',
-    'customer_email'                          => $user['email'],
-    'client_reference_id'                     => (string)$user['id'],
-    'metadata[plan]'                          => $plan,
-    'metadata[user_id]'                       => (string)$user['id'],
-    'success_url'                             => $successUrl,
-    'cancel_url'                              => $cancelUrl,
-    'subscription_data[metadata][plan]'       => $plan,
-    'subscription_data[metadata][user_id]'    => (string)$user['id'],
-]);
+// Build the Checkout Session through includes/stripe_api.php (raw cURL, no
+// Composer, no Stripe SDK). The session is stamped server-side with the payer
+// (client_reference_id) and the plan actually bought (metadata.plan) — that
+// server-side stamp is what stripe-webhook.php and purchase-success.php later
+// trust, and why neither of them may believe a `?plan` parameter.
+$response = stripe_request('POST', 'v1/checkout/sessions',
+    stripe_checkout_session_params($user, $plan, $priceId, APP_BASE_URL));
 
-$ch = curl_init('https://api.stripe.com/v1/checkout/sessions');
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST           => true,
-    CURLOPT_POSTFIELDS     => $payload,
-    CURLOPT_USERPWD        => STRIPE_SECRET_KEY . ':',
-    CURLOPT_HTTPHEADER     => ['Content-Type: application/x-www-form-urlencoded'],
-    CURLOPT_TIMEOUT        => 15,
-]);
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-$data = json_decode($response, true);
-
-if ($httpCode !== 200 || empty($data['url'])) {
-    $errMsg = urlencode($data['error']['message'] ?? 'stripe_error');
+if (!$response['ok'] || empty($response['data']['url'])) {
+    $errMsg = urlencode($response['data']['error']['message'] ?? ($response['error'] ?: 'stripe_error'));
     header('Location: /portal/billing.php?upgrade=1&plan=' . urlencode($plan) . '&stripe_error=' . $errMsg);
     exit;
 }
 
 // Redirect to Stripe-hosted Checkout
-header('Location: ' . $data['url']);
+header('Location: ' . $response['data']['url']);
 exit;
