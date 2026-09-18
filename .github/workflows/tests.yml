@@ -31,8 +31,11 @@ jobs:
           MYSQL_DATABASE: utiligo_test_users
         ports:
           - 3306:3306
+        # -p matters: an unauthenticated ping reports the server as down while
+        # it is only refusing the login. (No comments inside the block below —
+        # a folded scalar would fold them into the option string.)
         options: >-
-          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root"
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u root -putiligo_test_pw"
           --health-interval=5s
           --health-timeout=5s
           --health-retries=20
