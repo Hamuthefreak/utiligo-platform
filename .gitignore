@@ -6,6 +6,12 @@
 # Written while the app runs, including during a test run.
 /storage/leads_log.txt
 
+# Support attachments (SUPPORT_UPLOAD_DIR_REL in includes/support.php). These are
+# customers' screenshots and documents, written while the app runs: they belong to
+# the people who uploaded them, not to the repository. storage/.htaccess denies
+# direct access, and api/support-file.php is the only reader.
+/storage/support/
+
 # Build artifacts
 /Utiligo.zip
 /UTILIGO.zip

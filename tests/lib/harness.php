@@ -397,6 +397,27 @@ function t_http(string $method, string $url, array $opt = []): array
     } elseif (isset($opt['form'])) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, http_build_query($opt['form']));
         curl_setopt($ch, CURLOPT_HTTPHEADER, $opt['headers'] ?? []);
+    } elseif (isset($opt['multipart'])) {
+        // A file is given as ['file' => '/path', 'name' => 'x.png', 'type' => 'image/png']
+        // and everything else is a plain field. Passing an ARRAY to curl makes it
+        // send multipart/form-data and choose the boundary itself, so no
+        // Content-Type is set here — doing so would break the boundary.
+        $fields = [];
+        foreach ($opt['multipart'] as $key => $value) {
+            if (is_array($value) && isset($value['file'])) {
+                $fields[$key] = new CURLFile(
+                    $value['file'],
+                    $value['type'] ?? 'application/octet-stream',
+                    $value['name'] ?? basename($value['file'])
+                );
+            } else {
+                $fields[$key] = $value;
+            }
+        }
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $fields);
+        if (!empty($opt['headers'])) {
+            curl_setopt($ch, CURLOPT_HTTPHEADER, $opt['headers']);
+        }
     } elseif (!empty($opt['headers'])) {
         curl_setopt($ch, CURLOPT_HTTPHEADER, $opt['headers']);
     }

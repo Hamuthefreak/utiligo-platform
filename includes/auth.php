@@ -72,9 +72,30 @@ function logout_user(): void
     clear_remember_me_cookie();
     $_SESSION = [];
     if (ini_get('session.use_cookies')) {
-        $p = session_get_cookie_params();
-        setcookie(session_name(), '', time() - 42000,
-            $p['path'], $p['domain'], $p['secure'], $p['httponly']);
+        // The path is NORMALISED, not passed through. config.php sets
+        // session.cookie_path to "/; SameSite=Lax" — a trick to get SameSite into
+        // the Set-Cookie header on PHP older than 7.3 — and since PHP 7.3
+        // setcookie() throws a ValueError for a path containing ";". Passing it
+        // straight back here made logout_user() FATAL, which matters because
+        // require_login() calls it whenever the session names an account that can
+        // no longer be read: the customer got "Something went wrong" (500) where
+        // they should have been asked to sign in again. A browser stores that
+        // cookie under path "/", so clearing "/" is the path that matches.
+        $p    = session_get_cookie_params();
+        $path = (string)($p['path'] ?? '/');
+        if (str_contains($path, ';')) {
+            $path = substr($path, 0, (int)strpos($path, ';'));
+        }
+        $path = $path === '' ? '/' : $path;
+
+        setcookie(session_name(), '', [
+            'expires'  => time() - 42000,
+            'path'     => $path,
+            'domain'   => (string)($p['domain'] ?? ''),
+            'secure'   => (bool)($p['secure'] ?? false),
+            'httponly' => (bool)($p['httponly'] ?? false),
+            'samesite' => 'Lax',
+        ]);
     }
     session_destroy();
 }

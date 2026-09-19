@@ -84,3 +84,8 @@ if (!defined('RATE_LIMIT_LEAD_BULK'))    define('RATE_LIMIT_LEAD_BULK',   10);
 // normally, and only a script or a stuck client will.
 if (!defined('RATE_LIMIT_CALL_SCRIPT'))  define('RATE_LIMIT_CALL_SCRIPT', 120);
 
+// Support is a message board, not a stream: opening a ticket, replying and reading
+// a thread is a handful of requests. This leaves room for a frustrated customer
+// reloading, and is a backstop against a script rather than a limit anyone meets.
+if (!defined('RATE_LIMIT_SUPPORT'))      define('RATE_LIMIT_SUPPORT', 40);
+

@@ -155,6 +155,17 @@ if (can_use_call_scripts($_plan)): ?>
 </script>
 <script defer src="<?= asset_url('/assets/js/call_scripts.js') ?>"></script>
 <?php endif; ?>
+<?php /* Support bubble — on every portal page, on every plan.
+         Support is deliberately NOT a paid feature: a free customer who cannot
+         report what is broken is a customer who leaves, and the least we can do
+         for them is listen. Loaded from this one layout for the same reason the
+         dock is — it has to be on the page you are already on.
+         The script is `defer`red so it never blocks the page. */ ?>
+<link rel="stylesheet" href="<?= asset_url('/assets/css/support.css') ?>">
+<script>
+  window.UTILIGO_SUPPORT = { api: '/api/support.php' };
+</script>
+<script defer src="<?= asset_url('/assets/js/support.js') ?>"></script>
 </head>
 <body class="antialiased bg-slate-950 text-white"
       data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>"

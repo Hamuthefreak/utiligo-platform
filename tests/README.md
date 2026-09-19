@@ -83,6 +83,8 @@ executed.
 | `test_subscription_updated.php` | Stripe-side plan changes and status transitions, through `.created`/`.updated` |
 | `test_lead_search_queue.php` | the async lead search: atomic claiming, crash recovery, enqueue gating, quota, and a completed search run end to end through the worker |
 | `test_auto_search.php` | saved searches that run themselves: the cadence gate, what an automated run asks for, delivery of the digest, and the failures it survives |
+| `test_support.php` | support tickets end to end: the model's rules, the ticket endpoint, attachment access control and the admin inbox |
+| `test_session.php` | the two ways a signed-in visitor gets turned away, both of which were live 500s |
 
 Mail is replaced by `tests/lib/mail_stub.php`, reached by `MAIL_API_BASE` — the
 same arrangement as Stripe, and for the same reason. Before that variable existed
@@ -179,6 +181,59 @@ its plan, then fetches that target over real HTTP — a 200 from the real
 `register.php`, with a body that already has the plan selected. Free is included,
 and must NOT arrive with a paid plan baked in.
 
+### Support (the bubble and the admin inbox)
+
+The bubble is server-rendered PHP with no router behind it, so a ticket is a real
+row in the platform database and the admin queue is a real page. `test_support.php`
+covers four things, in descending order of how much they would matter if wrong:
+
+- **A ticket is private.** Every read and write is scoped by owner — another
+  customer gets a 404 for the ticket, for a reply and for the attachment, and is
+  never told whether it exists. The attachment endpoint is the only reader: files
+  live under `storage/support/`, which `storage/.htaccess` denies, and their URLs
+  are `/api/support-file.php?id=…` rather than a storage path.
+- **A message is data, not markup.** `support_linkify()` is the one place in the
+  feature that builds HTML from input, so it is asserted directly: a pasted
+  `<script>` stays visible text, `javascript:` and `data:` URLs are not linkified
+  at all, and a URL followed by a full stop keeps the stop outside the link.
+- **A file is what it is.** Type comes from the bytes (finfo), never from the
+  filename: a `.png` that is really PHP is refused, more files than the cap is a
+  rule and not a crash, and an oversized file is refused *before* anything is
+  stored — a ticket carrying two of three screenshots is worse than one carrying
+  none.
+- **The queue tells the truth.** A customer message makes a ticket `open` and
+  raises the admin badge; an admin reply makes it `pending` and raises theirs.
+  Getting that backwards is how a support queue rots, so both directions are
+  asserted, including that opening a thread clears the right counter.
+
+The size cap is not the product's constant. `support_max_attachment_bytes()` is
+the *effective* ceiling — the smallest of the product cap, PHP's own
+`upload_max_filesize`, and a share of `post_max_size` — because this project runs
+on shared hosting where PHP refuses anything over 2 MB. Printing "5 MB each"
+there means a customer picks a screenshot, waits for the upload, and is refused by
+a limit nobody mentioned, in PHP's words rather than ours. The suite asserts that
+what the UI prints is what validation enforces; mutation-tested by returning the
+raw product constant, which fails two assertions.
+
+Attachment limits are also exercised through the real multipart path, using
+`t_http(..., ['multipart' => [...]])`.
+
+### Sessions
+
+`test_session.php` covers `require_login()`'s two refusals. Both were 500s in
+front of customers, found by driving the portal in a browser and reading
+`storage/php_errors.log` — not by reading code.
+
+A session naming an account that can no longer be read (deleted by an admin)
+is logged out and redirected to `/login.php?expired=1`. That path used to die:
+`logout_user()` passed the session cookie's path straight back to `setcookie()`,
+and `config.php` sets that path to `/; SameSite=Lax` as a trick for adding
+SameSite on PHP older than 7.3 — which PHP 7.3+ rejects with a `ValueError`. So
+the cleanup fatally unwound and the visitor got "Something went wrong" instead of
+a sign-in page. The tests assert the 302, the absence of an error page, and that
+the cookie is cleared at a path a browser can actually match; mutation-tested by
+restoring the raw path, which fails six assertions.
+
 ### The scheduled-search automation
 
 A saved search with `notify_email = 1` used to be a notifier and nothing more: the
@@ -235,6 +290,20 @@ Deploying this needs a cron entry, same shape as the other workers:
 ```
 
 ## Honest gaps
+
+- **The support bubble's JavaScript is verified in a browser, not by the suite.**
+  The suite proves the endpoint, the model, the access rules and the admin page,
+  but the 555-line bubble (panel state, file staging, the client-side size check)
+  is exercised by hand — the same gap the call-script dock has. Two of the bugs in
+  this feature were only visible in a browser: blank lines rendering twice because
+  the body was drawn with `white-space: pre-wrap` on top of `support_linkify()`'s
+  `<br>`, and the reply box advertising 5 MB on a host that only accepts 2 MB. The
+  first now has a static assertion over both render sites; the second has a
+  behaviour assertion on the number itself.
+- **A support ticket outlives the account that opened it.** Deleting a user leaves
+  its tickets and attachment files behind; the admin queue renders them as
+  `account #<id>` and support can still reply, because the files are read by an
+  admin rather than by the owner. That degrades gracefully but it is not a delete.
 
 - **The scheduled-search automation is proven up to the worker, not through it.**
   The tests run the real cron, so the enqueue, the cadence gate, the delivery and

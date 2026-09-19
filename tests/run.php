@@ -112,6 +112,8 @@ require_once __DIR__ . '/../includes/auto_search.php';
 // placeholder substitution) are pure functions, so the suite asserts them
 // directly rather than only through the endpoint that wraps them.
 require_once __DIR__ . '/../includes/call_scripts.php';
+require_once __DIR__ . '/../includes/support.php';
+require_once __DIR__ . '/../includes/support_uploads.php';
 // The call-script seed marker is an activity action, and the tests assert the
 // seed happens once by looking at that marker. Its constants live here.
 require_once __DIR__ . '/../includes/lead_activity_log.php';

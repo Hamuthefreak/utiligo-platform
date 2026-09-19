@@ -14,6 +14,14 @@ $_initials = strtoupper(substr($_name, 0, 1));
 $_logo_path = __DIR__ . '/../assets/images/logo.svg';
 $_logo_url  = '/assets/images/logo.svg';
 $_has_logo  = file_exists($_logo_path);
+
+// How many customer messages are waiting for a reply, for the nav badge.
+// Best-effort: support_unread_admin() swallows its own errors and answers 0, so an
+// unreachable database under-reports the badge instead of breaking every admin page.
+if (!function_exists('support_unread_admin')) {
+    require_once __DIR__ . '/support.php';
+}
+$_supportUnread = support_unread_admin();
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -81,6 +89,12 @@ $_has_logo  = file_exists($_logo_path);
     </a>
     <a href="/admin/crm.php" class="nav-link admin-item <?= $adminPage==='crm' ? 'active' : '' ?>">
       <i class="fa-solid fa-address-book"></i> CRM
+    </a>
+    <a href="/admin/support.php" class="nav-link admin-item <?= $adminPage==='support' ? 'active' : '' ?>">
+      <i class="fa-solid fa-headset"></i> Support
+      <?php if ($_supportUnread > 0): ?>
+        <span class="ml-auto text-[10px] bg-purple-500/25 text-purple-200 border border-purple-500/40 px-1.5 py-0.5 rounded-full font-bold"><?= (int)$_supportUnread ?></span>
+      <?php endif; ?>
     </a>
     <a href="/admin/email.php" class="nav-link admin-item <?= $adminPage==='email' ? 'active' : '' ?>">
       <i class="fa-solid fa-envelope"></i> Email Blast
