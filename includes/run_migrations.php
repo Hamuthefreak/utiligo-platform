@@ -11,6 +11,15 @@
  * 3. Any file not yet recorded in schema_migrations is executed statement-by-statement.
  * 4. Duplicate-column errors (SQLSTATE 42S21) are silently skipped so ALTER TABLE
  *    statements are safe to re-run against an already-patched MySQL 5.7 database.
+ *
+ * COMMENTS AND THE SEMICOLON SPLIT
+ * ────────────────────────────────
+ * Statements are separated by splitting the file on `;`, so a semicolon inside a
+ * COMMENT truncates the file at that character. What is left of the comment is a
+ * fragment that parses as garbage, which fails with a non-ignorable error — and
+ * because the file is then not recorded, EVERY statement after that line is
+ * skipped, silently, forever. migrations/021 and 025 both lost their real work to
+ * this. Full-line comments are therefore stripped before the split.
  * 5. Each successfully completed file is recorded so it NEVER runs again.
  *
  * HOW TO ADD A NEW MIGRATION
@@ -60,6 +69,20 @@ function run_pending_migrations(PDO $pdo, string $migrations_dir): void
 
         $sql = @file_get_contents($filepath);
         if ($sql === false) continue;
+
+        // 3b. Drop full-line `--` comments before splitting on `;`.
+        //
+        // Without this, a semicolon in a comment ends the "statement" early: the
+        // fragment after it is not valid SQL, the failure is not ignorable, and
+        // every statement below that line is skipped without a log line — the file
+        // is simply never applied. Only whole-line comments are removed, so a
+        // literal containing `--` cannot be damaged.
+        $lines = [];
+        foreach (preg_split('/\r\n|\r|\n/', $sql) as $line) {
+            if (str_starts_with(ltrim($line), '--')) continue;
+            $lines[] = $line;
+        }
+        $sql = implode("\n", $lines);
 
         // 4. Execute statement-by-statement so one failure doesn't abort the batch
         $statements = array_filter(
