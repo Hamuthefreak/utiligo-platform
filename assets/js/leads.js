@@ -1469,6 +1469,24 @@ window._leadsAppendEnrichments = function (body, enrichments) {
         if (!host) return;
         host.innerHTML = '<div class="text-xs text-slate-600 px-4 py-3 text-center">Loading…</div>';
 
+        // Filled from the API's `cadences`, so the menu cannot drift from the set
+        // cron/scheduled_searches.php validates against.
+        var cadenceOptions = [];
+        var defaultCadence = 24;
+
+        // What the automation has done for this search so far. A silent automation
+        // is indistinguishable from a broken one, so the last run and the last
+        // error both show up here.
+        function cadenceStatus(entry) {
+            if (entry.last_error) return 'Last run: ' + entry.last_error;
+            if (entry.last_run_at) {
+                var n = parseInt(entry.last_count || 0, 10) || 0;
+                return 'Last ran ' + new Date(entry.last_run_at).toLocaleDateString() +
+                       ' \u00b7 ' + n + ' new lead' + (n === 1 ? '' : 's');
+            }
+            return 'We\u2019ll start running this for you.';
+        }
+
         function renderRows(list, withNotify) {
             host.innerHTML = '';
             if (empty) empty.style.display = list.length ? 'none' : '';
@@ -1487,6 +1505,31 @@ window._leadsAppendEnrichments = function (body, enrichments) {
                 var meta = [];
                 meta.push(new Date(entry.at || entry.created_at || Date.now()).toLocaleDateString());
                 if (withNotify) meta.push('Notify me');
+
+                // The cadence menu only appears once emails are on: it is a
+                // setting for the automation, and there is no automation to
+                // schedule without them.
+                var cadenceRow = '';
+                if (withNotify && entry.notify_email) {
+                    var current = parseInt(entry.run_every_hours || 0, 10) || defaultCadence;
+                    var opts = '';
+                    cadenceOptions.forEach(function (c) {
+                        opts += '<option value="' + c.hours + '"' +
+                                (parseInt(c.hours, 10) === current ? ' selected' : '') + '>' +
+                                esc(c.label) + '</option>';
+                    });
+                    cadenceRow =
+                        '<label class="flex items-center gap-1.5 mt-2 text-[11px] text-slate-500">' +
+                            '<i class="fa-solid fa-rotate text-[10px]"></i>' +
+                            '<select class="ss-cadence" data-idx="' + i + '" aria-label="How often to run this search">' +
+                                opts +
+                            '</select>' +
+                            '<span>run it for me</span>' +
+                        '</label>' +
+                        '<span class="ss-status block mt-1 text-[10px] text-slate-600">' +
+                            esc(cadenceStatus(entry)) +
+                        '</span>';
+                }
                 btn.innerHTML =
                     '<div class="flex items-start justify-between gap-2">' +
                         '<div class="min-w-0 flex-1">' +
@@ -1497,8 +1540,9 @@ window._leadsAppendEnrichments = function (body, enrichments) {
                     '</div>' +
                     (withNotify ? '<label class="flex items-center gap-1.5 mt-2 text-[11px] text-slate-500 cursor-pointer hover:text-slate-400">' +
                         '<input type="checkbox" class="ss-notify" data-idx="' + i + '"' + (entry.notify_email ? ' checked' : '') + '>' +
-                        '<i class="fa-solid fa-bell text-[10px]"></i> Email me new leads on this search' +
+                        '<i class="fa-solid fa-bell text-[10px]"></i> Email me when this search finds new leads' +
                     '</label>' : '') +
+                    cadenceRow +
                     '<span class="text-[10px] text-slate-700">' + esc(meta[0]) + '</span>';
 
                 host.appendChild(btn);
@@ -1529,6 +1573,12 @@ window._leadsAppendEnrichments = function (body, enrichments) {
                         }
                         if (e.target.closest('.ss-notify') && row.querySelector('.ss-notify')) {
                             // Toggle handled on change below; allow propagation here
+                        }
+                        if (e.target.closest('.ss-cadence')) {
+                            // A dropdown needs the click. Without this the row's own
+                            // handler would also re-run the search underneath it.
+                            e.stopPropagation();
+                            return;
                         }
                     }
                     // Otherwise re-run the search
@@ -1582,10 +1632,55 @@ window._leadsAppendEnrichments = function (body, enrichments) {
                                 })
                             }).then(function(r){ return r.json(); }).then(function(j){
                                 leadsToast(
-                                    cb.checked ? 'Notifications on' : 'Notifications off',
-                                    cb.checked ? 'You\'ll get an email when matching leads are found.' : 'No further emails scheduled for this search.',
+                                    cb.checked ? 'This search now runs itself' : 'Automation off',
+                                    cb.checked
+                                        ? 'We\'ll run it on your schedule and email you what\'s new.'
+                                        : 'This search will not run on its own.',
                                     cb.checked ? 'success' : 'info'
                                 );
+                                // The cadence menu appears or disappears with the
+                                // checkbox, so re-render rather than patch.
+                                _leadsRenderSavedSearches();
+                            }).catch(function(){});
+                        } catch (e) {}
+                    });
+                });
+
+                // How often the automation runs this search. The cadence is the
+                // only rate limit on automated Places spend, so the API clamps it
+                // to the same menu these options came from.
+                host.querySelectorAll('.ss-cadence').forEach(function (sel) {
+                    sel.addEventListener('click', function (e) { e.stopPropagation(); });
+                    sel.addEventListener('change', function () {
+                        var idx = parseInt(sel.dataset.idx, 10);
+                        var entry = list[idx];
+                        var serverId = parseInt(entry.id || '0', 10) || 0;
+                        if (!serverId) { sel.value = defaultCadence; return; }
+                        var chosen = parseInt(sel.value, 10) || defaultCadence;
+                        try {
+                            fetch('/api/saved-searches.php', {
+                                method:'POST', credentials:'same-origin',
+                                headers:{'Content-Type':'application/json'},
+                                body: JSON.stringify({
+                                    op:'update', csrf_token:csrfToken, id:serverId,
+                                    name: entry.name, notify_email: true,
+                                    run_every_hours: chosen,
+                                    params: entry.params || {
+                                        city: entry.city, industry: entry.industry,
+                                        keywords: entry.keywords, sources: entry.sources
+                                    }
+                                })
+                            }).then(function(r){ return r.json(); }).then(function(j){
+                                if (j && j.success) {
+                                    entry.run_every_hours = j.run_every_hours || chosen;
+                                    var label = '';
+                                    cadenceOptions.forEach(function (c) {
+                                        if (parseInt(c.hours, 10) === entry.run_every_hours) label = c.label;
+                                    });
+                                    leadsToast('Schedule saved', label || ('Every ' + entry.run_every_hours + ' hours'), 'success');
+                                } else {
+                                    leadsToast('Could not save that', 'Please try again.', 'warn');
+                                }
                             }).catch(function(){});
                         } catch (e) {}
                     });
@@ -1602,6 +1697,10 @@ window._leadsAppendEnrichments = function (body, enrichments) {
                 headers:{'Content-Type':'application/json'},
                 body: JSON.stringify({ op:'list', csrf_token:csrfToken })
             }).then(function(r){ return r.json(); }).then(function(j){
+                if (j && j.success && Array.isArray(j.cadences) && j.cadences.length) {
+                    cadenceOptions = j.cadences;
+                    defaultCadence = parseInt(j.default_cadence, 10) || 24;
+                }
                 if (j && j.success && Array.isArray(j.saved_searches) && j.saved_searches.length) {
                     renderRows(j.saved_searches, canScheduleSearches);
                 } else {

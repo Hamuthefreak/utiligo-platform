@@ -14,6 +14,24 @@ require_once __DIR__ . '/../config.php';
    CORE SEND
    ═══════════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Base URL for the transactional email API, without a trailing slash.
+ *
+ * Overridable via MAIL_API_BASE for the same reason includes/stripe_api.php is
+ * overridable via STRIPE_API_BASE: there was otherwise no way to prove the one
+ * thing that decides whether a customer ever hears from us short of sending mail
+ * to a real address. Pointing this at a local stub exercises the real
+ * request-building code rather than replacing it with a mock.
+ */
+function email_api_base(): string
+{
+    $base = getenv('MAIL_API_BASE');
+    if (!is_string($base) || trim($base) === '') {
+        $base = 'https://api.brevo.com';
+    }
+    return rtrim($base, '/');
+}
+
 function send_email(string $to, string $subject, string $htmlBody, string $textBody = '', string $toName = ''): bool
 {
     $hasBrevoKey = defined('BREVO_API_KEY')
@@ -30,7 +48,7 @@ function send_email(string $to, string $subject, string $htmlBody, string $textB
         ];
         if ($textBody) $payload['textContent'] = $textBody;
 
-        $ch = curl_init('https://api.brevo.com/v3/smtp/email');
+        $ch = curl_init(email_api_base() . '/v3/smtp/email');
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_POST           => true,
@@ -92,7 +110,7 @@ function brevo_upsert_contact(string $email, array $attributes = [], array $list
     $payload = ['email' => $email, 'attributes' => $attributes, 'updateEnabled' => true];
     if ($listIds) $payload['listIds'] = $listIds;
 
-    $ch = curl_init('https://api.brevo.com/v3/contacts');
+    $ch = curl_init(email_api_base() . '/v3/contacts');
     curl_setopt_array($ch, [
         CURLOPT_RETURNTRANSFER => true,
         CURLOPT_POST           => true,

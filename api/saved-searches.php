@@ -10,7 +10,12 @@
  *     "name":        string (create / update),
  *     "params":      { city, industry, keywords, sources[] }  (create / update),
  *     "notify_email": bool   (update; default false)
+ *     "run_every_hours": int (update; how often the automation runs it)
  *   }
+ *
+ * `op:list` also returns `cadences`, so the drawer builds its cadence menu from
+ * the same list cron/scheduled_searches.php gates on instead of a second copy
+ * drifting in JavaScript.
  *
  * Why a single endpoint with an "op" field rather than four REST routes:
  * we already use this pattern (api/manage-site.php?op=…) elsewhere and
@@ -31,6 +36,7 @@ require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/error_logger.php';
 require_once __DIR__ . '/../includes/lead_activity_log.php';
+require_once __DIR__ . '/../includes/auto_search.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -78,7 +84,9 @@ define('SAVED_SEARCHES_PER_USER_CAP', 50);
 switch ($op) {
 case 'list':
     try {
-        $stmt = $pdo->prepare('SELECT id, name, params, last_run_at, last_count, notify_email, created_at FROM saved_searches WHERE user_id = ? ORDER BY created_at DESC LIMIT 200');
+        $stmt = $pdo->prepare('SELECT id, name, params, last_run_at, last_count, notify_email,
+                                      run_every_hours, last_enqueued_at, last_error, created_at
+                                 FROM saved_searches WHERE user_id = ? ORDER BY created_at DESC LIMIT 200');
         $stmt->execute([$uid]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
     } catch (\Throwable $e) {
@@ -93,7 +101,20 @@ case 'list':
         }
     }
     unset($r);
-    echo json_encode(['success' => true, 'saved_searches' => $rows]);
+
+    // The cadence menu travels with the list so the drawer cannot drift from the
+    // set the cron validates against.
+    $cadences = [];
+    foreach (auto_search_cadences() as $hours => $label) {
+        $cadences[] = ['hours' => (int)$hours, 'label' => $label];
+    }
+
+    echo json_encode([
+        'success'        => true,
+        'saved_searches' => $rows,
+        'cadences'       => $cadences,
+        'default_cadence'=> auto_search_default_cadence(),
+    ]);
     exit;
 
 case 'create':
@@ -151,14 +172,42 @@ case 'update':
         exit;
     }
     // Phase 6: notify_email is gated by can_schedule_searches() (Ent only
-    // today). Free/Pro users can save & re-run searches but cannot
-    // subscribe to delta emails.
+    // today). Free/Pro users can save & re-run searches but cannot subscribe to
+    // emails. This is also the switch that turns the automation on: a saved
+    // search only ever runs itself once somebody has asked to hear about it.
     if ($notify && !can_schedule_searches($plan)) {
         http_response_code(403);
         echo json_encode(['success' => false, 'error' => 'notify_email_requires_ent']);
         exit;
     }
-    // Build params if provided; otherwise re-read existing row's.
+
+    // Read the row once. It is the source for whatever this request did not send
+    // — and it is how "nothing changed" is told apart from "no such row", which
+    // the UPDATE's affected-row count cannot do: MySQL reports 0 for a save that
+    // wrote identical values, so re-saving a saved search used to answer 404.
+    try {
+        $ro = $pdo->prepare('SELECT id, params, run_every_hours FROM saved_searches WHERE id = ? AND user_id = ? LIMIT 1');
+        $ro->execute([$id, $uid]);
+        $existing = $ro->fetch(PDO::FETCH_ASSOC);
+    } catch (\Throwable $e) {
+        log_error('saved_searches_update_read', $e);
+        http_response_code(500);
+        echo json_encode(['success' => false, 'error' => 'db_error']);
+        exit;
+    }
+    if (!$existing) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'error' => 'not_found']);
+        exit;
+    }
+
+    // Clamped to the menu rather than trusted: the cadence is the only rate limit
+    // on automated Google Places spend, so an out-of-menu value must not reach it.
+    $cadence = array_key_exists('run_every_hours', $in)
+        ? auto_search_normalize_cadence($in['run_every_hours'])
+        : auto_search_normalize_cadence($existing['run_every_hours'] ?? 0);
+
+    // Build params if provided; otherwise keep the existing row's.
     if (!empty($params)) {
         $clean_params = [
             'city'      => substr((string)($params['city']      ?? ''), 0, 100),
@@ -170,24 +219,14 @@ case 'update':
         }
         $j = json_encode($clean_params, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     } else {
-        try {
-            $ro = $pdo->prepare('SELECT params FROM saved_searches WHERE id = ? AND user_id = ? LIMIT 1');
-            $ro->execute([$id, $uid]);
-            $j = $ro->fetchColumn() ?: '{}';
-        } catch (\Throwable $e) {
-            http_response_code(500);
-            echo json_encode(['success' => false, 'error' => 'db_error']);
-            exit;
-        }
+        $j = (string)($existing['params'] ?? '') !== '' ? (string)$existing['params'] : '{}';
     }
+
     try {
-        $stmt = $pdo->prepare('UPDATE saved_searches SET name = ?, params = ?, notify_email = ? WHERE id = ? AND user_id = ?');
-        $stmt->execute([$name, $j, $notify, $id, $uid]);
-        if ($stmt->rowCount() === 0) {
-            http_response_code(404);
-            echo json_encode(['success' => false, 'error' => 'not_found']);
-            exit;
-        }
+        $stmt = $pdo->prepare('UPDATE saved_searches
+                                  SET name = ?, params = ?, notify_email = ?, run_every_hours = ?
+                                WHERE id = ? AND user_id = ?');
+        $stmt->execute([$name, $j, $notify, $cadence, $id, $uid]);
     } catch (\Throwable $e) {
         log_error('saved_searches_update', $e);
         http_response_code(500);
@@ -195,10 +234,11 @@ case 'update':
         exit;
     }
     try { log_lead_activity($pdo, $uid, LEAD_ACT_NOTIFY_TOGGLE, $id, [
-        'name'         => $name,
-        'notify_email' => $notify ? 1 : 0,
+        'name'            => $name,
+        'notify_email'    => $notify ? 1 : 0,
+        'run_every_hours' => $cadence,
     ]); } catch (\Throwable $e) {}
-    echo json_encode(['success' => true, 'id' => $id]);
+    echo json_encode(['success' => true, 'id' => $id, 'run_every_hours' => $cadence]);
     exit;
 
 case 'delete':

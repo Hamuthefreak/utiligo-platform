@@ -82,6 +82,7 @@ function lead_search_jobs_ensure_tables(PDO $pdo): void {
     $pdo->exec('CREATE TABLE IF NOT EXISTS `lead_search_jobs` (
         `id`               INT UNSIGNED     NOT NULL AUTO_INCREMENT,
         `user_id`          INT UNSIGNED     NOT NULL,
+        `auto`             TINYINT(1)       NOT NULL DEFAULT 0,
         `token`            CHAR(32)         NOT NULL,
         `status`           VARCHAR(12)      NOT NULL DEFAULT \'queued\',
         `params_json`      TEXT             NOT NULL,
@@ -103,6 +104,24 @@ function lead_search_jobs_ensure_tables(PDO $pdo): void {
         KEY `idx_status_created` (`status`, `created_at`),
         KEY `idx_user_created` (`user_id`, `created_at`)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
+
+    // `auto` arrives with migration 025. A table created before it is missing the
+    // column, and CREATE TABLE IF NOT EXISTS above will not add it — mirror the
+    // pattern migrations/022 columns use in includes/lead_search_runner.php.
+    try {
+        // Checked directly rather than through lead_search_runner.php's helper:
+        // that one is declared inside lead_search_run(), so it does not exist
+        // until a search has already run.
+        $cols = $pdo->query('SHOW COLUMNS FROM `lead_search_jobs`')->fetchAll(PDO::FETCH_COLUMN, 0);
+        if (!in_array('auto', $cols, true)) {
+            $pdo->exec('ALTER TABLE `lead_search_jobs` ADD COLUMN `auto` TINYINT(1) NOT NULL DEFAULT 0 AFTER `user_id`');
+        }
+    } catch (\Throwable $e) {
+        // 1060 = duplicate column, which just means somebody else won the race.
+        if (strpos($e->getMessage(), '1060') === false) {
+            log_error('lead_search_jobs_ensure_tables_auto', $e);
+        }
+    }
 
     // The enqueue path counts unlocked_leads to enforce the Pro lead cap, so
     // this table has to exist before the runner ever touches it.
@@ -129,14 +148,19 @@ function lead_search_new_token(): string {
  * @param PDO   $pdo
  * @param int   $uid     Owner.
  * @param array $params  Search params (city/industry/keywords/lead_count/sources/force_refresh).
+ * @param bool  $auto    true when cron/scheduled_searches.php started this, not
+ *                       the customer. Stored as a column rather than a key in
+ *                       params_json so the "is a search already in flight?"
+ *                       check can exclude it in SQL — see
+ *                       lead_search_job_active_count().
  * @return array The job row (id, token, status, created_at).
  */
-function lead_search_job_enqueue(PDO $pdo, int $uid, array $params): array {
+function lead_search_job_enqueue(PDO $pdo, int $uid, array $params, bool $auto = false): array {
     lead_search_jobs_ensure_tables($pdo);
     $token = lead_search_new_token();
-    $pdo->prepare('INSERT INTO lead_search_jobs (user_id, token, status, params_json, stage, created_at)
-                   VALUES (?, ?, \'queued\', ?, ?, NOW())')
-        ->execute([$uid, $token, json_encode($params), 'Queued']);
+    $pdo->prepare('INSERT INTO lead_search_jobs (user_id, auto, token, status, params_json, stage, created_at)
+                   VALUES (?, ?, ?, \'queued\', ?, ?, NOW())')
+        ->execute([$uid, $auto ? 1 : 0, $token, json_encode($params), 'Queued']);
     return [
         'id'     => (int)$pdo->lastInsertId(),
         'token'  => $token,
@@ -144,10 +168,37 @@ function lead_search_job_enqueue(PDO $pdo, int $uid, array $params): array {
     ];
 }
 
-/** How many queued/running jobs this user already holds. */
-function lead_search_job_active_count(PDO $pdo, int $uid): int {
+/**
+ * How many queued/running jobs this user already holds.
+ *
+ * $includeAuto defaults to true so this stays the literal question it used to be.
+ * The one caller that passes false is the interactive enqueue in
+ * api/find-leads.php, and the reason is worth stating: a scheduled search uses
+ * the same queue, so counting it here would make a customer's own click look like
+ * a duplicate submit. They would then be handed the automation's job — its
+ * progress, its results — and their chosen city would be silently ignored.
+ */
+function lead_search_job_active_count(PDO $pdo, int $uid, bool $includeAuto = true): int {
+    $sql = "SELECT COUNT(*) FROM lead_search_jobs
+             WHERE user_id = ? AND status IN ('queued','running')";
+    if (!$includeAuto) {
+        $sql .= ' AND auto = 0';
+    }
+    $s = $pdo->prepare($sql);
+    $s->execute([$uid]);
+    return (int)$s->fetchColumn();
+}
+
+/**
+ * How many automatic runs this user has in flight.
+ *
+ * The automation may only hold one at a time. A customer with five saved
+ * searches all due at once would otherwise be five concurrent Places crawls, and
+ * the per-user cap that bounds a human's clicking says nothing about it.
+ */
+function lead_search_job_active_auto_count(PDO $pdo, int $uid): int {
     $s = $pdo->prepare("SELECT COUNT(*) FROM lead_search_jobs
-                         WHERE user_id = ? AND status IN ('queued','running')");
+                         WHERE user_id = ? AND auto = 1 AND status IN ('queued','running')");
     $s->execute([$uid]);
     return (int)$s->fetchColumn();
 }

@@ -587,6 +587,52 @@ function t_subscription(string $id, array $overrides = []): array
     ];
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Mail stub control
+ *
+ * The same idea as the Stripe stub, for the same reason: the only way to prove
+ * an email was sent with the right recipient and subject is to receive it. See
+ * tests/lib/mail_stub.php and email_api_base() in includes/mailer.php.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** Every email the stub has accepted since the last reset, in order. */
+function t_mail_sent(): array
+{
+    $path = t_tmp_dir() . '/mail_requests.log';
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $out = [];
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        $data = json_decode($line, true);
+        if (!is_array($data)) {
+            continue;
+        }
+        if (rtrim((string)($data['path'] ?? ''), '/') !== '/v3/smtp/email') {
+            continue;
+        }
+        $out[] = [
+            'to'      => (string)($data['payload']['to'][0]['email'] ?? ''),
+            'subject' => (string)($data['payload']['subject'] ?? ''),
+            'html'    => (string)($data['payload']['htmlContent'] ?? ''),
+            'text'    => (string)($data['payload']['textContent'] ?? ''),
+        ];
+    }
+    return $out;
+}
+
+/** Just the emails addressed to one recipient. */
+function t_mail_sent_to(string $email): array
+{
+    return array_values(array_filter(t_mail_sent(), fn($mail) => $mail['to'] === $email));
+}
+
+function t_reset_mail_stub(): void
+{
+    @unlink(t_tmp_dir() . '/mail_requests.log');
+}
+
 /**
  * A Checkout Session shaped the way Stripe returns one, for the success page to
  * verify. Defaults describe a completed, paid purchase by $userId.

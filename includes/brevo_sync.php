@@ -54,7 +54,12 @@ function brevo_sync_user(int $userId, string $plan): void
         $payload['unlinkListIds'] = array_values($removeLists);
     }
 
-    _brevo_api_request('POST', 'https://api.brevo.com/v3/contacts', $payload);
+    // Same base URL as includes/mailer.php, so a single MAIL_API_BASE redirects
+    // every Brevo call the app makes at a stub instead of the live API.
+    if (!function_exists('email_api_base')) {
+        require_once __DIR__ . '/mailer.php';
+    }
+    _brevo_api_request('POST', email_api_base() . '/v3/contacts', $payload);
 }
 
 function _brevo_api_request(string $method, string $url, array $payload = []): ?array

@@ -82,6 +82,14 @@ executed.
 | `test_upgrade_in_place.php` | the checkout changing a running subscription instead of selling a second one |
 | `test_subscription_updated.php` | Stripe-side plan changes and status transitions, through `.created`/`.updated` |
 | `test_lead_search_queue.php` | the async lead search: atomic claiming, crash recovery, enqueue gating, quota, and a completed search run end to end through the worker |
+| `test_auto_search.php` | saved searches that run themselves: the cadence gate, what an automated run asks for, delivery of the digest, and the failures it survives |
+
+Mail is replaced by `tests/lib/mail_stub.php`, reached by `MAIL_API_BASE` — the
+same arrangement as Stripe, and for the same reason. Before that variable existed
+`send_email()` either posted to Brevo for real or fell through to PHP's `mail()`,
+so "was the customer emailed, and what did it say" could not be asserted at all.
+There is also `t_mail_sent()` / `t_mail_sent_to($email)`, which read a log of every
+message the stub accepted.
 
 Stripe is replaced by `tests/lib/stripe_stub.php`. That is not a test-only branch
 inside the application: it is reached by setting `STRIPE_API_BASE`, a supported
@@ -105,6 +113,31 @@ The suite is built around scenarios that cost money:
 - a customer who cancels and then buys again
 - a customer with a running subscription pressing upgrade, double-clicking the
   same plan, or upgrading while Stripe is unreachable
+
+### The scheduled-search automation
+
+A saved search with `notify_email = 1` used to be a notifier and nothing more: the
+cron only reported leads that other people's searches had already put in the
+shared pool. `test_auto_search.php` covers the replacement — the cron enqueues a
+real search into the same queue an interactive search uses, then reports what that
+run found.
+
+The assertions worth knowing about:
+
+- **A run in flight blocks a second one**, and `last_enqueued_at` is stamped when a
+  run *starts*, so a failure cannot be retried in a loop. This is the only rate
+  limit on automated Places spend.
+- **The automation yields to the person at the screen.** An automated job is
+  excluded from the interactive "is a search already in flight?" check, so a
+  customer's own click is never answered with the automation's job — its progress,
+  its results, and none of the params they just chose. Mutation-tested: reverting
+  that exclusion fails two assertions.
+- **Locked leads are never emailed.** A free-tier result payload masks its leads
+  and returns the rest as locked stubs, so an account that was downgraded while its
+  job sat in the queue would otherwise be emailed contacts it no longer pays for.
+- **An empty run and a failed run send nothing**, but both are still recorded, and
+  both release the saved search — an automation that stops running is worse than
+  one that reports nothing, so it can never be wedged by one bad run.
 
 ### The lead-search queue
 
@@ -138,6 +171,17 @@ Deploying this needs a cron entry, same shape as the other workers:
 
 ## Honest gaps
 
+- **The scheduled-search automation is proven up to the worker, not through it.**
+  The tests run the real cron, so the enqueue, the cadence gate, the delivery and
+  every failure path are real — but the search itself is simulated by completing
+  the job row by hand. A real Places crawl inside a scheduled run is the same code
+  path `test_lead_search_queue.php` already exercises, and no test here contacts
+  Google.
+- **A digest can lag a run by one cron interval.** Reporting is a second pass, so a
+  job that finishes just after a pass was delivered is emailed on the next one — up
+  to 30 minutes later with the documented schedule. That is deliberate (see
+  cron/scheduled_searches.php) and irrelevant to a daily email, but it is not
+  instant.
 - **A successful live Stripe call is never exercised.** The stub returns
   realistic payloads, but a real payment is the only thing that proves the field
   names against Stripe's current API. The webhook's field paths are corroborated

@@ -1,37 +1,50 @@
 <?php
 /**
- * cron/scheduled_searches.php — Phase 5 scheduled-search notifier.
+ * cron/scheduled_searches.php — saved searches that run themselves.
  *
  * Schedules via cPanel / cron every 30 minutes:
  *   (every 30 min) curl -s "https://utiligo.ca/cron/scheduled_searches.php?secret=YOUR_CRON_SECRET" > /dev/null
  *
- * What it does:
- *   For every saved_searches row where notify_email = 1:
- *     1. Decode the params JSON (city, industry, keywords, sources, …)
- *     2. Query utiligo_leads for rows whose business_city ILIKE params.city
- *        AND business_category LIKE keywords, and updated_at > the saved
- *        search's last_run_at — i.e. leads added to the shared pool
- *        since the last notification.
- *     3. If the delta is non-empty, render a small HTML email + send via
- *        send_email() (Brevo REST API) to the user's registration email.
- *     4. Update saved_searches.last_run_at and last_count.
+ * WHAT IT USED TO DO
+ * ─────────────────
+ * For every saved_searches row with notify_email = 1 it looked for leads that
+ * OTHER people's searches had already dropped into the shared pool, and emailed
+ * the difference. So the Entrepreneur-only promise — "email me new leads on this
+ * search" — held only when somebody else happened to search the same city that
+ * day. A customer watching a quiet town got an email that said nothing, or no
+ * email at all, for as long as they stayed subscribed. The one feature only the
+ * top plan has could not find anything on its own.
  *
- * What it does NOT do:
- *   - Re-run the full Google Places search (that's expensive and would
- *     blow our Places API quota every 30min×N subscriptions). We rely
- *     on the shared pool staying fresh from incidental user searches.
- *     Phase 6 could add a "decay-factor 0.5× crawl" that re-queries
- *     Places for stale cities when nobody has searched for them lately.
- *   - Send spammy "0 new leads" emails — the cron is silent on empty
- *     deltas, only updating last_run_at so the next run has a fresh
- *     baseline.
+ * WHAT IT DOES NOW
+ * ───────────────
+ * Two phases, in one pass:
  *
- * Multi-process safety:
- *   No advisory locks. A row added between two overlapping cron
- *   instances can produce a duplicate email in the rare race window —
- *   acceptable for a noisily-rectifiable delta email. We mitigate by
- *   capping per-run duration at 60s and breaking out of the loop on
- *   timeout.
+ *   A. REPORT  For every saved search with a run outstanding (job_token set),
+ *              read the finished lead_search_jobs row and email the customer what
+ *              that run found. One email per run, and only when it found
+ *              something: a daily "0 new leads" is how a useful notification gets
+ *              filtered out of somebody's inbox. The drawer shows the last run
+ *              and its count for the quiet days.
+ *
+ *   B. START   For every saved search that is DUE, enqueue a real search — into
+ *              the same queue an interactive search uses, so it runs in the
+ *              worker with the same retry and crash-recovery behaviour, and
+ *              nobody's request is blocked for 30-60 seconds.
+ *
+ * Runs are enqueued rather than searched inline, so a pass finishes in
+ * milliseconds. cron/lead_search_worker.php (every minute) picks the work up; the
+ * next pass, half an hour later, delivers it. That lag is the cost of keeping the
+ * search out of this request, and half an hour is nothing to a daily email.
+ *
+ * YIELDING TO THE HUMAN
+ * ─────────────────────
+ * An automated run is skipped while the customer has a search of their own in
+ * flight, and a customer only ever has one automated run at a time. Both matter:
+ * the first stops the automation competing for Places quota with the person
+ * actually looking at the screen, and the second stops five due saved searches
+ * from becoming five concurrent crawls. Because the cadence anchor is stamped
+ * when a run STARTS, a deferral costs nothing — the search is simply due again on
+ * the next pass.
  *
  * Gated by CRON_SECRET (same pattern as cron/build_exports.php).
  */
@@ -43,8 +56,11 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/error_logger.php';
+require_once __DIR__ . '/../includes/leads_logger.php';
 require_once __DIR__ . '/../includes/mailer.php';
 require_once __DIR__ . '/../includes/lead_activity_log.php';
+require_once __DIR__ . '/../includes/lead_search_jobs.php';
+require_once __DIR__ . '/../includes/auto_search.php';
 
 header('Content-Type: text/plain; charset=utf-8');
 
@@ -55,52 +71,75 @@ if (!is_string($secret) || !hash_equals(CRON_SECRET, $secret)) {
     exit;
 }
 
-@set_time_limit(120);
+@set_time_limit(240);
 @ini_set('memory_limit', '256M');
-
-$hard_stop = time() + 60;
 
 $pdo = get_platform_db();
 
-// saved_searches lives in the PLATFORM db; accounts live in utiligo_users in
-// the USER db.  Those are two different databases (and on some hosts two
-// different servers), so this must NOT be a SQL JOIN.  It used to be
-// `JOIN users u ON u.id = ss.user_id` — a table that exists nowhere in this
-// codebase — so the query always threw, the catch echoed pull_error, and the
-// Ent-only scheduled-search notifications never ran for anybody.
-//
-// Read the jobs here, then resolve each owner's email + plan from the user db
-// in one IN(...) round-trip.
+/* ── Read the work ─────────────────────────────────────────────────────────
+ * saved_searches and lead_search_jobs live in the PLATFORM db; accounts live in
+ * utiligo_users in the USER db. Those are two databases (and on some hosts two
+ * servers), so this must NOT be a SQL JOIN — an earlier version of this file
+ * joined a `users` table that exists nowhere in the codebase, which meant the
+ * whole feature silently never ran for anybody. Read both sides here and resolve
+ * owners in one IN() round-trip.
+ */
+
 try {
-    $stmt = $pdo->prepare(
-        'SELECT ss.id AS ss_id, ss.user_id, ss.name, ss.params, ss.last_run_at,
-                ss.last_count, ss.notify_email
-           FROM saved_searches ss
-          WHERE ss.notify_email = 1
-          ORDER BY ss.id ASC
-          LIMIT 100'
+    $awaitingStmt = $pdo->prepare(
+        'SELECT id, user_id, name, params, last_error, job_token
+           FROM saved_searches
+          WHERE job_token IS NOT NULL
+          ORDER BY id ASC
+          LIMIT ' . (int)AUTO_SEARCH_MAX_DELIVER
     );
-    $stmt->execute();
-    $jobs = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    $awaitingStmt->execute();
+    $awaiting = $awaitingStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Throwable $e) {
-    log_error('scheduled_searches_pull', $e);
+    log_error('scheduled_searches_awaiting', $e);
     echo "pull_error\n";
     exit;
 }
 
-if (!$jobs) {
+try {
+    $dueStmt = $pdo->prepare(
+        'SELECT id, user_id, name, params, notify_email, run_every_hours, last_enqueued_at, job_token
+           FROM saved_searches
+          WHERE notify_email = 1
+            AND job_token IS NULL
+          ORDER BY last_enqueued_at ASC, id ASC
+          LIMIT 200'
+    );
+    $dueStmt->execute();
+    $candidates = $dueStmt->fetchAll(PDO::FETCH_ASSOC);
+} catch (\Throwable $e) {
+    log_error('scheduled_searches_due', $e);
+    echo "pull_error\n";
+    exit;
+}
+
+if (!$awaiting && !$candidates) {
     echo "nothing_to_do\n";
     exit;
 }
 
+/* ── Resolve every owner involved, once ─────────────────────────────────── */
+
 $owners = [];
 try {
-    $ids = array_values(array_unique(array_map(static fn($j) => (int)$j['user_id'], $jobs)));
-    $ph  = implode(',', array_fill(0, count($ids), '?'));
-    $us  = get_user_db()->prepare("SELECT id, email, plan FROM utiligo_users WHERE id IN ($ph)");
-    $us->execute($ids);
-    foreach ($us->fetchAll(PDO::FETCH_ASSOC) as $u) {
-        $owners[(int)$u['id']] = $u;
+    $ids = array_values(array_unique(array_merge(
+        array_map(static fn($r) => (int)$r['user_id'], $awaiting),
+        array_map(static fn($r) => (int)$r['user_id'], $candidates)
+    )));
+    $ids = array_values(array_filter($ids, static fn($id) => $id > 0));
+
+    if ($ids) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $us = get_user_db()->prepare("SELECT id, email, plan FROM utiligo_users WHERE id IN ($ph)");
+        $us->execute($ids);
+        foreach ($us->fetchAll(PDO::FETCH_ASSOC) as $u) {
+            $owners[(int)$u['id']] = $u;
+        }
     }
 } catch (\Throwable $e) {
     log_error('scheduled_searches_owners', $e);
@@ -108,155 +147,196 @@ try {
     exit;
 }
 
-// Keep only jobs whose owner still exists, has an email, and whose plan
-// permits scheduled searches — can_schedule_searches() is Ent-only today, so
-// an Ent subscription is what unlocks this.  Applies the plan helper (not a
-// hardcoded string) so future plan-config changes are picked up here.
-$eligible = [];
-foreach ($jobs as $j) {
-    $uid = (int)$j['user_id'];
-    if (!isset($owners[$uid])) continue;                       // owner deleted
-    $owner = $owners[$uid];
-    if (($owner['email'] ?? '') === '') continue;              // nothing to send to
-    if (!can_schedule_searches((string)($owner['plan'] ?? 'free'))) continue;
-    $j['email'] = (string)$owner['email'];
-    $j['plan']  = (string)($owner['plan'] ?? 'free');
-    $eligible[] = $j;
-}
-$jobs = $eligible;
+$owner = static function (int $uid) use ($owners): ?array {
+    return $owners[$uid] ?? null;
+};
 
-if (!$jobs) {
-    echo "nothing_to_do\n";
-    exit;
-}
+$base_url = (defined('APP_BASE_URL') && APP_BASE_URL) ? APP_BASE_URL : 'https://utiligo.ca';
 
-$processed = 0;
-$emails_sent = 0;
-$deltas_seen = 0;
-foreach ($jobs as $job) {
-    if (time() >= $hard_stop) break;
+/* ── Phase A: report on runs that finished ──────────────────────────────── */
 
-    $params = json_decode($job['params'] ?? '{}', true);
-    if (!is_array($params)) $params = [];
+$reported  = 0;
+$emails    = 0;
+$still_running = 0;
+$lost      = 0;
 
-    $city      = trim($params['city']      ?? '');
-    $industry  = trim($params['industry']  ?? '');
-    $keywords  = trim($params['keywords']  ?? '');
-    if ($city === '' && $industry === '' && $keywords === '') {
-        // Nothing to compare against — update last_run_at as a no-op
-        // marker so we don't accidentally spam the user on every run if
-        // they fix their params later.
-        _sched_search_update($pdo, (int)$job['ss_id'], 0);
-        $processed++;
+foreach ($awaiting as $row) {
+    $ss_id = (int)$row['id'];
+    $uid   = (int)$row['user_id'];
+    $token = trim((string)$row['job_token']);
+
+    $who = $owner($uid);
+    if (!$who) {
+        // The account is gone. Nothing to email, and no reason to keep a token
+        // pointing at a job nobody owns.
+        _sched_finish($pdo, $ss_id, 0, 'The account no longer exists');
+        $lost++;
         continue;
     }
 
-    // Build a delta query: matches saved params (city + category LIKE keywords)
-    // and updated_at > last_run_at. We use LOWER + LIKE so collation does
-    // not matter, and ILIKE-equivalent via LOWER.
     try {
-        $sql = "SELECT id, business_name, business_category, business_city, business_phone, business_email, website, maps_url, rating
-                  FROM utiligo_leads
-                 WHERE updated_at > ?";
-        $args = [$job['last_run_at'] ?? '1970-01-01 00:00:00'];
-        if ($city !== '') {
-            $sql .= " AND LOWER(business_city) LIKE ?";
-            $args[] = '%' . strtolower($city) . '%';
-        }
-        if ($industry !== '') {
-            $sql .= " AND LOWER(business_category) LIKE ?";
-            $args[] = '%' . strtolower($industry) . '%';
-        }
-        if ($keywords !== '') {
-            $sql .= " AND (LOWER(business_name) LIKE ? OR LOWER(business_category) LIKE ?)";
-            $args[] = '%' . strtolower($keywords) . '%';
-            $args[] = '%' . strtolower($keywords) . '%';
-        }
-        $sql .= " ORDER BY rating DESC, total_ratings DESC LIMIT 25";
-        $ds = $pdo->prepare($sql);
-        $ds->execute($args);
-        $new_leads = $ds->fetchAll(PDO::FETCH_ASSOC);
+        $job = lead_search_job_get($pdo, $uid, $token);
     } catch (\Throwable $e) {
-        log_error('scheduled_searches_delta', $e, ['ss_id' => (int)$job['ss_id']]);
-        $processed++;
+        log_error('scheduled_searches_job', $e, ['ss_id' => $ss_id]);
         continue;
     }
 
-    if (!$new_leads) {
-        _sched_search_update($pdo, (int)$job['ss_id'], 0);
-        $processed++;
+    if (!$job) {
+        // The queue purges finished jobs after a day, so a cron that was down for
+        // a weekend leaves a token pointing at nothing. Clear it or this saved
+        // search never runs again.
+        _sched_finish($pdo, $ss_id, 0, 'The run could not be found');
+        $lost++;
         continue;
     }
-    $deltas_seen++;
 
-    // Render a small email body.
-    $base_url = (defined('APP_BASE_URL') && APP_BASE_URL) ? APP_BASE_URL : 'https://utiligo.ca';
-    $html = '<div style="font-family: -apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Helvetica,Arial,sans-serif; max-width: 560px; margin: 0 auto; padding: 24px;">';
-    $html .= '<h2 style="margin:0 0 4px; color:#0f172a; font-size:18px;">New leads matching your saved search</h2>';
-    $html .= '<p style="margin:0 0 16px; font-size:13px; color:#475569;">' . htmlspecialchars($job['name'])
-        . ' — "' . htmlspecialchars($city) . ' / ' . htmlspecialchars($industry . ($keywords ? ' / ' . $keywords : ''))
-        . '" got ' . count($new_leads) . ' new entries since the last check.</p>';
-    $html .= '<table style="width:100%; border-collapse:collapse; font-size:13px;">';
-    foreach ($new_leads as $i => $l) {
-        $name = htmlspecialchars($l['business_name'] ?: '—');
-        $cat  = htmlspecialchars($l['business_category'] ?: '');
-        $city_r = htmlspecialchars($l['business_city']?: '');
-        $phone = htmlspecialchars($l['business_phone'] ?: '');
-        $email_r = $l['business_email'] ? '<a href="mailto:' . htmlspecialchars($l['business_email']) . '" style="color:#2563eb;">' . htmlspecialchars($l['business_email']) . '</a>' : '';
-        $web   = $l['website'] ? '<a href="' . htmlspecialchars($l['website']) . '" style="color:#2563eb;">website</a>' : '';
-        $link  = $base_url . '/portal/leads.php?lead=' . (int)$l['id'];
-        $html .= '<tr style="border-bottom:1px solid #f1f5f9;">';
-        $html .= '<td style="padding:10px 4px; vertical-align:top;"><a href="' . htmlspecialchars($link) . '" style="color:#0f172a; font-weight:600; text-decoration:none;">' . $name . '</a>';
-        if ($cat)       $html .= '<br><span style="color:#64748b; font-size:11px;">' . $cat . '</span>';
-        if ($city_r)    $html .= '<br><span style="color:#94a3b8; font-size:11px;">' . $city_r . '</span>';
-        $html .= '</td>';
-        $html .= '<td style="padding:10px 4px; vertical-align:top; text-align:right;">';
-        if ($phone)    $html .= '<span style="display:block; color:#475569;">' . $phone . '</span>';
-        if ($email_r)  $html .= '<span style="display:block;">' . $email_r . '</span>';
-        if ($web)      $html .= '<span style="display:block;">' . $web . '</span>';
-        $html .= '</td>';
-        $html .= '</tr>';
-    }
-    $html .= '</table>';
-    $html .= '<p style="margin:18px 0 0; font-size:11px; color:#94a3b8;">Sent by Utiligo scheduled-search notifier · '
-        . '<a href="' . htmlspecialchars($base_url) . '/portal/leads.php" style="color:#2563eb;">Manage saved searches</a></p>';
-    $html .= '</div>';
-
-    $text = "New leads matching your saved search: " . $job['name'] . "\n"
-          . count($new_leads) . " new entries.\n\n"
-          . "Visit " . $base_url . "/portal/leads.php to view them.";
-
-    $ok = false;
-    try {
-        $ok = send_email(
-            $job['email'],
-            'New leads for: ' . $job['name'],
-            $html,
-            $text
-        );
-    } catch (\Throwable $e) {
-        log_error('scheduled_searches_send', $e, ['ss_id' => (int)$job['ss_id'], 'uid' => (int)$job['user_id']]);
+    $status = (string)($job['status'] ?? '');
+    if ($status === 'queued' || $status === 'running') {
+        $still_running++;
+        continue;   // not finished yet — the next pass will report it
     }
 
-    if ($ok) {
-        $emails_sent++;
-        // Audit the notification send.
-        try { log_lead_activity($pdo, (int)$job['user_id'], 'notify_sent', null, [
-            'ss_id' => (int)$job['ss_id'],
-            'count' => count($new_leads),
-        ]); } catch (\Throwable $e) {}
+    if ($status !== 'done') {
+        // A failed run is recorded but NOT emailed. The reasons a scheduled search
+        // fails (no Places key, a quota stop, the database) are not things the
+        // customer can fix, and one is enough to have them turning the feature off.
+        // The drawer shows last_error.
+        _sched_finish($pdo, $ss_id, 0, (string)($job['error_message'] ?? 'The run failed'));
+        $reported++;
+        continue;
     }
-    _sched_search_update($pdo, (int)$job['ss_id'], count($new_leads));
-    $processed++;
+
+    $result = json_decode((string)($job['result_json'] ?? ''), true);
+    $digest = auto_search_digest(is_array($result) ? $result : []);
+
+    if ($digest['count'] > 0 && ($who['email'] ?? '') !== '') {
+        $sent = auto_search_send_digest((string)$who['email'], $row, $digest, $base_url);
+        if ($sent) {
+            $emails++;
+            try {
+                log_lead_activity($pdo, $uid, LEAD_ACT_NOTIFY_SENT, null, [
+                    'ss_id'   => $ss_id,
+                    'count'   => $digest['count'],
+                    'auto'    => true,
+                    'cached'  => $digest['from_cache'],
+                ]);
+            } catch (\Throwable $e) { /* audit is best effort */ }
+        } else {
+            // The run succeeded and its report could not be sent. Clear the token
+            // anyway: keeping it would stall the search itself, and the search is
+            // the thing being paid for. send_email() logs the reason.
+            log_error('scheduled_searches_send_failed', null, ['ss_id' => $ss_id, 'uid' => $uid]);
+            _sched_finish($pdo, $ss_id, $digest['count'], 'The report could not be emailed');
+            $reported++;
+            continue;
+        }
+    }
+
+    _sched_finish($pdo, $ss_id, $digest['count'], '');
+    $reported++;
 }
 
-echo "processed={$processed} deltas={$deltas_seen} emails={$emails_sent}\n";
+/* ── Phase B: start what is due ─────────────────────────────────────────── */
 
-function _sched_search_update(\PDO $pdo, int $ss_id, int $count): void {
+$now         = time();
+$started     = 0;
+$deferred    = 0;
+$ineligible  = 0;
+
+foreach ($candidates as $row) {
+    if ($started >= (int)AUTO_SEARCH_MAX_ENQUEUE) {
+        break;
+    }
+
+    if (!auto_search_is_due($row, $now)) {
+        continue;
+    }
+
+    $uid = (int)$row['user_id'];
+    $who = $owner($uid);
+
+    // An owner who has stopped paying keeps whatever run is already in flight
+    // (Phase A reports it) but does not get a new one. can_schedule_searches() is
+    // the plan helper rather than a hardcoded string, so the gate follows the
+    // plan table.
+    if (!$who || ($who['email'] ?? '') === '' || !can_schedule_searches((string)($who['plan'] ?? 'free'))) {
+        $ineligible++;
+        continue;
+    }
+
+    $params = json_decode((string)($row['params'] ?? ''), true);
+    $params = is_array($params) ? auto_search_run_params($params) : [];
+    if (!auto_search_is_searchable($params)) {
+        // Nothing to look for. Stamp the window so this row is not reconsidered
+        // every thirty minutes for the rest of its life.
+        _sched_stamp_enqueued($pdo, (int)$row['id'], null);
+        continue;
+    }
+
     try {
-        $pdo->prepare('UPDATE saved_searches SET last_run_at = NOW(), last_count = ? WHERE id = ?')
-            ->execute([$count, $ss_id]);
+        if (lead_search_job_active_count($pdo, $uid, false) > 0) {
+            $deferred++;   // the customer is searching; let them have the slot
+            continue;
+        }
+        if (lead_search_job_active_auto_count($pdo, $uid) > 0) {
+            $deferred++;
+            continue;
+        }
     } catch (\Throwable $e) {
-        log_error('scheduled_searches_update', $e, ['ss_id' => $ss_id]);
+        log_error('scheduled_searches_concurrency', $e, ['uid' => $uid]);
+        continue;
+    }
+
+    try {
+        $job = lead_search_job_enqueue($pdo, $uid, $params, true);
+        _sched_stamp_enqueued($pdo, (int)$row['id'], (string)$job['token']);
+        $started++;
+        leads_log_info('auto_search_enqueued', [
+            'ss_id' => (int)$row['id'], 'uid' => $uid,
+            'city' => $params['city'], 'industry' => $params['industry'],
+        ]);
+    } catch (\Throwable $e) {
+        log_error('scheduled_searches_enqueue', $e, ['ss_id' => (int)$row['id']]);
+    }
+}
+
+echo "reported={$reported} emails={$emails} running={$still_running} lost={$lost} "
+   . "started={$started} deferred={$deferred} ineligible={$ineligible}\n";
+
+/* ── Helpers ─────────────────────────────────────────────────────────────
+ * The token is cleared in the same UPDATE that records the outcome, so a saved
+ * search can never be reported twice and can never be blocked by a run that is
+ * already over.
+ */
+
+/** Record how a run ended and release the saved search. */
+function _sched_finish(\PDO $pdo, int $ss_id, int $count, string $error): void
+{
+    try {
+        $pdo->prepare('UPDATE saved_searches
+                          SET job_token = NULL, last_run_at = NOW(), last_count = ?, last_error = ?
+                        WHERE id = ?')
+            ->execute([max(0, $count), substr($error, 0, 200), $ss_id]);
+    } catch (\Throwable $e) {
+        log_error('scheduled_searches_finish', $e, ['ss_id' => $ss_id]);
+    }
+}
+
+/**
+ * Record that a run has started, and which job it is.
+ *
+ * $token may be null, for the "there was nothing to search for" case: the window
+ * still advances so this row is not re-examined every pass, but there is no job
+ * to report on afterwards.
+ */
+function _sched_stamp_enqueued(\PDO $pdo, int $ss_id, ?string $token): void
+{
+    try {
+        $pdo->prepare('UPDATE saved_searches
+                          SET last_enqueued_at = NOW(), job_token = ?, last_error = ?
+                        WHERE id = ?')
+            ->execute([$token, $token === null ? 'This search has nothing to look for' : '', $ss_id]);
+    } catch (\Throwable $e) {
+        log_error('scheduled_searches_stamp', $e, ['ss_id' => $ss_id]);
     }
 }

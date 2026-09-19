@@ -107,6 +107,7 @@ require_once __DIR__ . '/lib/harness.php';
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/entitlements.php';
 require_once __DIR__ . '/../includes/stripe_api.php';
+require_once __DIR__ . '/../includes/auto_search.php';
 
 // config.php loads includes/global_error_handler.php, which points PHP's own
 // error_log at storage/php_errors.log — a tracked file. Several tests
@@ -150,6 +151,16 @@ if ($dbReady) {
         $stub = t_server(__DIR__ . '/lib', __DIR__ . '/lib/stripe_stub.php', [], 'stripe stub');
         putenv('STRIPE_API_BASE=' . $stub['url']);
 
+        // Mail gets the same treatment as Stripe, and for the same reason: until
+        // MAIL_API_BASE existed there was no way to assert that an email was sent
+        // at all — send_email() either posted to Brevo for real or fell through to
+        // PHP's mail(). Set here, before the application server is spawned, so the
+        // child (and only the child) picks both up.
+        $mailStub = t_server(__DIR__ . '/lib', __DIR__ . '/lib/mail_stub.php', [], 'mail stub');
+        putenv('MAIL_API_BASE=' . $mailStub['url']);
+        putenv('BREVO_API_KEY=xkeysib_test_stub_key');
+        echo "  mail:    stub at " . $mailStub['url'] . " (api.brevo.com never contacted)\n";
+
         // Sessions live in tests/tmp so the suite can hand a test an already
         // authenticated session, and so a test run never touches the real one.
         // The prepend file does the same for the application's error log.
@@ -167,10 +178,11 @@ if ($dbReady) {
 }
 
 $context = [
-    'db_ready' => $dbReady,
-    'db_why'   => $dbWhy,
-    'app_url'  => $app['url'] ?? null,
-    'stub_url' => $stub['url'] ?? null,
+    'db_ready'      => $dbReady,
+    'db_why'        => $dbWhy,
+    'app_url'       => $app['url'] ?? null,
+    'stub_url'      => $stub['url'] ?? null,
+    'mail_stub_url' => $mailStub['url'] ?? null,
 ];
 
 register_shutdown_function(function () use ($trackedLog, $trackedLogBefore) {

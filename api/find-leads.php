@@ -169,9 +169,13 @@ if ($is_paid && !$is_ent && $pro_lead_limit > 0) {
 $job     = null;
 $resumed = false;
 try {
-    if (lead_search_job_active_count($pdo, $uid) >= LEAD_SEARCH_JOB_MAX_PER_USER) {
+    // $includeAuto = false: a run the scheduled-search automation started is not
+    // this customer's search. Counting it would make their own click look like a
+    // duplicate submit, and they would be handed the automation's job — its
+    // progress, its results, and none of the params they just chose.
+    if (lead_search_job_active_count($pdo, $uid, false) >= LEAD_SEARCH_JOB_MAX_PER_USER) {
         $s = $pdo->prepare("SELECT * FROM lead_search_jobs
-                             WHERE user_id = ? AND status IN ('queued','running')
+                             WHERE user_id = ? AND auto = 0 AND status IN ('queued','running')
                              ORDER BY created_at DESC, id DESC LIMIT 1");
         $s->execute([$uid]);
         $row = $s->fetch(PDO::FETCH_ASSOC);

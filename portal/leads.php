@@ -498,6 +498,20 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   transition:background .15s,border-color .15s;
 }
 .saved-search-item:hover { background:rgba(129,140,248,.07); border-color:rgba(129,140,248,.18); }
+/* How often the automation runs a saved search. Styled here rather than by utility
+   classes because a native <select> keeps the OS menu, which is the behaviour you
+   want inside a drawer that closes on outside clicks. */
+.ss-cadence {
+  appearance:none; -webkit-appearance:none;
+  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+  border-radius:6px; color:#cbd5e1; font-size:11px; font-weight:600;
+  padding:.15rem 1.35rem .15rem .45rem; cursor:pointer;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2394a3b8' stroke-width='1.5'><path d='M3 4.5 6 7.5 9 4.5'/></svg>");
+  background-repeat:no-repeat; background-position:right .35rem center; background-size:10px;
+}
+.ss-cadence:hover { background-color:rgba(255,255,255,.1); color:#e2e8f0; }
+.ss-cadence:focus-visible { outline:2px solid rgba(129,140,248,.6); outline-offset:1px; }
+.ss-status { line-height:1.4; }
 .saved-search-item .ss-title { font-size:.82rem; font-weight:600; color:#e2e8f0; }
 .saved-search-item .ss-meta  { font-size:.7rem; color:#94a3b8; }
 .saved-search-item .ss-del  { font-size:.7rem; color:#475569; align-self:flex-start; margin-top:4px; }
