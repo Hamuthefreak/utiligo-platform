@@ -79,7 +79,6 @@ $is_ent       = $plan === 'entrepreneur';
 $is_paid      = $is_pro || $is_ent;
 $is_active    = ($user['subscription_status'] ?? '') === 'active';
 $is_cancelled = ($user['subscription_status'] ?? '') === 'cancelled';
-$pcfg         = get_plan_config($plan);
 
 $_pro_leads     = (int) PRO_LEAD_LIMIT;
 $_pro_sites     = (int) PRO_SITE_LIMIT;

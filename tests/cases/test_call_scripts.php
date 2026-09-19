@@ -209,15 +209,10 @@ t_same_list(call_script_tokens('a {{one}} b {{two}} c {{one}}'), ['one', 'two'],
 t_same_list(call_script_tokens('no tokens here'), [], 'and empty when there are none');
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * 7. The feature registry
+ * 7. The plan gate
  * ──────────────────────────────────────────────────────────────────────────── */
 
 t_section('Call scripts are a paid feature, and the paid tiers are a ladder');
-
-t_ok(has_feature('call_scripts', 'pro'), 'Pro has call scripts');
-t_ok(has_feature('call_scripts', 'entrepreneur'),
-    'and so does Entrepreneur — the tiers are a ladder, not a set');
-t_ok(!has_feature('call_scripts', 'free'), 'Free does not');
 
 t_ok(can_use_call_scripts('pro'), 'the gate says Pro');
 t_ok(can_use_call_scripts('entrepreneur'),

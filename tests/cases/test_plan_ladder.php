@@ -15,11 +15,13 @@
  * take a feature away, and there was nothing anywhere that said that must never
  * happen.
  *
- * It is also not a hypothetical.  plans.php already carried a live example of
- * exactly this drift — Pro's feature list contained `lead_enrich_basic` and
- * Entrepreneur's contained only `lead_enrich_full`, so Pro's set was not a
- * subset of Entrepreneur's.  Nothing read that array, so nothing broke; it took
- * reading it properly to notice.
+ * It is also not a hypothetical.  plans.php used to carry a second, hand-written
+ * description of the plans — a 'features' array that only a has_feature() helper
+ * read, and that no production code ever called.  It had already drifted: it
+ * said Pro lacked basic enrichment while Entrepreneur had the fuller name, so it
+ * disagreed with the gates it claimed to describe.  Nothing broke, because
+ * nothing enforced it.  That array and its helper have since been deleted, so
+ * the predicates below are now the only source of truth.
  *
  * So this file asserts the ladder as a PROPERTY rather than gate by gate:
  *
@@ -27,7 +29,6 @@
  *   - every string list of sources / formats / providers grows
  *   - every named capability predicate that is true for Pro is true for
  *     Entrepreneur
- *   - the declarative feature set is a subset at each step
  *
  * A new gate added tomorrow is covered the moment it goes through the helpers,
  * and a deliberately Ent-only feature (can_schedule_searches) is fine — the
@@ -148,26 +149,23 @@ t_ok(can_schedule_searches('entrepreneur'),
     'and being Ent-only is an addition above the ladder, not a break in it');
 
 /* ─────────────────────────────────────────────────────────────────────────────
- * The declarative feature set
+ * There is only one description of what a plan can do
  * ──────────────────────────────────────────────────────────────────────────── */
 
-t_section('The feature list is a subset at each step');
+t_section('No second, hand-written capability list has grown back');
 
-// Nothing reads this array today — every gate is a predicate above — but it is
-// the written description of the plans, and it had already drifted once.
-$freeFeatures = get_plan_config('free')['features'];
-$proFeatures  = get_plan_config('pro')['features'];
-$entFeatures  = get_plan_config('entrepreneur')['features'];
-
-t_same_list(array_values(array_diff($freeFeatures, $proFeatures)), [],
-    'every Free feature is also a Pro feature');
-t_same_list(array_values(array_diff($proFeatures, $entFeatures)), [],
-    'every Pro feature is also an Entrepreneur feature');
-
-t_ok(count($entFeatures) >= count($proFeatures),
-    'and Entrepreneur is not described as having less');
-t_ok(count($proFeatures) > count($freeFeatures),
-    'while Pro is described as having more than Free, so the lists are not all the same');
+// plan_config() used to carry a 'features' array that only a has_feature()
+// helper read — and no production code called the helper. It had already drifted
+// from the gates it claimed to describe, which is exactly the failure a second
+// list invites. Both were deleted; capability truth is the predicates above.
+// This fails if either reappears, because two descriptions is how the last one
+// went wrong.
+foreach (['free', 'pro', 'entrepreneur'] as $plan) {
+    t_ok(!array_key_exists('features', get_plan_config($plan)),
+        $plan . ': plan_config() does not describe capabilities a second time');
+}
+t_ok(!function_exists('has_feature'),
+    'and the dead has_feature() helper that read that list has not come back');
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * The gate the API and the layout actually call

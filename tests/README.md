@@ -142,9 +142,8 @@ wrong:
 `test_plan_ladder.php` asserts the SHAPE of the plan table rather than each gate
 where it lives: `free ⊂ pro ⊂ entrepreneur`. Limits are monotonic (with -1 read
 as unlimited), source/format/provider lists grow, every named capability true for
-Pro is true for Entrepreneur, and the declarative feature set is a subset at each
-step. A deliberately Ent-only feature is fine — the ladder only forbids going
-backwards.
+Pro is true for Entrepreneur. A deliberately Ent-only feature is fine — the ladder
+only forbids going backwards.
 
 It exists because call scripts were briefly scoped to Pro alone, and the change
 passed 730 tests while making upgrading a downgrade: every gate was correct in
@@ -153,11 +152,14 @@ isolation and nothing stated that Entrepreneur must never lose a feature. Mutati
 two in this file — and mutating `plan_has_pro_features()` fails 8, six of them in
 files with nothing to do with call scripts.
 
-The same file caught a live piece of drift that predated all of this: Pro's
-feature list contained `lead_enrich_basic` where Entrepreneur's contained only
-`lead_enrich_full`, so Pro's set was not actually a subset of Entrepreneur's.
-Nothing read that array, which is why nothing had broken — see the note in
-`includes/plans.php` that no code calls `has_feature()`.
+The same file caught a live piece of drift that predated all of this. `plans.php`
+carried a hand-written `features` array that only a `has_feature()` helper read —
+and no production code called the helper — and it already disagreed with the
+gates: it said Pro lacked `lead_enrich_basic` while Entrepreneur had the fuller
+name, so the table was wrong on its own terms. Nothing enforced it, which is why
+nothing had broken. Rather than keep two competing descriptions of the plans,
+that array and its helper have been deleted; the named predicates are now the
+only source of truth, and this file is what keeps them honest.
 
 One thing this file cannot reach: whether the panel *renders*. See
 `tests/browser/dock_harness.html` for that, which is how the collapse bug and the

@@ -165,6 +165,24 @@ function plan_info_data_attr(): string {
     return 'data-plan-info="' . htmlspecialchars($json, ENT_QUOTES, 'UTF-8') . '"';
 }
 
+/**
+ * Plan facts: label, price, and the numeric and list limits defined in this
+ * array.
+ *
+ * Capability gates are deliberately NOT in here.  What a plan can DO is decided
+ * by the named predicates further down — can_use_lead_workspace(),
+ * can_use_call_scripts(), can_schedule_searches(), is_paid_plan() — and those
+ * are the single source of truth.
+ *
+ * This array used to carry a hand-maintained 'features' list that only a
+ * has_feature() helper read, and no production code ever called the helper.  It
+ * drifted from the predicates (it claimed Pro lacked lead_enrich_basic while
+ * Entrepreneur had the fuller name, so the ladder was wrong on paper) without
+ * anything failing, because nothing enforced it.  It was deleted rather than
+ * kept as a second description of the plans.  Add a capability as a predicate
+ * below, never as a row here — and see test_plan_ladder.php, which asserts the
+ * predicates form the free ⊂ pro ⊂ entrepreneur ladder.
+ */
 function plan_config(): array {
     return [
         'free' => [
@@ -183,7 +201,6 @@ function plan_config(): array {
             'export_daily'        => FREE_EXPORT_DAILY ?? 0,
             'enrich_providers'    => FREE_ENRICH_PROVIDERS ?? '',
             'export_max_rows'     => 0,
-            'features'            => ['basic_dashboard'],
         ],
         'pro' => [
             'label'               => 'Pro',
@@ -200,12 +217,6 @@ function plan_config(): array {
             'export_daily'        => PRO_EXPORT_DAILY ?? 5,
             'enrich_providers'    => PRO_ENRICH_PROVIDERS ?? '',
             'export_max_rows'     => PRO_EXPORT_MAX_ROWS ?? 5000,
-            'features'            => [
-                'basic_dashboard','website_generation','zip_export',
-                'revenue_dashboard','priority_support',
-                'lead_workspace','lead_export','lead_enrich_basic','saved_searches',
-                'call_scripts',
-            ],
         ],
         'entrepreneur' => [
             'label'               => 'Entrepreneur',
@@ -222,20 +233,6 @@ function plan_config(): array {
             'export_daily'        => ENT_EXPORT_DAILY ?? 50,
             'enrich_providers'    => ENT_ENRICH_PROVIDERS ?? '',
             'export_max_rows'     => ENT_EXPORT_MAX_ROWS ?? 50000,
-            'features'            => [
-                'basic_dashboard','website_generation','zip_export',
-                'revenue_dashboard','priority_support',
-                'custom_domains','client_reports','team_seats',
-                // lead_enrich_basic AND _full: Entrepreneur does have basic
-                // enrichment, because "full" is basic plus more. Listing only the
-                // fuller name broke the ladder on paper — Pro's set was not a
-                // subset of Entrepreneur's — which is the kind of drift that is
-                // invisible until somebody finally reads this array. See
-                // test_plan_ladder.php, which now fails if it happens again.
-                'lead_workspace','lead_export','lead_enrich_basic','lead_enrich_full',
-                'saved_searches','scheduled_searches','bulk_unlock',
-                'call_scripts',
-            ],
         ],
     ];
 }
@@ -257,9 +254,6 @@ function get_plan_config(string $plan): array {
 }
 function plan_label(string $plan): string {
     return get_plan_config($plan)['label'];
-}
-function has_feature(string $feature, string $plan): bool {
-    return in_array($feature, get_plan_config($plan)['features'], true);
 }
 function plan_lead_limit(string $plan, ?int $user_id = null): int {
     $base = (int) get_plan_config($plan)['lead_limit'];
