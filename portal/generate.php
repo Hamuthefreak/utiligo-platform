@@ -780,5 +780,5 @@ document.addEventListener('DOMContentLoaded', function () {
 });
 </script>
 
-<script src="/assets/js/image_uploader.js?v=v210"></script>
-<script src="/assets/js/generator.js?v=v301"></script>
+<script src="<?= asset_url('/assets/js/image_uploader.js') ?>"></script>
+<script src="<?= asset_url('/assets/js/generator.js') ?>"></script>

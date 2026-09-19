@@ -435,9 +435,9 @@ $obPurchasePlan = (string)($_SESSION['purchase_animation_plan'] ?? '');
 $obShowWelcome  = isset($_GET['welcome']) && $obPurchasePlan === '';
 ?>
 <?php if ($obShowWelcome): ?>
-<script defer src="/assets/js/onboarding-login.js"></script>
+<script defer src="<?= asset_url('/assets/js/onboarding-login.js') ?>"></script>
 <?php elseif ($obPurchasePlan !== ''): ?>
-<script defer src="/assets/js/onboarding-purchase.js"></script>
+<script defer src="<?= asset_url('/assets/js/onboarding-purchase.js') ?>"></script>
 <?php
     // Consumed — without this the splash script would be re-served on every
     // portal page load until the session expired.

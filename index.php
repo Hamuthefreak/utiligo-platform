@@ -127,14 +127,14 @@ require_once __DIR__ . '/includes/header.php';
   </div>
   <div class="backdrop-blur-lg bg-white/5 border border-white/10 rounded-2xl p-8 md:p-10">
     <div class="mb-8">
-      <label class="flex justify-between text-sm mb-2">
+      <label class="flex justify-between text-sm mb-2" for="sitesSlider">
         <span>Websites sold per month</span>
         <span id="sitesValue" class="text-white font-semibold">5</span>
       </label>
       <input type="range" id="sitesSlider" min="1" max="50" value="5" class="w-full accent-white">
     </div>
     <div class="mb-8">
-      <label class="flex justify-between text-sm mb-2">
+      <label class="flex justify-between text-sm mb-2" for="priceSlider">
         <span>Price per website</span>
         <span id="priceValue" class="text-white font-semibold">$500</span>
       </label>
@@ -342,4 +342,4 @@ require_once __DIR__ . '/includes/header.php';
 </section>
 
 <?php require_once __DIR__ . '/includes/footer.php'; ?>
-<script src="/assets/js/revenue_calc.js?v=v300"></script>
+<script src="<?= asset_url('/assets/js/revenue_calc.js') ?>"></script>

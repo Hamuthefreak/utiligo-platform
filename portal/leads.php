@@ -1190,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', function() {
   data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
   data-can-schedule-searches="<?=can_schedule_searches($plan) ? '1' : '0'?>"
 ></script>
-<script src="/assets/js/leads.js?v=2109"></script>
+<script src="<?= asset_url('/assets/js/leads.js') ?>"></script>
 
 <script>
 function openHistoryDrawer() {

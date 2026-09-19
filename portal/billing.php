@@ -507,4 +507,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 
 <?php require_once __DIR__ . '/../includes/portal_layout_end.php'; ?>
-<script src="/assets/js/billing_card.js?v=v320"></script>
+<script src="<?= asset_url('/assets/js/billing_card.js') ?>"></script>

@@ -5,6 +5,10 @@
 if (!function_exists('plan_info_data_attr')) {
     require_once __DIR__ . '/plans.php';
 }
+// asset_url() lives in functions.php; load it on demand for the same reason.
+if (!function_exists('asset_url')) {
+    require_once __DIR__ . '/functions.php';
+}
 
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.'; }
 $loggedIn = function_exists('is_logged_in') && is_logged_in();
@@ -75,7 +79,7 @@ $_seo_ld = array_filter(array_merge([
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= asset_url('/assets/css/style.css') ?>">
 <style>
   .logo-wordmark {
     font-family: 'Space Grotesk', sans-serif;
@@ -162,7 +166,7 @@ $_seo_ld = array_filter(array_merge([
   <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
     <a href="/" class="flex items-center gap-2">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-8 w-auto">
       <?php else: ?>
         <i class="fa-solid fa-bolt text-white text-xl"></i>
       <?php endif; ?>

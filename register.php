@@ -101,8 +101,8 @@ require_once __DIR__ . '/includes/header.php';
 
 <?php if (!$success && $_SERVER['REQUEST_METHOD'] !== 'POST'): ?>
 <!-- Signup plan showcase overlay — only on fresh page load -->
-<link rel="stylesheet" href="/assets/css/onboarding.css">
-<script defer src="/assets/js/onboarding-signup.js"></script>
+<link rel="stylesheet" href="<?= asset_url('/assets/css/onboarding.css') ?>">
+<script defer src="<?= asset_url('/assets/js/onboarding-signup.js') ?>"></script>
 <?php endif; ?>
 
 <section class="min-h-screen flex items-center justify-center px-4 py-16">
@@ -113,7 +113,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="text-center mb-8">
     <a href="/" class="inline-flex items-center gap-2">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-9 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-9 w-auto">
       <?php else: ?>
         <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
           <i class="fa-solid fa-bolt text-black text-base"></i>
@@ -191,7 +191,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="text-center mb-8">
     <a href="/" class="inline-flex items-center gap-2 mb-6">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-9 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-9 w-auto">
       <?php else: ?>
         <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
           <i class="fa-solid fa-bolt text-black text-base"></i>
@@ -219,20 +219,20 @@ require_once __DIR__ . '/includes/header.php';
     <input type="hidden" name="plan" value="<?= htmlspecialchars($_plan_param) ?>">
 
     <div>
-      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Full Name</label>
-      <input type="text" name="full_name" required autofocus
+      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2" for="registerFullName">Full Name</label>
+      <input type="text" name="full_name" id="registerFullName" required autofocus
              value="<?= htmlspecialchars($_POST['full_name'] ?? '') ?>"
              class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
     </div>
     <div>
-      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Email</label>
-      <input type="email" name="email" required
+      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2" for="registerEmail">Email</label>
+      <input type="email" name="email" id="registerEmail" required
              value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
              class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
     </div>
     <div>
-      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2">Password</label>
-      <input type="password" name="password" required minlength="8"
+      <label class="block text-xs text-slate-400 font-semibold uppercase tracking-wider mb-2" for="registerPassword">Password</label>
+      <input type="password" name="password" id="registerPassword" required minlength="8"
              class="w-full bg-slate-800/80 border border-slate-600 text-white placeholder-slate-500 rounded-xl px-4 py-3 focus:outline-none focus:border-white/40 transition">
       <p class="text-xs text-slate-500 mt-1">Minimum 8 characters</p>
     </div>

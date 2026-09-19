@@ -36,7 +36,7 @@ $_has_logo  = file_exists($_logo_path);
 <title>Site Editor &mdash; <?= htmlspecialchars($site['business_name']) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= asset_url('/assets/css/style.css') ?>">
 <style>
 * { box-sizing: border-box; }
 html, body {
@@ -305,7 +305,7 @@ html, body {
     <div id="sbTop">
       <div id="sbBrand">
         <?php if ($_has_logo): ?>
-          <img src="<?= $_logo_url ?>" alt="Logo">
+          <img src="<?= $_logo_url ?>" alt="Logo" width="403" height="124">
         <?php else: ?>
           <div style="width:22px;height:22px;border-radius:5px;background:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;">
             <i class="fa-solid fa-bolt" style="color:#000;font-size:10px;"></i>
@@ -532,6 +532,6 @@ if (ssSb && ssTop) {
 }
 </script>
 
-<script src="/assets/js/site_editor.js?v=v204"></script>
+<script src="<?= asset_url('/assets/js/site_editor.js') ?>"></script>
 </body>
 </html>

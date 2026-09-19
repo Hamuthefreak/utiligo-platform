@@ -4,6 +4,10 @@
  */
 if (!isset($pageTitle))  { $pageTitle  = 'Admin — Utiligo'; }
 if (!isset($adminPage))  { $adminPage  = ''; }
+// asset_url() lives in functions.php, which admin pages don't all load.
+if (!function_exists('asset_url')) {
+    require_once __DIR__ . '/functions.php';
+}
 
 $_name     = htmlspecialchars(trim($admin['full_name'] ?? $admin['email'] ?? 'Admin'));
 $_initials = strtoupper(substr($_name, 0, 1));
@@ -21,7 +25,7 @@ $_has_logo  = file_exists($_logo_path);
 <title><?= htmlspecialchars($pageTitle) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= asset_url('/assets/css/style.css') ?>">
 <style>
   .nav-link { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; font-size:.875rem; font-weight:500; color:#94a3b8; transition:all .15s; white-space:nowrap; }
   .nav-link:hover  { background:rgba(255,255,255,.06); color:#fff; }
@@ -51,7 +55,7 @@ $_has_logo  = file_exists($_logo_path);
   <div class="px-5 py-5 border-b border-white/5">
     <a href="/admin/index.php" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-8 w-auto">
       <?php else: ?>
         <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0">
           <i class="fa-solid fa-bolt text-black text-sm"></i>
@@ -117,7 +121,7 @@ $_has_logo  = file_exists($_logo_path);
   </button>
   <a href="/admin/index.php" class="flex items-center gap-2">
     <?php if ($_has_logo): ?>
-      <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-7 w-auto">
+      <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-7 w-auto">
     <?php else: ?>
       <div class="w-6 h-6 rounded-md bg-white flex items-center justify-center">
         <i class="fa-solid fa-bolt text-black text-xs"></i>

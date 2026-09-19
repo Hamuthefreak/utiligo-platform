@@ -8,6 +8,10 @@
 if (!function_exists('plan_info_data_attr')) {
     require_once __DIR__ . '/plans.php';
 }
+// asset_url() lives in functions.php; load it on demand for the same reason.
+if (!function_exists('asset_url')) {
+    require_once __DIR__ . '/functions.php';
+}
 
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo Portal'; }
 $loggedIn  = function_exists('is_logged_in') && is_logged_in();
@@ -45,12 +49,12 @@ if (!function_exists('_nav_active')) {
 <title><?= htmlspecialchars($pageTitle) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="<?= asset_url('/assets/css/style.css') ?>">
 <?php if (isset($_GET['welcome']) || !empty($_SESSION['purchase_animation_plan'])): ?>
 <?php /* Onboarding splash stylesheet — loaded here (not at the end of the body)
          so the overlay is already styled by the time its deferred script runs.
          portal/index.php is the only page that includes the matching script. */ ?>
-<link rel="stylesheet" href="/assets/css/onboarding.css">
+<link rel="stylesheet" href="<?= asset_url('/assets/css/onboarding.css') ?>">
 <?php endif; ?>
 <style>
   /* ── Nav ── */
@@ -150,7 +154,7 @@ if (!function_exists('_nav_active')) {
   <div class="px-5 py-5 border-b border-white/5 shrink-0">
     <a href="/" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-8 w-auto">
+        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-8 w-auto">
       <?php else: ?>
         <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0">
           <i class="fa-solid fa-bolt text-black text-sm"></i>
@@ -234,7 +238,7 @@ if (!function_exists('_nav_active')) {
   </button>
   <a href="/" class="flex items-center gap-2">
     <?php if ($_has_logo): ?>
-      <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-7 w-auto">
+      <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-7 w-auto">
     <?php else: ?>
       <div class="w-6 h-6 rounded-md bg-white flex items-center justify-center">
         <i class="fa-solid fa-bolt text-black text-xs"></i>

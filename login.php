@@ -149,14 +149,14 @@ require_once __DIR__ . '/includes/header.php';
       <form method="POST" class="space-y-4">
         <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
         <div>
-          <label class="block text-sm mb-2">Email</label>
-          <input type="email" name="email" required autofocus
+          <label class="block text-sm mb-2" for="loginEmail">Email</label>
+          <input type="email" name="email" id="loginEmail" required autofocus
             value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
             class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
         </div>
         <div>
-          <label class="block text-sm mb-2">Password</label>
-          <input type="password" name="password" required
+          <label class="block text-sm mb-2" for="loginPassword">Password</label>
+          <input type="password" name="password" id="loginPassword" required
             class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
         </div>
 

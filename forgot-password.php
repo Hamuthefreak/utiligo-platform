@@ -53,8 +53,11 @@ require_once __DIR__ . '/includes/header.php';
       <p class="text-slate-400 text-sm text-center mb-6">Enter your email and we'll send you a reset link.</p>
       <form method="POST" class="space-y-4">
         <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-        <input type="email" name="email" required autofocus placeholder="you@example.com"
-          class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
+        <div>
+          <label class="block text-sm mb-2" for="forgotEmail">Email</label>
+          <input type="email" name="email" id="forgotEmail" required autofocus placeholder="you@example.com"
+            class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
+        </div>
         <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-full font-semibold">
           Send Reset Link
         </button>

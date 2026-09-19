@@ -66,12 +66,23 @@ require_once __DIR__ . '/includes/header.php';
 
       <form method="POST" class="space-y-4">
         <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-        <input type="text" name="name" required placeholder="Your name" value="<?= htmlspecialchars($_POST['name'] ?? '') ?>"
-          class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
-        <input type="email" name="email" required placeholder="you@example.com" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
-          class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
-        <textarea name="message" required rows="5" placeholder="How can we help?"
-          class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none"><?= htmlspecialchars($_POST['message'] ?? '') ?></textarea>
+        <!-- Real labels, not placeholder-only: a placeholder disappears the
+             moment someone types, and it is not an accessible name. -->
+        <div>
+          <label class="block text-sm mb-2" for="contactName">Name</label>
+          <input type="text" name="name" id="contactName" required placeholder="Your name" value="<?= htmlspecialchars($_POST['name'] ?? '') ?>"
+            class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-sm mb-2" for="contactEmail">Email</label>
+          <input type="email" name="email" id="contactEmail" required placeholder="you@example.com" value="<?= htmlspecialchars($_POST['email'] ?? '') ?>"
+            class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none">
+        </div>
+        <div>
+          <label class="block text-sm mb-2" for="contactMessage">Message</label>
+          <textarea name="message" id="contactMessage" required rows="5" placeholder="How can we help?"
+            class="w-full bg-slate-800 border border-slate-600 text-white placeholder-slate-400 rounded-lg px-4 py-2.5 focus:border-emerald-400 focus:outline-none"><?= htmlspecialchars($_POST['message'] ?? '') ?></textarea>
+        </div>
         <button type="submit" class="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 py-3 rounded-full font-semibold">
           Send Message
         </button>

@@ -1,4 +1,10 @@
 <?php
+// asset_url() lives in functions.php. The error pages include this footer
+// without going through header.php first, so load it on demand rather than
+// assuming the page already did.
+if (!function_exists('asset_url')) {
+    require_once __DIR__ . '/functions.php';
+}
 $_logo_path = __DIR__ . '/../assets/images/utiligoheaderlogo.png';
 $_logo_url  = '/assets/images/utiligoheaderlogo.png';
 $_has_logo  = file_exists($_logo_path);
@@ -8,7 +14,7 @@ $_has_logo  = file_exists($_logo_path);
     <div>
       <a href="/" class="text-lg font-bold flex items-center gap-2 mb-3">
         <?php if ($_has_logo): ?>
-          <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-6 w-auto">
+          <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-6 w-auto">
         <?php else: ?>
           <i class="fa-solid fa-bolt text-emerald-400"></i>
         <?php endif; ?><?php if (!$_has_logo): ?>Utiligo<?php endif; ?>
@@ -60,7 +66,7 @@ $_has_logo  = file_exists($_logo_path);
       <p class="text-slate-500 text-xs">&copy; <?= date('Y') ?> Utiligo.ca — All rights reserved.</p>
       <span class="inline-flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs text-slate-400">
         <?php if ($_has_logo): ?>
-          <img src="<?= $_logo_url ?>" alt="Utiligo" class="h-3.5 w-auto">
+          <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-3.5 w-auto">
         <?php else: ?>
           <i class="fa-solid fa-bolt text-emerald-400"></i>
         <?php endif; ?> Powered by Utiligo
@@ -69,7 +75,7 @@ $_has_logo  = file_exists($_logo_path);
   </div>
 </footer>
 
-<script src="/assets/js/main.js?v=v163"></script>
+<script src="<?= asset_url('/assets/js/main.js') ?>"></script>
 
 <script>
 // ─── Utiligo Page Transition System ───────────────────────────────────────────────────────

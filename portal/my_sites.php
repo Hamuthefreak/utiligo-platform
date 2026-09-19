@@ -468,4 +468,4 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 </div>
 
-<script src="/assets/js/my_sites.js?v=v603"></script>
+<script src="<?= asset_url('/assets/js/my_sites.js') ?>"></script>

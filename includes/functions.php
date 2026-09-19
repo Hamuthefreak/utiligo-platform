@@ -16,6 +16,31 @@ function slugify(string $text): string
     return trim($text, '-') ?: 'site';
 }
 
+/**
+ * Public URL for a bundled asset, cache-busted by the file's modification time.
+ *
+ * These assets used to carry hand-written version strings, and they had drifted
+ * into `?v=1`, `?v=v163`, `?v=v204`, `?v=2108`, … — while the two stylesheets
+ * carried none at all. That is a visible bug, not a cosmetic one: style.css is
+ * the entire theme, so a returning visitor with a cached copy kept the previous
+ * palette, spacing and card layout after a deploy (and after the recent theme
+ * work) until they hard-refreshed. Nothing about the page tells them to.
+ *
+ * Deriving the version from the mtime means editing a file changes its URL
+ * automatically, so nobody has to remember to bump a number, and assets can be
+ * cached hard.
+ *
+ * @param string $path Root-relative asset path, e.g. '/assets/css/style.css'.
+ * @return string The path with a `?v=` stamp, or unchanged if the file is missing.
+ */
+function asset_url(string $path): string
+{
+    $path  = '/' . ltrim($path, '/');
+    $file  = __DIR__ . '/..' . $path;
+    $stamp = is_file($file) ? @filemtime($file) : false;
+    return $stamp === false ? $path : $path . '?v=' . (int)$stamp;
+}
+
 function json_response(array $data, int $statusCode = 200): void
 {
     http_response_code($statusCode);
