@@ -82,20 +82,33 @@ require_once __DIR__ . '/../userdb.php';
  * Exists so a caller can ask "what does this account actually have?" without
  * duplicating the column name. purchase-success.php uses it to decide whether a
  * verified purchase is reflected in the account before celebrating it.
+ *
+ * Either identity works. The customer-id form exists because Stripe's
+ * subscription events are matched on the customer, so the caller handling one has
+ * a customer id and no user id yet — and asking "is this account already paid?"
+ * with a user id of 0 would answer "no" for every such event.
  */
-function entitlement_current_plan(int $userId): ?string
+function entitlement_current_plan(int $userId, string $customerId = ''): ?string
 {
-    if ($userId <= 0) {
+    $customerId = trim($customerId);
+    if ($userId <= 0 && $customerId === '') {
         return null;
     }
 
     try {
-        $stmt = get_user_db()->prepare('SELECT plan FROM utiligo_users WHERE id = ? LIMIT 1');
-        $stmt->execute([$userId]);
+        if ($userId > 0) {
+            $stmt = get_user_db()->prepare('SELECT plan FROM utiligo_users WHERE id = ? LIMIT 1');
+            $stmt->execute([$userId]);
+        } else {
+            $stmt = get_user_db()->prepare('SELECT plan FROM utiligo_users WHERE stripe_customer_id = ? LIMIT 1');
+            $stmt->execute([$customerId]);
+        }
+
         $row = $stmt->fetch();
         return $row ? (string)($row['plan'] ?? '') : null;
     } catch (\Throwable $e) {
-        entitlement_log('read', 'could not read the plan for user ' . $userId . ': ' . $e->getMessage());
+        entitlement_log('read', 'could not read the plan for '
+            . ($userId > 0 ? 'user ' . $userId : 'customer ' . $customerId) . ': ' . $e->getMessage());
         return null;
     }
 }
@@ -725,4 +738,221 @@ function entitlement_set_status(int $userId, string $status, array $opts = []): 
         'allow_downgrade' => true,
         'source'          => (string)($opts['source'] ?? 'local-status'),
     ]);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Subscription sync — customer.subscription.created / .updated
+ *
+ * WHY THESE EVENTS MATTER
+ * ───────────────────────
+ * checkout.session.completed answers one question: "what did they just buy?".
+ * It cannot answer it a second time, because a subscription is not only created
+ * once — it changes. Stripe's own billing portal lets a customer switch from Pro
+ * to Entrepreneur, switch back, mark the subscription to cancel at period end,
+ * or (most importantly) recover from a failed payment. Every one of those sends
+ * customer.subscription.updated and nothing else. Until this section existed the
+ * application ignored the event entirely, so:
+ *
+ *   • A customer who moved up a tier in the portal kept paying the higher price
+ *     while every gate in the app still read the old plan.
+ *   • An account flagged 'past_due' by invoice.payment_failed stayed flagged for
+ *     good. When Stripe's retry succeeded and the subscription went back to
+ *     active, nothing in the app was watching, so the customer's own billing
+ *     page went on saying past due after their card had been fixed.
+ *
+ * The two halves below are deliberately separate: the intent (what the object
+ * means) is a pure function of the payload, so its whole status table can be
+ * asserted without a database, and the apply half is the only part that writes.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * The plan a Stripe price id stands for, or null when it is not one of ours.
+ *
+ * Read from the same two constants stripe-checkout.php prices its sessions with,
+ * so this mapping cannot drift from what the customer was actually charged.
+ * A placeholder value (YOUR_…_PRICE_ID) never matches anything.
+ */
+function entitlement_plan_from_price_id(string $priceId): ?string
+{
+    $priceId = trim($priceId);
+    if ($priceId === '' || str_starts_with($priceId, 'YOUR_')) {
+        return null;
+    }
+
+    $prices = [
+        'pro'          => defined('STRIPE_PRO_PRICE_ID') ? (string)STRIPE_PRO_PRICE_ID : '',
+        'entrepreneur' => defined('STRIPE_ENT_PRICE_ID') ? (string)STRIPE_ENT_PRICE_ID : '',
+    ];
+
+    foreach ($prices as $plan => $configured) {
+        if ($configured !== '' && !str_starts_with($configured, 'YOUR_') && $configured === $priceId) {
+            return $plan;
+        }
+    }
+
+    return null;
+}
+
+/**
+ * Which paid plan a subscription is on. The PRICE decides; metadata is only a
+ * fallback.
+ *
+ * That order is the whole point, and getting it backwards reintroduces the bug
+ * this section exists to fix. checkout stamps metadata[plan] from the plan that
+ * was bought and carries it onto the subscription — but it is stamped ONCE, at
+ * creation. When a customer changes plan in Stripe's billing portal, Stripe
+ * swaps the PRICE and sends this event; it has no way to rewrite our metadata.
+ * So a metadata-only lookup reports the plan they started on forever.
+ *
+ * The fallback still earns its place: a price we do not recognise (a legacy or
+ * dashboard-created price) must not cancel anything, and metadata that names a
+ * real plan is better evidence than nothing. Both paths are restricted to paid
+ * plans, so this can never return 'free' and turn a status sync into a
+ * downgrade.
+ */
+function entitlement_plan_from_subscription(array $subscription): ?string
+{
+    $priceId = (string)($subscription['items']['data'][0]['price']['id'] ?? '');
+    $plan    = entitlement_plan_from_price_id($priceId);
+
+    if ($plan === null) {
+        $plan = entitlement_normalize_plan((string)($subscription['metadata']['plan'] ?? ''));
+    }
+
+    return ($plan !== null && is_paid_plan($plan)) ? $plan : null;
+}
+
+/** Shape one intent. Kept tiny so the table below reads as a table. */
+function entitlement_intent(string $action, ?string $plan, ?string $status, string $reason): array
+{
+    return ['action' => $action, 'plan' => $plan, 'status' => $status, 'reason' => $reason];
+}
+
+/**
+ * What a subscription object should do to entitlement. Pure: no database, no
+ * Stripe, no clock. The whole status table is therefore directly assertable.
+ *
+ * Returns ['action' => 'grant'|'flag'|'revoke'|'ignore', 'plan' => ?string,
+ *          'status' => ?string, 'reason' => string].
+ *
+ * The table, and why each row is what it is:
+ *
+ *   active / trialing     grant. This is also how a customer RECOVERS from a
+ *                         failed payment, which is why it must be able to move
+ *                         the status back to 'active' and not only forward.
+ *   past_due              flag only. Stripe is still dunning, and the customer
+ *                         keeps the features they are being asked to pay for —
+ *                         the same stance invoice.payment_failed takes.
+ *   unpaid                revoke. Dunning has finished without payment, so the
+ *                         grace period is over. This cannot be left to the
+ *                         deletion event: Stripe does not always cancel an
+ *                         unpaid subscription, so no deletion may ever arrive.
+ *   canceled              revoke, and the caller guards it on the subscription
+ *   incomplete_expired    id — so this cannot take away a plan the customer
+ *                         bought afterwards, the same protection the deletion
+ *                         handler has.
+ *   incomplete / paused   ignore. `incomplete` means the FIRST payment has not
+ *                         succeeded, so granting here would hand out a paid plan
+ *                         for a checkout that never completed.
+ *   anything else         ignore, and say so. An unrecognised status is not
+ *                         evidence of anything, and guessing costs money.
+ */
+function entitlement_subscription_intent(array $subscription): array
+{
+    $status = strtolower(trim((string)($subscription['status'] ?? '')));
+
+    if ($status === '') {
+        return entitlement_intent('ignore', null, null, 'the subscription carries no status');
+    }
+
+    if ($status === 'active' || $status === 'trialing') {
+        $plan = entitlement_plan_from_subscription($subscription);
+        if ($plan === null) {
+            return entitlement_intent('ignore', null, null,
+                'active, but neither its price nor its metadata names a plan we know');
+        }
+        return entitlement_intent('grant', $plan, 'active', $status . ' on ' . $plan);
+    }
+
+    if ($status === 'past_due') {
+        return entitlement_intent('flag', null, 'past_due', 'dunning has started');
+    }
+
+    if ($status === 'unpaid') {
+        return entitlement_intent('revoke', null, null, 'dunning finished without payment');
+    }
+
+    if ($status === 'canceled' || $status === 'incomplete_expired') {
+        return entitlement_intent('revoke', null, null, 'the subscription has ended');
+    }
+
+    if ($status === 'incomplete' || $status === 'paused') {
+        return entitlement_intent('ignore', null, null, $status . ' does not entitle anyone');
+    }
+
+    return entitlement_intent('ignore', null, null, 'unrecognised status ' . $status);
+}
+
+/**
+ * Sync entitlement with a Stripe subscription object.
+ *
+ * The only path that can move a customer between the two paid tiers, and so the
+ * only one that sets allow_downgrade: a customer who trades Entrepreneur for Pro
+ * in Stripe's portal has made a legitimate decision that has to be applied. What
+ * stops a STALE downgrade from landing is the event clock, not a blanket refusal
+ * to ever go down a tier.
+ *
+ * Every branch matches on the subscription id, so an event describing a
+ * subscription the account has since replaced cannot overwrite the current plan.
+ * In the ordinary single-subscription case the stored id is either empty or the
+ * same one, so the guard costs nothing.
+ */
+function entitlement_sync_subscription(array $opts): array
+{
+    $source       = (string)($opts['source'] ?? 'stripe-subscription');
+    $subscription = is_array($opts['subscription'] ?? null) ? $opts['subscription'] : [];
+    $intent       = entitlement_subscription_intent($subscription);
+
+    $common = [
+        'user_id'            => (int)($opts['user_id'] ?? 0),
+        'customer_id'        => (string)($opts['customer_id'] ?? ''),
+        'subscription_id'    => (string)($opts['subscription_id'] ?? ''),
+        'event_at'           => $opts['event_at'] ?? null,
+        'match_subscription' => true,
+        'source'             => $source,
+    ];
+
+    switch ($intent['action']) {
+        case 'grant':
+            // Only a first-time grant restarts the subscription clock; a tier
+            // change is the same subscription, so its start date must not move.
+            // Asked by customer id as well as user id, because an event matched
+            // on the customer arrives with no user id and would otherwise look
+            // like a first grant every single time.
+            $current = entitlement_current_plan($common['user_id'], $common['customer_id']);
+
+            return entitlement_apply($common + [
+                'plan'            => $intent['plan'],
+                'status'          => $intent['status'],
+                'allow_downgrade' => true,
+                'store_customer'  => true,
+                'started_at'      => !is_paid_plan($current),
+            ]);
+
+        case 'flag':
+            // Status only — the plan is deliberately left alone, exactly as
+            // invoice.payment_failed leaves it.
+            return entitlement_apply($common + [
+                'plan'   => null,
+                'status' => $intent['status'],
+            ]);
+
+        case 'revoke':
+            // Reuse the cancellation wrapper: same downgrade-to-free, same
+            // subscription-id guard, so both routes to 'cancelled' agree.
+            return entitlement_cancel_from_stripe($common);
+    }
+
+    entitlement_log($source, 'ignored: ' . $intent['reason']);
+    return entitlement_result(false, 'ignored: ' . $intent['reason'], 0, null, $source);
 }

@@ -79,6 +79,7 @@ executed.
 | `test_webhook.php` | the real endpoint over HTTP: replay, out-of-order delivery, forgery |
 | `test_reconciliation.php` | the real success page: settled/paid checks, ownership, staleness |
 | `test_cancellation.php` | the cancellation lifecycle, including re-subscription |
+| `test_subscription_updated.php` | Stripe-side plan changes and status transitions, through `.created`/`.updated` |
 | `test_lead_search_queue.php` | the async lead search: atomic claiming, crash recovery, enqueue gating, quota, and a completed search run end to end through the worker |
 
 Stripe is replaced by `tests/lib/stripe_stub.php`. That is not a test-only branch
@@ -132,10 +133,21 @@ Deploying this needs a cron entry, same shape as the other workers:
   names against Stripe's current API. The webhook's field paths are corroborated
   by the Checkout Session object documented at
   `docs.stripe.com/api/checkout/sessions/object`.
-- **`customer.subscription.updated` is not handled anywhere in the application.**
-  A customer who changes plan at Stripe rather than through checkout will keep
-  their old plan until something else touches the account. Out of scope here,
-  but it is the next gap.
+- **Billing-portal plan changes are handled, but only for the subscription the
+  app holds.** `customer.subscription.created`/`.updated` are now interpreted
+  (see `test_subscription_updated.php`), and every branch matches on the
+  subscription id, so an event naming a subscription the account has replaced is
+  ignored rather than applied. That guard is what makes an old subscription's
+  update harmless — but it also means an update to a *newer* subscription the
+  account has not recorded yet is ignored too, and the app never learns about a
+  subscription started in the Stripe dashboard against a customer id it does not
+  know. Reconciling that needs a call to Stripe's subscription list, which this
+  suite has no way to make.
+- **Nothing cancels a superseded subscription at checkout.** Buying a second plan
+  creates a second live Stripe subscription rather than changing the first, so a
+  customer who upgrades twice through checkout is billed twice until one is
+  cancelled by hand. The webhook handles the entitlement correctly either way;
+  the billing is the part that would need the Stripe API.
 - **Plans granted by an administrator before migration 023 keep a NULL ordering
   clock** until their next entitlement change, so a stale event could still
   apply to them. The migration backfills every account that has a

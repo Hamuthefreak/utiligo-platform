@@ -4,7 +4,8 @@
  * Handles Stripe webhook events.
  * Configure in Stripe Dashboard:
  *   Endpoint URL: https://utiligo.ca/stripe-webhook.php
- *   Events: checkout.session.completed, customer.subscription.deleted,
+ *   Events: checkout.session.completed, customer.subscription.created,
+ *           customer.subscription.updated, customer.subscription.deleted,
  *           invoice.payment_failed
  *
  * All plan changes go through includes/entitlements.php, which orders every
@@ -114,6 +115,34 @@ switch ($type) {
             'subscription_id' => $subscriptionId,
             'event_at'        => $eventAt ?: null,
             'source'          => 'webhook.customer.subscription.deleted',
+        ]);
+        break;
+
+    case 'customer.subscription.created':
+    case 'customer.subscription.updated':
+        // Everything a subscription does after the sale: a plan change made in
+        // Stripe's billing portal (which swaps the PRICE and cannot touch our
+        // metadata), a subscription marked to cancel at period end, and the
+        // payment-recovered transition back to active. `created` is the same
+        // object carrying the same status and price, so it takes the same path —
+        // it is what arrives for a subscription made in the Stripe dashboard
+        // rather than through checkout.
+        //
+        // The interpretation lives in includes/entitlements.php as a pure
+        // function of the payload, so the status table is testable without a
+        // database, and this case stays thin.
+        if ($matchByCustomer === '' && $matchByUser <= 0) {
+            entitlement_log('webhook.subscription', 'ignored event ' . $eventId . ': no customer or user');
+            break;
+        }
+
+        entitlement_sync_subscription([
+            'user_id'         => $matchByUser,
+            'customer_id'     => $matchByCustomer,
+            'subscription_id' => $subscriptionId,
+            'event_at'        => $eventAt ?: null,
+            'subscription'    => $obj,
+            'source'          => 'webhook.' . $type,
         ]);
         break;
 
