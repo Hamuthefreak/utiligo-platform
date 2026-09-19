@@ -226,8 +226,15 @@ function plan_config(): array {
                 'basic_dashboard','website_generation','zip_export',
                 'revenue_dashboard','priority_support',
                 'custom_domains','client_reports','team_seats',
-                'lead_workspace','lead_export','lead_enrich_full',
+                // lead_enrich_basic AND _full: Entrepreneur does have basic
+                // enrichment, because "full" is basic plus more. Listing only the
+                // fuller name broke the ladder on paper — Pro's set was not a
+                // subset of Entrepreneur's — which is the kind of drift that is
+                // invisible until somebody finally reads this array. See
+                // test_plan_ladder.php, which now fails if it happens again.
+                'lead_workspace','lead_export','lead_enrich_basic','lead_enrich_full',
                 'saved_searches','scheduled_searches','bulk_unlock',
+                'call_scripts',
             ],
         ],
     ];
@@ -363,34 +370,42 @@ function plan_export_max_rows(string $plan): int {
     return (int) (get_plan_config($plan)['export_max_rows'] ?? 0);
 }
 
-/** Whether a user can use the lead workspace at all (Pro+). */
-function can_use_lead_workspace(string $plan): bool {
+/**
+ * Whether a user can use the lead workspace at all (Pro+).
+ *
+ * `?string` deliberately, like every other predicate in this file: a missing plan
+ * is a user we cannot identify, and the answer to that is NO, not a TypeError.
+ * This one used to require a string, so a caller that forgot the `?? 'free'`
+ * coalesce got a fatal error — during a page render, in front of the customer —
+ * where it should simply have been refused.
+ */
+function can_use_lead_workspace(?string $plan): bool {
     return plan_has_pro_features($plan);
 }
 
 /** Whether a user is allowed to schedule recurring searches (Ent only). */
-function can_schedule_searches(string $plan): bool {
-    return $plan === 'entrepreneur';
+function can_schedule_searches(?string $plan): bool {
+    return (string)$plan === 'entrepreneur';
 }
 
 /**
- * Whether a user gets the call-script dock. Pro ONLY.
+ * Whether a user gets the call-script dock.
  *
- * DELIBERATE EXCEPTION to the ladder rule in this file.  Entrepreneur is
- * normally a strict superset of Pro — that is why every other "is this a paid
- * customer?" test here goes through plan_has_pro_features().  Call scripts are
- * the one feature scoped DOWN instead of up, so Entrepreneur must be tested for
- * and excluded explicitly rather than swept in by the shared helper.
+ * Both paid tiers, like every other "Pro feature" in this product: the tiers are
+ * a LADDER, not a set, so Entrepreneur has everything Pro has.  This was briefly
+ * scoped to Pro alone, which made upgrading a DOWNGRADE — an Entrepreneur
+ * customer lost the dock the moment they paid more, and the only honest way to
+ * describe that on a pricing page is a row with a cross in the expensive column.
+ * Nobody buys their way into losing a feature, so it is a superset again.
  *
- * Read the consequence before changing this: an Entrepreneur customer who
- * downgrades to Pro GAINS call scripts, and one who upgrades from Pro LOSES
- * them.  portal/billing.php's comparison table says so in as many words, because
- * a pricing table that quietly omits a row like this is worse than the row.
- *
- * Use THIS, never plan_has_pro_features(), for anything call-script shaped —
- * including the stylesheet and script tags in includes/portal_layout.php, so a
- * locked-out account is never sent the asset in the first place.
+ * Kept as its own named predicate rather than inlined, for the same reason
+ * can_use_lead_workspace() is: if the tiers ever really do need to diverge for
+ * this feature, there is one place to change and one place to look.  Until then
+ * it is deliberately an alias, and it must NOT be narrowed without re-checking
+ * the four doors that call it — the API, the pop-out page, and the stylesheet and
+ * script tags in includes/portal_layout.php — because a gate applied at the door
+ * is what stops a locked-out account from being sent the assets at all.
  */
 function can_use_call_scripts(?string $plan): bool {
-    return (string)$plan === 'pro';
+    return plan_has_pro_features($plan);
 }

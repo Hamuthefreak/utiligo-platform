@@ -250,7 +250,7 @@ require_once __DIR__ . '/includes/header.php';
       <div class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
         <i class="fa-solid fa-phone-volume text-xl text-white"></i>
       </div>
-      <h3 class="font-semibold text-lg">Call Scripts That Follow You<span class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-1">On the Pro plan</span></h3>
+      <h3 class="font-semibold text-lg">Call Scripts That Follow You<span class="block text-[10px] font-bold uppercase tracking-widest text-slate-500 mt-1">On Pro and Entrepreneur</span></h3>
     </div>
     <p class="text-slate-400 text-sm md:flex-1">
       Your pitch, open in a floating panel that stays with you as you move through
@@ -321,6 +321,7 @@ require_once __DIR__ . '/includes/header.php';
         <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= $TMPL_COUNT ?> templates</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>ZIP export</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Full revenue dashboard</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i>Call scripts on every page</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Priority support</li>
         <li class="flex items-center gap-2">
           <i class="fa-solid fa-clock text-slate-500 mr-2"></i>

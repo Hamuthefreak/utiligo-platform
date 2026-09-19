@@ -22,13 +22,12 @@
  *    reorder, which takes a list of ids and would otherwise be an obvious way to
  *    rewrite another account's ordering. There is a test per op.
  *
- * 4. IT IS PRO, AND ONLY PRO. This is the one feature deliberately scoped DOWN:
- *    Entrepreneur is normally a superset of Pro, and can_use_call_scripts()
- *    exists as its own predicate precisely so that narrowing it does not narrow
- *    plan_has_pro_features() — which would strip the lead workspace, export and
- *    enrichment from every Entrepreneur customer as a side effect. There is an
- *    assertion for each of those, because that is the failure this file is most
- *    likely to catch.
+ * 4. IT IS BOTH PAID TIERS. It was briefly scoped to Pro alone, which made
+ *    upgrading a downgrade — an Entrepreneur customer lost the dock the moment
+ *    they paid more. The assertions below therefore pin BOTH directions: an
+ *    Entrepreneur account is served the dock, and it still has every other paid
+ *    feature too, so a future narrowing of the shared plan_has_pro_features()
+ *    helper is caught here as well as in test_plan_ladder.php.
  */
 
 $haveApp = !empty($context['app_url']) && !empty($context['db_ready']);
@@ -213,24 +212,24 @@ t_same_list(call_script_tokens('no tokens here'), [], 'and empty when there are 
  * 7. The feature registry
  * ──────────────────────────────────────────────────────────────────────────── */
 
-t_section('Call scripts are Pro, and ONLY Pro');
+t_section('Call scripts are a paid feature, and the paid tiers are a ladder');
 
 t_ok(has_feature('call_scripts', 'pro'), 'Pro has call scripts');
-t_ok(!has_feature('call_scripts', 'free'), 'free does not');
-t_ok(!has_feature('call_scripts', 'entrepreneur'),
-    'and neither does Entrepreneur — the one feature deliberately scoped down');
+t_ok(has_feature('call_scripts', 'entrepreneur'),
+    'and so does Entrepreneur — the tiers are a ladder, not a set');
+t_ok(!has_feature('call_scripts', 'free'), 'Free does not');
 
 t_ok(can_use_call_scripts('pro'), 'the gate says Pro');
-t_ok(!can_use_call_scripts('entrepreneur'), 'and refuses Entrepreneur by name');
-t_ok(!can_use_call_scripts('free'), 'and free');
+t_ok(can_use_call_scripts('entrepreneur'),
+    'and Entrepreneur, so upgrading never takes the dock away from the customer who paid more');
+t_ok(!can_use_call_scripts('free'), 'and refuses Free');
 t_ok(!can_use_call_scripts(null), 'and a missing plan, rather than erroring on it');
+t_ok(!can_use_call_scripts(''), 'and an empty one');
 
-// The reason the gate is a separate function instead of a tweak to the shared
-// one: plan_has_pro_features() is the predicate for the whole lead workspace, so
-// narrowing IT would have taken lead search, export and enrichment away from
-// Entrepreneur along with this.
-t_ok(plan_has_pro_features('entrepreneur'),
-    'Entrepreneur still has every OTHER paid feature, which is what makes this a deliberate exception');
+// Guards on the shared helper, because the wrong way to scope this feature is to
+// narrow plan_has_pro_features() — which would take lead search, export and
+// enrichment from every Entrepreneur customer as a side effect.
+t_ok(plan_has_pro_features('entrepreneur'), 'Entrepreneur still has every paid feature');
 t_ok(can_use_lead_workspace('entrepreneur'), 'including the lead workspace they pay for');
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -259,9 +258,11 @@ $post = function (int $userId, array $body, ?string $csrf = null) use ($app): ar
     ];
 };
 
+// full_name is set on the ROW, not passed to t_login: the layout reads the name
+// from the account record, so a session override would assert nothing.
 $freeUser = t_fixture(['plan' => 'free']);
 $proUser  = t_fixture(['plan' => 'pro', 'full_name' => 'Dana Reid']);
-$entUser  = t_fixture(['plan' => 'entrepreneur']);
+$entUser  = t_fixture(['plan' => 'entrepreneur', 'full_name' => 'Ada Ent']);
 $other    = t_fixture(['plan' => 'pro']);
 
 /** Wipe one account's scripts and seed marker, so a test starts from nothing. */
@@ -360,16 +361,10 @@ t_ok(!($afterDelete['json']['seeded'] ?? true), 'and the response does not claim
 t_ok(!empty(t_user($proUser)['call_script_seeded_at']),
     'with the account stamped, so no later visit can seed them again');
 
-t_is($post($entUser, ['op' => 'list'])['status'], 403,
-    'an Entrepreneur account is refused the endpoint, the same as free');
-t_is($post($entUser, ['op' => 'list'])['json']['error'] ?? '', 'plan_required',
-    'and told it is a plan limit rather than a missing feature');
-t_is($post($entUser, ['op' => 'create', 'name' => 'x', 'body' => 'y'])['status'], 403,
-    'and cannot create one either');
-t_is((int)$pdo->query('SELECT COUNT(*) FROM call_scripts WHERE user_id = ' . (int)$entUser)->fetchColumn(), 0,
-    'with nothing seeded into their account along the way');
-t_ok(empty(t_user($entUser)['call_script_seeded_at']),
-    'and the refused request did not stamp them as seeded either');
+t_is(count($post($entUser, ['op' => 'list'])['json']['scripts'] ?? []), 3,
+    'an Entrepreneur account is seeded too — the feature is theirs as much as Pro\'s');
+t_ok(!empty(t_user($entUser)['call_script_seeded_at']),
+    'and stamped as seeded like any other account');
 
 t_section('A delimited paste becomes several scripts');
 
@@ -432,7 +427,7 @@ t_ok(!empty($row['last_used_at']), 'and the last-used stamp is set, so the switc
 $ordered = $post($other, ['op' => 'reorder', 'ids' => [$madeId]]);
 t_is($ordered['json']['applied'] ?? -1, 1, 'a reorder of a script this account owns applies');
 
-t_section('The dock is delivered to Pro and to nobody else');
+t_section('The dock is delivered to both paid tiers, and to nobody else');
 
 $freeDash = t_http('GET', $app . '/portal/index.php', ['cookie' => t_login($freeUser)]);
 t_is($freeDash['status'], 200, 'a free account can still load the dashboard');
@@ -440,15 +435,14 @@ t_unlike($freeDash['body'], 'call_scripts.js', 'but is not sent the dock script 
 t_unlike($freeDash['body'], 'call_scripts.css', 'nor its stylesheet');
 t_unlike($freeDash['body'], 'UTILIGO_CALL_SCRIPTS', 'nor the config that would enable it');
 
-// The assertion this whole change exists for: the stylesheet and the script are
-// the gate, not the API. An Entrepreneur account must not be able to open a dock
-// that is only refused later by the endpoint.
+// The gate is applied at the door — the stylesheet and the script are what an
+// account is entitled to, so the layout must decide, not the endpoint.
 $entDash = t_http('GET', $app . '/portal/index.php', ['cookie' => t_login($entUser)]);
-t_is($entDash['status'], 200, 'an Entrepreneur account loads the dashboard as normal');
-t_unlike($entDash['body'], 'call_scripts.js', 'and is NOT sent the dock script');
-t_unlike($entDash['body'], 'call_scripts.css', 'nor its stylesheet');
-t_unlike($entDash['body'], 'UTILIGO_CALL_SCRIPTS', 'nor the config — nothing is sent to unlock with devtools');
-t_like($entDash['body'], 'portal', 'while still getting the portal they pay for');
+t_is($entDash['status'], 200, 'an Entrepreneur account loads the dashboard');
+t_like($entDash['body'], 'call_scripts.js', 'and IS sent the dock script, like Pro');
+t_like($entDash['body'], 'call_scripts.css', 'with its stylesheet');
+t_like($entDash['body'], 'UTILIGO_CALL_SCRIPTS', 'and the config');
+t_like($entDash['body'], 'Ada Ent', 'signed with their own name, not somebody else\'s');
 
 $proDash = t_http('GET', $app . '/portal/index.php', ['cookie' => t_login($proUser, ['full_name' => 'Dana Reid'])]);
 t_is($proDash['status'], 200, 'a Pro account loads the dashboard');
@@ -456,6 +450,7 @@ t_like($proDash['body'], 'call_scripts.js', 'and is sent the dock script');
 t_like($proDash['body'], 'call_scripts.css', 'with its stylesheet, so it is styled before it runs');
 t_like($proDash['body'], 'UTILIGO_CALL_SCRIPTS', 'and the config it needs');
 t_like($proDash['body'], 'senderName', 'including the name it signs scripts with');
+t_like($proDash['body'], 'Dana Reid', 'and that name is the account holder\'s');
 
 t_section('The pop-out window is behind the same gate');
 
@@ -464,9 +459,8 @@ t_is($freePop['status'], 302, 'a free account is redirected away from the pop-ou
 t_like((string)$freePop['location'], 'billing', 'to the page that sells it');
 
 $entPop = t_http('GET', $app . '/portal/call-scripts-window.php', ['cookie' => t_login($entUser)]);
-t_is($entPop['status'], 302, 'and so is an Entrepreneur account, which is the point of the exception');
-t_like((string)$entPop['location'], 'billing', 'sent to billing rather than to a panel they cannot use');
-t_unlike($entPop['body'], 'call_scripts.js', 'with no panel rendered on the way out');
+t_is($entPop['status'], 200, 'an Entrepreneur account gets the window too');
+t_like($entPop['body'], 'standalone: true', 'in the same standalone shape');
 
 $proPop = t_http('GET', $app . '/portal/call-scripts-window.php', ['cookie' => t_login($proUser)]);
 t_is($proPop['status'], 200, 'a Pro account gets the window');

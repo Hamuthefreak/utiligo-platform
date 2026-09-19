@@ -133,14 +133,31 @@ wrong:
   script that silently says "Hi ," is discovered mid-call.
 - **every op is scoped to the caller**, including `reorder`, which takes a list of
   ids and would otherwise be a way to rewrite another account's ordering.
-- **the dock is served to Pro and to nobody else.** Free AND Entrepreneur get
-  no script, no stylesheet and no config, and the pop-out window redirects both.
-  This is the one feature deliberately scoped DOWN from the higher tier, so there
-  are two assertions that exist purely as a tripwire: Entrepreneur still has
-  `plan_has_pro_features()` and `can_use_lead_workspace()`. Narrowing the shared
-  predicate instead of adding `can_use_call_scripts()` would strip lead search,
-  export and enrichment from every Entrepreneur customer as a side effect — the
-  mutation test for it fails 8 assertions, six of them in other files.
+- **the dock is served to both paid tiers and to nobody else.** Free gets no
+  script, no stylesheet and no config; Pro and Entrepreneur get all three, and
+  the pop-out window is behind the same gate.
+
+### The plan ladder
+
+`test_plan_ladder.php` asserts the SHAPE of the plan table rather than each gate
+where it lives: `free ⊂ pro ⊂ entrepreneur`. Limits are monotonic (with -1 read
+as unlimited), source/format/provider lists grow, every named capability true for
+Pro is true for Entrepreneur, and the declarative feature set is a subset at each
+step. A deliberately Ent-only feature is fine — the ladder only forbids going
+backwards.
+
+It exists because call scripts were briefly scoped to Pro alone, and the change
+passed 730 tests while making upgrading a downgrade: every gate was correct in
+isolation and nothing stated that Entrepreneur must never lose a feature. Mutating
+`can_use_call_scripts()` back to Pro-only now fails 12 assertions, including
+two in this file — and mutating `plan_has_pro_features()` fails 8, six of them in
+files with nothing to do with call scripts.
+
+The same file caught a live piece of drift that predated all of this: Pro's
+feature list contained `lead_enrich_basic` where Entrepreneur's contained only
+`lead_enrich_full`, so Pro's set was not actually a subset of Entrepreneur's.
+Nothing read that array, which is why nothing had broken — see the note in
+`includes/plans.php` that no code calls `has_feature()`.
 
 One thing this file cannot reach: whether the panel *renders*. See
 `tests/browser/dock_harness.html` for that, which is how the collapse bug and the

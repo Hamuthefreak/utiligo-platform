@@ -317,6 +317,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <span class="pill-feature"><i class="fa-solid fa-globe"></i>Custom domains</span>
       <span class="pill-feature"><i class="fa-solid fa-users"></i><?= $_ent_seats ?> team seats</span>
       <span class="pill-feature"><i class="fa-solid fa-chart-line"></i>Client reports</span>
+      <span class="pill-feature"><i class="fa-solid fa-phone-volume"></i>Call scripts</span>
       <span class="pill-feature"><i class="fa-solid fa-server"></i><?= $_ent_sites ?> sites</span>
       <span class="pill-feature"><i class="fa-solid fa-headset"></i>Priority support</span>
     </div>
@@ -350,14 +351,6 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         ['Revenue dash',
           '<i class="fa-solid fa-check compare-check"></i>',
           '<i class="fa-solid fa-check compare-ent"></i>'],
-        // The one row that reads downhill, and it is here on purpose: call
-        // scripts are Pro-only, so a Pro customer moving up to Entrepreneur
-        // loses them. Leaving this out would make the table say Entrepreneur is
-        // better at everything, which is not true, and the first person to find
-        // out would be someone who had already paid to upgrade.
-        ['Call scripts',
-          '<i class="fa-solid fa-check compare-check"></i>',
-          '<i class="fa-solid fa-xmark compare-cross"></i>'],
         ['Price/mo',
           '<span class="text-slate-400">$'.$_pro_price_fmt.'</span>',
           '<span class="font-black text-violet-300">$'.$_ent_price_fmt.'</span>'],
