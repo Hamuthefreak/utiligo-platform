@@ -122,6 +122,28 @@ if (!defined('GOOGLE_TEXT_SEARCH_FREE_FIELDS'))
 
 if (!defined('LEAD_SEARCH_CACHE_HOURS')) define('LEAD_SEARCH_CACHE_HOURS', 48);
 
+// ---- Async lead search ----
+// A multi-page lead search is enqueued (lead_search_jobs) and run by
+// cron/lead_search_worker.php instead of inside the user's request. See
+// includes/lead_search_jobs.php.
+//
+// LEAD_SEARCH_KICK_ENABLED makes the enqueue / first poll fire a best-effort
+// fire-and-forget HTTP request at the worker so the job starts immediately
+// rather than waiting for the next cron tick. Some shared hosts block
+// outbound HTTP back to themselves; the cron is the reliable trigger either
+// way. Set UTILIGO_LEAD_SEARCH_KICK=0 to disable.
+// NOTE: the raw value has to be defaulted deliberately. `getenv(...) ?: '1'`
+// looks right but is wrong, because the string "0" is falsy in PHP — so the
+// one value that means "off" was the one value that turned the kick *on*. The
+// same trap as `getenv('USERDB_PASS') ?: 'CHANGE_ME'` documented in the tests.
+if (!defined('LEAD_SEARCH_KICK_ENABLED')) {
+    $utiligo_kick_env = getenv('UTILIGO_LEAD_SEARCH_KICK');
+    if ($utiligo_kick_env === false || $utiligo_kick_env === '') $utiligo_kick_env = '1';
+    define('LEAD_SEARCH_KICK_ENABLED',
+        !in_array(strtolower($utiligo_kick_env), ['0','false','off','no'], true));
+    unset($utiligo_kick_env);
+}
+
 // ---- Stripe ----
 if (!defined('STRIPE_SECRET_KEY'))      define('STRIPE_SECRET_KEY',      getenv('STRIPE_SECRET_KEY')      ?: 'YOUR_STRIPE_SECRET_KEY');
 if (!defined('STRIPE_PUBLISHABLE_KEY')) define('STRIPE_PUBLISHABLE_KEY', getenv('STRIPE_PUBLISHABLE_KEY') ?: 'YOUR_STRIPE_PUBLISHABLE_KEY');

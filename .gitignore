@@ -2,6 +2,9 @@
 /storage/config_overrides.php
 /.env
 *.log
+# Runtime lead-workspace log (LEADS_LOG_PATH in includes/leads_logger.php).
+# Written while the app runs, including during a test run.
+/storage/leads_log.txt
 
 # Build artifacts
 /Utiligo.zip

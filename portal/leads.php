@@ -968,6 +968,14 @@ document.addEventListener('DOMContentLoaded', function(){
     <i class="fa-solid fa-satellite-dish text-indigo-300"></i>
     <span id="loadingScanLabel">Scanning <?= count($lead_sources_allowed)>1 ? (count($lead_sources_allowed).' data sources') : 'Google Places' ?>&hellip;</span>
   </p>
+  <!-- Real progress for the async search job — driven by _setSearchProgress()
+       in assets/js/leads.js from /api/lead-search-status.php. -->
+  <div id="leadsProgressWrap" class="hidden mx-auto max-w-[260px] pt-1">
+    <div class="h-1 w-full rounded-full bg-white/10 overflow-hidden">
+      <div id="leadsProgressBar" class="h-full rounded-full bg-white/70 transition-[width] duration-500 ease-out" style="width:0%"></div>
+    </div>
+    <p class="text-[11px] text-slate-600 text-center mt-2 tabular-nums"><span id="leadsProgressPct">0%</span> complete</p>
+  </div>
 </div>
 
 
@@ -1182,7 +1190,7 @@ document.addEventListener('DOMContentLoaded', function() {
   data-export-q-limit="<?=plan_export_daily_limit($plan)?>"
   data-can-schedule-searches="<?=can_schedule_searches($plan) ? '1' : '0'?>"
 ></script>
-<script src="/assets/js/leads.js?v=2108"></script>
+<script src="/assets/js/leads.js?v=2109"></script>
 
 <script>
 function openHistoryDrawer() {

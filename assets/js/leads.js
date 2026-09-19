@@ -1,5 +1,16 @@
 /**
- * assets/js/leads.js  v5
+ * assets/js/leads.js  v6
+ *
+ * CHANGES FROM v5
+ * ===============
+ * - Async search: runSearch() now POSTs to /api/find-leads.php, which only
+ *   validates + enqueues, then polls /api/lead-search-status.php until the
+ *   job is done. A multi-page Google Places search no longer holds a PHP
+ *   worker (or this connection) for 30-60 seconds, and the loading skeleton
+ *   shows real per-stage progress instead of a static "Scanning…".
+ * - The finished payload renders through exactly the same code path as
+ *   before (_renderSearchResult), so results, the seen mechanic, the free
+ *   tier lock list, the quota bar and the lead-cap lock all behave as they did.
  *
  * CHANGES FROM v4
  * ===============
@@ -543,16 +554,63 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
     var hsc = document.getElementById('heroSourcesCount');
     if (hsc) hsc.textContent = String(activeNow.length || 1);
 
+    var _ctx = { city: city, industry: industry, keywords: keywords, reqCount: reqCount, includeSeen: includeSeen };
+    _enqueueAndPoll(_ctx, !!forceRefresh, t0);
+}
+
+/**
+ * Poll cadence for an async search. 1.5s keeps the progress bar honest without
+ * hammering the status endpoint; the attempt cap is a safety net against a job
+ * that somehow never terminalizes (the server-side heartbeat reaper normally
+ * catches that first).
+ */
+var _POLL_INTERVAL_MS  = 1500;
+var _POLL_MAX_ATTEMPTS = 200;
+var _pollTimer = null;
+
+function _stopPolling() {
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+}
+
+function _setSearchProgress(pct, stage) {
+    var wrap = document.getElementById('leadsProgressWrap');
+    var bar  = document.getElementById('leadsProgressBar');
+    var txt  = document.getElementById('leadsProgressPct');
+    if (wrap) wrap.classList.remove('hidden');
+    if (bar)  bar.style.width = Math.max(0, Math.min(100, pct)) + '%';
+    if (txt)  txt.textContent = pct + '%';
+    if (stage) {
+        var lbl = document.getElementById('loadingScanLabel');
+        if (lbl) lbl.textContent = stage + '\u2026';
+    }
+}
+
+function _hideSearchProgress() {
+    var wrap = document.getElementById('leadsProgressWrap');
+    if (wrap) wrap.classList.add('hidden');
+}
+
+/**
+ * Enqueue the search, then poll it to completion.
+ *
+ * The heavy lifting — Google Places pagination with its 3s-per-page-token
+ * sleeps, plus the OSM/Yelp/TomTom/Wikidata fan-out — happens in
+ * cron/lead_search_worker.php. This request only validates and queues, so it
+ * returns in tens of milliseconds.
+ */
+function _enqueueAndPoll(ctx, forceRefresh, t0) {
+    _stopPolling();
+    _setSearchProgress(2, 'Queuing');
     fetch('/api/find-leads.php', {
         method: 'POST',
         credentials: 'same-origin',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
-            city:          city,
-            industry:      industry,
-            keywords:      keywords || null,
-            lead_count:    reqCount || 10,
-            include_seen:  includeSeen,
+            city:          ctx.city,
+            industry:      ctx.industry,
+            keywords:      ctx.keywords || null,
+            lead_count:    ctx.reqCount || 10,
+            include_seen:  ctx.includeSeen,
             csrf_token:    csrfToken,
             force_refresh: !!forceRefresh,
             sources:       getActiveSources(),
@@ -560,7 +618,78 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
     })
     .then(function (r) { return r.json(); })
     .then(function (data) {
-        var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+        // The queue rejects a search for the same reasons the synchronous
+        // endpoint used to fail it (free quota, Pro lead cap, rate limit) —
+        // _finishSearch renders all of those through the same error card.
+        if (!data || !data.success || !data.job || !data.job.token) {
+            _finishSearch(data || { success: false, error: 'Search failed.' }, t0, ctx);
+            return;
+        }
+        try { console._leadsDebug = data; } catch(e) {}
+        // The free-tier quota is charged at enqueue time, so the badge updates
+        // now rather than after the search finishes.
+        if (!IS_PAID && typeof data.searches_used === 'number') updateQuotaBar(data.searches_used);
+        _setSearchProgress(4, 'Queued');
+        _pollSearchJob(data.job.token, ctx, t0, 0);
+    })
+    .catch(function (err) {
+        try { console.error('[leads] enqueue error:', err); } catch(e) {}
+        _finishSearch({ success: false, error: 'Could not start the search. Please try again.' }, t0, ctx);
+    });
+}
+
+function _pollSearchJob(token, ctx, t0, attempt) {
+    _pollTimer = setTimeout(function () {
+        _pollTimer = null;
+        fetch('/api/lead-search-status.php?token=' + encodeURIComponent(token), { credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (data) {
+                if (!data || !data.success || !data.job) {
+                    _finishSearch({ success: false, error: (data && data.error) || 'Lost track of the search. Please try again.' }, t0, ctx);
+                    return;
+                }
+                var j = data.job;
+                if (j.status === 'done') {
+                    _finishSearch(j.result || { success: false, error: 'The search returned no result.' }, t0, ctx);
+                    return;
+                }
+                if (j.status === 'error') { _finishSearch(j, t0, ctx); return; }
+                _setSearchProgress(typeof j.progress === 'number' ? j.progress : 0, j.stage || '');
+                if (attempt >= _POLL_MAX_ATTEMPTS) {
+                    _finishSearch({ success: false, error: 'The search is taking longer than expected. Please try again.' }, t0, ctx);
+                    return;
+                }
+                _pollSearchJob(token, ctx, t0, attempt + 1);
+            })
+            .catch(function (err) {
+                try { console.error('[leads] poll error:', err); } catch(e) {}
+                // Tolerate a few transient blips before giving up on the job.
+                if (attempt >= 4) {
+                    _finishSearch({ success: false, error: 'Lost connection while the search was running. Please try again.' }, t0, ctx);
+                    return;
+                }
+                _pollSearchJob(token, ctx, t0, attempt + 1);
+            });
+    }, _POLL_INTERVAL_MS);
+}
+
+function _finishSearch(data, t0, ctx) {
+    _stopPolling();
+    _hideSearchProgress();
+    var elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    _renderSearchResult(data, elapsed, ctx);
+}
+
+/**
+ * Render a finished search payload.
+ *
+ * This is the body that used to live inside runSearch's fetch().then(). It was
+ * lifted out so the enqueue-failure path and the poll-completion path render
+ * through exactly the same code.
+ */
+function _renderSearchResult(data, elapsed, _ctx) {
+    var city = _ctx.city, industry = _ctx.industry, keywords = _ctx.keywords;
+    var reqCount = _ctx.reqCount, includeSeen = _ctx.includeSeen;
         try { console._leadsDebug = data; } catch(e) {}
 
         loadingEl.classList.add('hidden');
@@ -640,6 +769,15 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
             statusChip.textContent = n + ' results \u00b7 ' + elapsed + 's';
         }
 
+        // Cache the rendered leads so bulk select / table view / the slide-over
+        // work without re-fetching. Because the search is async, section 14's
+        // scrape timer usually fires before results exist, so this is the cache
+        // that actually matters.
+        try {
+            _lastRenderedLeads = (data.leads || []).slice();
+            _lastRenderedContext = { city: city, industry: industry, keywords: keywords };
+        } catch (e) {}
+
         if (!data.leads || !data.leads.length) {
             var em = document.createElement('p');
             em.className   = 'text-slate-500 text-center py-10 text-sm';
@@ -669,19 +807,6 @@ function runSearch(city, industry, keywords, reqCount, includeSeen, forceRefresh
         }
 
         loadHistory();
-    })
-    .catch(function (err) {
-        loadingEl.classList.add('hidden');
-        resultsWrap.classList.remove('hidden');
-        setSearchBusy(false);
-        leadsList.innerHTML =
-            '<div class="glass rounded-2xl p-5 text-red-400 text-sm text-center">'
-            + '<i class="fa-solid fa-triangle-exclamation mr-2"></i>'
-            + 'Something went wrong. Please try again.'
-            + '</div>';
-        lockedWrap.classList.add('hidden');
-        try { console.error('[leads] fetch error:', err); } catch(e) {}
-    });
 }
 
 // ============================================================
@@ -1010,8 +1135,14 @@ function _renderSlideOver(body, lead) {
             // data as data-* attributes when v3 of the card schema was
             // written; we re-derive the rest on slide-over open by
             // looking at nearby text nodes via _findLeadById (best-effort).
-            _lastRenderedLeads = leads;
-            _lastRenderedContext = { city:ncity(), industry:nindustry(), keywords:nkeywords() };
+            // Never let this best-effort scrape wipe a richer cache: since the
+            // search became async the results may not have rendered yet when
+            // this timer fires, and an empty array here would break the bulk
+            // selector and the lead slide-over.
+            if (leads.length || !_lastRenderedLeads.length) {
+                _lastRenderedLeads = leads;
+                _lastRenderedContext = { city:ncity(), industry:nindustry(), keywords:nkeywords() };
+            }
             function ncity()     { var el = document.getElementById('fieldCity');     return el ? el.value : city; }
             function nindustry() { var el = document.getElementById('fieldIndustry'); return el ? el.value : industry; }
             function nkeywords() { var el = document.getElementById('fieldKeywords');  return el ? el.value : (keywords || ''); }
