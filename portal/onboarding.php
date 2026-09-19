@@ -260,7 +260,7 @@ $firstName = htmlspecialchars(explode(' ', trim($user['full_name']))[0]);
           $features = [
             ['🔍','Find businesses with no website','across any city & industry'],
             ['⚡','Build stunning AI websites','in seconds, not hours'],
-            ['🏠','White-label everything','your brand, your clients'],
+            ['🏠','Export sites under your brand','clean ZIPs, host anywhere'],
           ];
           foreach ($features as $i => [$icon,$title,$sub]):
           ?>

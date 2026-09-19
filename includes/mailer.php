@@ -444,7 +444,7 @@ function send_welcome_email(string $to, string $fullName): bool
         <tr>
           <td style=\"padding:10px 0;\">
             <span style=\"color:#10B981;font-weight:700;margin-right:8px;\">✓</span>
-            <span style=\"color:#CBD5E1;font-size:14px;\">White-label branding &amp; client portals</span>
+            <span style=\"color:#CBD5E1;font-size:14px;\">Call scripts on every page</span>
           </td>
         </tr>
       </table>";
@@ -503,7 +503,7 @@ function send_payment_reminder_email(string $to, string $fullName, string $reaso
             'preheader' => "Action required: your Utiligo Pro payment didn't go through.",
             'heading'   => 'Payment issue',
             'icon'      => '⚠️',
-            'msg'       => "Your most recent payment for <strong>Utiligo Pro</strong> didn't go through. Please update your payment method to keep your Pro features active — leads, sites, and white-label branding.",
+            'msg'       => "Your most recent payment for <strong>Utiligo Pro</strong> didn't go through. Please update your payment method to keep your Pro features active — leads, sites, and call scripts.",
             'cta_label' => 'Update payment method',
         ],
         'upcoming' => [
@@ -520,7 +520,7 @@ function send_payment_reminder_email(string $to, string $fullName, string $reaso
             'preheader' => "Your Utiligo Pro access is ending soon — resubscribe to keep your data.",
             'heading'   => 'Pro access ending',
             'icon'      => '📅',
-            'msg'       => "Your <strong>Utiligo Pro</strong> access will end soon as your subscription was cancelled. Resubscribe anytime to restore unlimited leads, websites, and white-label branding.",
+            'msg'       => "Your <strong>Utiligo Pro</strong> access will end soon as your subscription was cancelled. Resubscribe anytime to restore unlimited leads, websites, and call scripts.",
             'cta_label' => 'Resubscribe now',
         ],
     ];

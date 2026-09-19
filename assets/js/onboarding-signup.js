@@ -90,9 +90,8 @@
         leadsStr(P('entrepreneur').leads, -1),
         sitesStr(P('entrepreneur').sites, 500),
         num(P('entrepreneur').seats, 5) + ' team seats',
-        'Custom domains',
+        'Custom domains (coming soon)',
         'Call scripts on every page',
-        'White-label branding',
       ],
     },
   ];

@@ -65,12 +65,11 @@
     entrepreneur: {
       badge:    'Entrepreneur Plan Active',
       title:    "You're scaling now.",
-      sub:      leadsStr(P('entrepreneur').leads, -1) + ', ' + num(P('entrepreneur').seats, 5) + ' team seats, custom domains — the full stack.',
+      sub:      leadsStr(P('entrepreneur').leads, -1) + ', ' + num(P('entrepreneur').seats, 5) + ' team seats, and every Pro feature — the full stack.',
       perks: [
         { icon: 'fa-infinity',    text: leadsStr(P('entrepreneur').leads, -1) },
         { icon: 'fa-users',       text: num(P('entrepreneur').seats, 5) + ' team member seats' },
-        { icon: 'fa-globe',       text: 'Custom domains' },
-        { icon: 'fa-certificate', text: 'White-label branding' },
+        { icon: 'fa-clock',       text: 'Custom domains (coming soon)' },
         { icon: 'fa-server',      text: sitesStr(P('entrepreneur').sites, 500) },
       ],
       goLabel:  'Launch Dashboard',

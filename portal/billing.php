@@ -248,7 +248,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div>
       <p class="text-xs font-bold uppercase tracking-widest text-violet-400 mb-1"><i class="fa-solid fa-bolt mr-1"></i>Upgrade to Entrepreneur</p>
-      <p class="text-white font-semibold text-sm">Unlimited leads, custom domains, team seats &amp; client reports</p>
+      <p class="text-white font-semibold text-sm">Unlimited leads, team seats &amp; every Pro feature</p>
     </div>
     <a href="/portal/billing?plan=entrepreneur"
        class="shrink-0 ent-glow-btn text-white text-sm font-black px-7 py-3 rounded-xl whitespace-nowrap inline-block text-center">
@@ -313,9 +313,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
     <div class="mt-5 flex flex-wrap gap-1.5">
       <span class="pill-feature"><i class="fa-solid fa-infinity"></i>Unlimited leads</span>
-      <span class="pill-feature"><i class="fa-solid fa-globe"></i>Custom domains</span>
+      <span class="pill-feature"><i class="fa-solid fa-globe"></i>Custom domains (soon)</span>
       <span class="pill-feature"><i class="fa-solid fa-users"></i><?= $_ent_seats ?> team seats</span>
-      <span class="pill-feature"><i class="fa-solid fa-chart-line"></i>Client reports</span>
+      <span class="pill-feature"><i class="fa-solid fa-chart-line"></i>Client reports (soon)</span>
       <span class="pill-feature"><i class="fa-solid fa-phone-volume"></i>Call scripts</span>
       <span class="pill-feature"><i class="fa-solid fa-server"></i><?= $_ent_sites ?> sites</span>
       <span class="pill-feature"><i class="fa-solid fa-headset"></i>Priority support</span>
@@ -338,12 +338,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         ['Active sites',
           '<span class="text-slate-500">'.$_pro_sites.'</span>',
           '<span class="text-violet-300 font-bold">'.$_ent_sites.'</span>'],
-        ['Custom domains',
+        ['Custom domains <span class="text-slate-600">(soon)</span>',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
-          '<i class="fa-solid fa-check compare-ent"></i>'],
-        ['Client reports',
+          '<span class="text-amber-400/80 font-semibold">Soon</span>'],
+        ['Client reports <span class="text-slate-600">(soon)</span>',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
-          '<i class="fa-solid fa-check compare-ent"></i>'],
+          '<span class="text-amber-400/80 font-semibold">Soon</span>'],
         ['Team seats',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
           '<span class="text-violet-300 font-bold">'.$_ent_seats.' seats</span>'],
@@ -508,7 +508,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <div class="text-center text-xs text-slate-500 mb-6">
-  Want unlimited leads, custom domains &amp; team seats?
+  Want unlimited leads &amp; team seats?
   <a href="/portal/billing?plan=entrepreneur" class="text-violet-400 hover:text-violet-300 font-semibold ml-1 transition">
     See Entrepreneur plan <i class="fa-solid fa-arrow-right text-[10px]"></i>
   </a>

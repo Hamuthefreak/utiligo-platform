@@ -42,7 +42,7 @@ $faqs = [
     ['What happens to the websites I generate?',
      'Every site exports as a clean, standalone ZIP file. You can host it anywhere — there\'s no lock-in to our platform.'],
     ["What's the difference between Pro and Entrepreneur?",
-     'Pro gives you '.$faq_pro_leads.' lead unlocks and '.$faq_pro_sites.' active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and '.$faq_ent_sites.' active websites, plus client reports and team seats for agencies running at scale.'],
+     'Pro gives you '.$faq_pro_leads.' lead unlocks and '.$faq_pro_sites.' active websites per period — plenty for most freelancers. Entrepreneur unlocks unlimited leads and '.$faq_ent_sites.' active websites, plus team seats for agencies running at scale. Client reporting is on the roadmap and not yet available.'],
     ['Is the free plan actually usable, or just a teaser?',
      'The free plan lets you run searches, see '.$faq_free_leads.' leads per search, and generate '.$faq_free_sites.' site per day with 2 templates. ZIP export and all templates require a paid plan.'],
     ['How does billing work?',
@@ -54,7 +54,7 @@ $faqs = [
     ['Which cities and industries does Utiligo cover?',
      'Any city you type and any industry — from plumbers, roofers, and electricians to restaurants, salons, and cleaners. Big markets like Toronto, Montreal, and Vancouver work the same as smaller towns.'],
     ['Can I white-label the websites as my own?',
-     'Yes. Pro and Entrepreneur plans let you brand the client portal with your own name and colours, and every generated site exports as a clean ZIP you can host anywhere — including on the business\'s own domain.'],
+     'Yes — every generated site exports as a clean, unbranded ZIP you can host anywhere, including on the business\'s own domain. You can also set your own name and colours in brand settings, which is available on every plan.'],
 ];
 
 $seoBase = rtrim(defined('APP_BASE_URL') ? APP_BASE_URL : 'https://utiligo.ca', '/');
@@ -74,7 +74,7 @@ $seo_json_ld = [
         'offers' => ['@type' => 'Offer', 'price' => number_format($PRO_PRICE, 2), 'priceCurrency' => 'CAD', 'availability' => 'https://schema.org/InStock', 'url' => $seoBase . '/register.php?plan=pro'],
     ],
     [
-        '@type' => 'Product', 'name' => 'Utiligo Entrepreneur', 'description' => 'Unlimited leads, '.number_format($ENT_SITE_LIMIT, 0).' active sites, team seats, and client reports for agencies.',
+        '@type' => 'Product', 'name' => 'Utiligo Entrepreneur', 'description' => 'Unlimited leads, '.number_format($ENT_SITE_LIMIT, 0).' active sites, team seats, and every Pro feature for agencies.',
         'offers' => ['@type' => 'Offer', 'price' => number_format($ENT_PRICE, 2), 'priceCurrency' => 'CAD', 'availability' => 'https://schema.org/InStock', 'url' => $seoBase . '/register.php?plan=entrepreneur'],
     ],
     [
@@ -328,7 +328,11 @@ require_once __DIR__ . '/includes/header.php';
           <span class="line-through text-slate-500">Custom domains</span>
           <span class="text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2 py-0.5 ml-1">Coming Soon</span>
         </li>
-        <li><i class="fa-solid fa-check text-white mr-2"></i>Client reports</li>
+        <li class="flex items-center gap-2">
+          <i class="fa-solid fa-clock text-slate-500 mr-2"></i>
+          <span class="line-through text-slate-500">Client reports</span>
+          <span class="text-xs font-semibold bg-amber-500/15 text-amber-400 border border-amber-500/25 rounded-full px-2 py-0.5 ml-1">Coming Soon</span>
+        </li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Team seats</li>
       </ul>
       <a href="/register.php?plan=entrepreneur" class="mt-auto block text-center bg-white/10 hover:bg-white/20 py-3 rounded-full font-semibold transition focus-visible:outline-none focus-visible:bg-white focus-visible:text-black focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Entrepreneur</a>
