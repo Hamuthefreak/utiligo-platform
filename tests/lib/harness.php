@@ -496,9 +496,95 @@ function t_last_stripe_request(): ?array
     return is_array($data) ? $data : null;
 }
 
+/**
+ * Every request the stub has received since the last reset, in order.
+ *
+ * Needed for the assertions that are about a call NOT happening. "The app did
+ * not create a Checkout Session" is what proves a second subscription was not
+ * sold, and a last-request snapshot cannot answer it — the session call could
+ * have been the one before.
+ *
+ * @return array[] each entry has method, path, query, form, auth
+ */
+function t_stripe_requests(): array
+{
+    $path = t_tmp_dir() . '/stripe_requests.log';
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $out = [];
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        $data = json_decode($line, true);
+        if (is_array($data)) {
+            $out[] = $data;
+        }
+    }
+    return $out;
+}
+
+/** The requests the stub received for one path — the common assertion shape. */
+function t_stripe_requests_to(string $path): array
+{
+    return array_values(array_filter(t_stripe_requests(),
+        fn($request) => ($request['path'] ?? '') === $path));
+}
+
 function t_reset_stripe_stub(): void
 {
     @unlink(t_tmp_dir() . '/stripe_last_request.json');
+    @unlink(t_tmp_dir() . '/stripe_requests.log');
+    @unlink(t_tmp_dir() . '/stripe_failures.json');
+}
+
+/**
+ * Make the stub answer a call with an error status.
+ *
+ * Keys are "METHOD PATH" with no query string — e.g. 'GET /v1/subscriptions'.
+ * Pass an empty array to clear.
+ */
+function t_set_stripe_failures(array $failures): void
+{
+    $path = t_tmp_dir() . '/stripe_failures.json';
+    if (!$failures) {
+        @unlink($path);
+        return;
+    }
+    file_put_contents($path, json_encode($failures));
+}
+
+/**
+ * Publish the subscription fixtures the stub should return, keyed by id. Each
+ * fixture carries the `customer` it belongs to so the stub can filter a list the
+ * way Stripe does.
+ */
+function t_set_stripe_subscriptions(array $subscriptions): void
+{
+    file_put_contents(t_tmp_dir() . '/stripe_subscriptions.json', json_encode($subscriptions, JSON_PRETTY_PRINT));
+}
+
+/**
+ * A Stripe Subscription shaped the way Stripe returns one, with the item that a
+ * plan change has to name.
+ *
+ * Defaults describe the Pro subscription a customer bought through checkout:
+ * active, one item, one price.
+ */
+function t_subscription(string $id, array $overrides = []): array
+{
+    return $overrides + [
+        'id'                  => $id,
+        'object'              => 'subscription',
+        'status'              => 'active',
+        'customer'            => 'cus_test_' . substr(md5($id), 0, 10),
+        'created'             => time() - 86400,
+        'cancel_at_period_end' => false,
+        'items'               => ['object' => 'list', 'data' => [[
+            'id'    => 'si_' . substr(md5($id), 0, 10),
+            'price' => ['id' => STRIPE_PRO_PRICE_ID],
+        ]]],
+        'metadata'            => ['plan' => 'pro'],
+    ];
 }
 
 /**

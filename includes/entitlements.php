@@ -114,6 +114,72 @@ function entitlement_current_plan(int $userId, string $customerId = ''): ?string
 }
 
 /**
+ * The Stripe identity and subscription state this account has recorded.
+ *
+ * Exists for the checkout, which has to answer one question before it sells
+ * anything: does this customer ALREADY have a running subscription? Getting that
+ * wrong by defaulting to "no" charges them twice, so the answer has to come from
+ * the one place that knows the columns.
+ *
+ * Returns ['customer_id', 'subscription_id', 'plan', 'status', 'found'].
+ * `found => false` means the row could not be read at all, which a caller must
+ * treat as "unknown" rather than "nothing running".
+ *
+ * The reduced-column retry is not decorative: `stripe_subscription_id` arrives
+ * with migration 023, and an install that has not run it would otherwise fail
+ * this SELECT, report "no customer", and mint a brand-new Stripe customer for
+ * someone who already subscribes.
+ */
+function entitlement_stripe_state(int $userId): array
+{
+    $state = [
+        'customer_id'     => '',
+        'subscription_id' => '',
+        'plan'            => entitlement_default_plan(),
+        'status'          => 'none',
+        'found'           => false,
+    ];
+
+    if ($userId <= 0) {
+        return $state;
+    }
+
+    // Newest schema first, then the shapes an older install would have.
+    $columns = [
+        'plan, subscription_status, stripe_customer_id, stripe_subscription_id',
+        'plan, subscription_status, stripe_customer_id',
+    ];
+
+    foreach ($columns as $columnList) {
+        try {
+            $stmt = get_user_db()->prepare('SELECT ' . $columnList . ' FROM utiligo_users WHERE id = ? LIMIT 1');
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch();
+
+            if (!$row) {
+                return $state;
+            }
+
+            return [
+                'customer_id'     => trim((string)($row['stripe_customer_id'] ?? '')),
+                'subscription_id' => trim((string)($row['stripe_subscription_id'] ?? '')),
+                'plan'            => (string)($row['plan'] ?? entitlement_default_plan()),
+                'status'          => (string)($row['subscription_status'] ?? 'none'),
+                'found'           => true,
+            ];
+        } catch (\Throwable $e) {
+            if (!entitlement_is_schema_error($e)) {
+                entitlement_log('stripe-state', 'could not read the row for user ' . $userId . ': ' . $e->getMessage());
+                return $state;
+            }
+        }
+    }
+
+    entitlement_log('stripe-state', 'no readable utiligo_users row shape for user ' . $userId);
+    return $state;
+}
+
+/**
  * Canonical plan order, cheapest first.
  *
  * Taken from plan_config() rather than duplicated, so this module cannot drift
@@ -906,6 +972,13 @@ function entitlement_subscription_intent(array $subscription): array
  * subscription the account has since replaced cannot overwrite the current plan.
  * In the ordinary single-subscription case the stored id is either empty or the
  * same one, so the guard costs nothing.
+ *
+ * `match_subscription` (default true) is the one option a caller may turn off: a
+ * checkout that has just verified with Stripe which subscription is live is
+ * entitled to record it, even when our stored id says otherwise or says nothing.
+ * Without that, a customer whose subscription we had lost track of would be
+ * billed correctly and still read as free forever, because every event about the
+ * new subscription would be refused by the same guard.
  */
 function entitlement_sync_subscription(array $opts): array
 {
@@ -918,7 +991,13 @@ function entitlement_sync_subscription(array $opts): array
         'customer_id'        => (string)($opts['customer_id'] ?? ''),
         'subscription_id'    => (string)($opts['subscription_id'] ?? ''),
         'event_at'           => $opts['event_at'] ?? null,
-        'match_subscription' => true,
+        // The subscription-id guard is on by default and is what stops an event
+        // describing a subscription the account has replaced from overwriting
+        // the current plan. The checkout turns it off for exactly one case:
+        // it has just asked Stripe which of this customer's subscriptions is
+        // live, so it knows better than the stored id does — and its whole job
+        // is to record the subscription the money is actually running on.
+        'match_subscription' => (bool)($opts['match_subscription'] ?? true),
         'source'             => $source,
     ];
 

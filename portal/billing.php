@@ -94,6 +94,16 @@ $_ent_price_fmt = number_format($_ent_price, 2);
 
 if (isset($_GET['cancelled'])) $message = 'Checkout cancelled — you were not charged.';
 
+// A purchase that could not be started comes back with the reason. Showing it is
+// not decoration: the refusal that matters most here — "we could not check
+// whether you already subscribe" — is one the customer can act on by retrying,
+// and an unexplained bounce back to this page reads as the site being broken.
+// stripe-checkout.php uses this for every path it refuses, including the one it
+// has always had: Stripe not yet configured on this install.
+if (isset($_GET['stripe_error']) && $error === '') {
+    $error = 'We could not start that purchase: ' . (string)$_GET['stripe_error'];
+}
+
 if ($is_ent && $is_active) {
     $_plan_icon_bg   = 'bg-violet-500/15 border border-violet-500/30';
     $_plan_icon_col  = 'text-violet-400';

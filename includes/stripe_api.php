@@ -211,23 +211,30 @@ function stripe_webhook_sign(string $payload, string $secret, ?int $timestamp = 
  * The {CHECKOUT_SESSION_ID} token in success_url is Stripe's own placeholder,
  * substituted when it redirects the customer back.
  *
- * @param array  $user     the paying account (needs id + email)
- * @param string $plan     'pro' or 'entrepreneur'
- * @param string $priceId  Stripe price id for that plan
- * @param string $baseUrl  e.g. https://utiligo.ca, no trailing slash needed
+ * @param array  $user       the paying account (needs id + email)
+ * @param string $plan       'pro' or 'entrepreneur'
+ * @param string $priceId    Stripe price id for that plan
+ * @param string $baseUrl    e.g. https://utiligo.ca, no trailing slash needed
+ * @param string $customerId the Stripe customer this account already has, if
+ *                           any. Passing it is not an optimisation — it is how
+ *                           a customer who has bought before keeps ONE customer
+ *                           object instead of acquiring a new one per purchase.
+ *                           Stripe rejects a request that carries both
+ *                           `customer` and `customer_email`, so only one of the
+ *                           two is ever sent.
  */
-function stripe_checkout_session_params(array $user, string $plan, string $priceId, string $baseUrl): array
+function stripe_checkout_session_params(array $user, string $plan, string $priceId, string $baseUrl, string $customerId = ''): array
 {
     $baseUrl    = rtrim($baseUrl, '/');
     $userId     = (string)($user['id'] ?? '');
+    $customerId = trim($customerId);
     $successUrl = $baseUrl . '/purchase-success.php?plan=' . urlencode($plan) . '&session_id={CHECKOUT_SESSION_ID}';
     $cancelUrl  = $baseUrl . '/portal/billing.php?upgrade=1&plan=' . urlencode($plan) . '&cancelled=1';
 
-    return [
+    $params = [
         'mode'                                 => 'subscription',
         'line_items[0][price]'                 => $priceId,
         'line_items[0][quantity]'              => '1',
-        'customer_email'                       => (string)($user['email'] ?? ''),
         'client_reference_id'                  => $userId,
         'metadata[plan]'                       => $plan,
         'metadata[user_id]'                    => $userId,
@@ -239,4 +246,197 @@ function stripe_checkout_session_params(array $user, string $plan, string $price
         'subscription_data[metadata][plan]'    => $plan,
         'subscription_data[metadata][user_id]' => $userId,
     ];
+
+    if ($customerId !== '') {
+        $params['customer'] = $customerId;
+    } else {
+        $params['customer_email'] = (string)($user['email'] ?? '');
+    }
+
+    return $params;
+}
+
+/**
+ * Statuses in which a subscription is still charging the customer.
+ *
+ * The list is short on purpose and every entry in it matters, because the
+ * caller's rule is "if this account already has one of these, change it instead
+ * of selling a second one":
+ *
+ *   active    the ordinary case, and the one that used to be billed twice.
+ *   trialing  not paying yet, but will be. A second subscription here bills
+ *             twice the day the trials end.
+ *   past_due  Stripe is still retrying the card and the subscription is still
+ *             live. Selling a second one leaves the customer holding two.
+ *
+ * Everything else — canceled, incomplete, incomplete_expired, unpaid, paused —
+ * is a subscription that will not charge again, so a fresh checkout is the right
+ * answer for it rather than an in-place change.
+ *
+ * @return string[]
+ */
+function stripe_subscription_live_statuses(): array
+{
+    return ['active', 'trialing', 'past_due'];
+}
+
+/** Is this subscription still charging the customer? */
+function stripe_subscription_is_live(array $subscription): bool
+{
+    $status = strtolower(trim((string)($subscription['status'] ?? '')));
+    return in_array($status, stripe_subscription_live_statuses(), true);
+}
+
+/**
+ * The id of the subscription item whose price a plan change replaces, or ''.
+ *
+ * Stripe does not let you swap a subscription's price directly: you name the
+ * ITEM (si_…) that currently holds it. Sending only a price id would ADD a
+ * second item and bill for both — which is the same double-charge bug one level
+ * down from the one this module fixes, so an empty id is treated as a refusal by
+ * the caller rather than as "no item to worry about".
+ */
+function stripe_subscription_item_id(array $subscription): string
+{
+    return trim((string)($subscription['items']['data'][0]['id'] ?? ''));
+}
+
+/** The price id a subscription is currently on, or ''. */
+function stripe_subscription_price_id(array $subscription): string
+{
+    return trim((string)($subscription['items']['data'][0]['price']['id'] ?? ''));
+}
+
+/**
+ * The subscription a checkout should change, out of everything the customer
+ * holds — or null when there is nothing to change.
+ *
+ * This asks Stripe rather than trusting our stored `stripe_subscription_id`,
+ * because the recorded id is exactly the thing that goes stale: it is written by
+ * a webhook that may have been missed, and it is empty for any subscription
+ * started outside our checkout (in the Stripe dashboard, say). Selling a second
+ * subscription is the failure mode, so it must not depend on our own bookkeeping
+ * being current.
+ *
+ * When more than one is live the most recently created wins, which is the one a
+ * checkout most likely produced. Oldest-first would repeatedly try to change a
+ * subscription the customer replaced.
+ */
+function stripe_pick_live_subscription(array $subscriptions): ?array
+{
+    $best = null;
+
+    foreach ($subscriptions as $subscription) {
+        if (!is_array($subscription) || !stripe_subscription_is_live($subscription)) {
+            continue;
+        }
+
+        if ($best === null || (int)($subscription['created'] ?? 0) > (int)($best['created'] ?? 0)) {
+            $best = $subscription;
+        }
+    }
+
+    return $best;
+}
+
+/**
+ * Everything a customer's subscriptions live under, so a checkout can ask
+ * whether one of them is still billing them.
+ *
+ * Returns ['ok' => bool, 'subscription' => ?array, 'error' => string].
+ *
+ * `ok => false` is NOT the same as `subscription => null`, and the caller must
+ * not conflate them: null means "this customer has nothing running, so selling
+ * them a subscription is right", while a failure means "we could not tell" —
+ * and the safe answer to that is to refuse the purchase, not to guess. Guessing
+ * is how a customer ends up with two.
+ *
+ * `status=all` is explicit because the default filter has changed across API
+ * versions, and a filter that hid `past_due` would report a live subscription as
+ * absent.
+ */
+function stripe_customer_live_subscription(string $customerId): array
+{
+    $customerId = trim($customerId);
+    if ($customerId === '') {
+        return ['ok' => true, 'subscription' => null, 'error' => ''];
+    }
+
+    $query = http_build_query([
+        'customer' => $customerId,
+        'status'   => 'all',
+        'limit'    => 20,
+    ]);
+
+    $response = stripe_request('GET', 'v1/subscriptions?' . $query);
+    if (!$response['ok']) {
+        return [
+            'ok'           => false,
+            'subscription' => null,
+            'error'        => (string)($response['data']['error']['message'] ?? ($response['error'] ?: 'stripe_error')),
+        ];
+    }
+
+    return [
+        'ok'           => true,
+        'subscription' => stripe_pick_live_subscription((array)($response['data']['data'] ?? [])),
+        'error'        => '',
+    ];
+}
+
+/**
+ * The form fields for changing a running subscription's plan in place.
+ *
+ * Pure, so what an upgrade actually asks Stripe for can be asserted directly.
+ *
+ *   items[0][id]        the item being replaced. Naming it is what makes this a
+ *                       change rather than an addition.
+ *   items[0][price]     the plan being moved to.
+ *   proration_behavior  create_prorations: the unused time on the old plan is
+ *                       credited and the difference is billed on the next
+ *                       invoice. Deliberately NOT `always_invoice`, which would
+ *                       charge the card immediately and fail outright if the
+ *                       card needs authentication — an upgrade that cannot
+ *                       start is worse than one that settles at period end.
+ *   cancel_at_period_end  cleared when set, because a customer who had scheduled
+ *                       a cancellation and then chooses a plan has plainly
+ *                       changed their mind; leaving it set would take the plan
+ *                       away at the end of a period they just paid for.
+ */
+function stripe_subscription_swap_params(array $subscription, string $priceId, string $plan, int $userId): array
+{
+    $params = [
+        'items[0][id]'       => stripe_subscription_item_id($subscription),
+        'items[0][price]'    => $priceId,
+        'proration_behavior' => 'create_prorations',
+        // Keep the metadata in step with the price. Stripe's own portal cannot
+        // rewrite our metadata, so leaving it stale would make the fallback in
+        // entitlement_plan_from_subscription() name the plan they left.
+        'metadata[plan]'     => $plan,
+        'metadata[user_id]'  => (string)$userId,
+    ];
+
+    if (!empty($subscription['cancel_at_period_end'])) {
+        $params['cancel_at_period_end'] = 'false';
+    }
+
+    return $params;
+}
+
+/**
+ * Change a running subscription's plan. Never throws.
+ *
+ * Returns the same shape as stripe_request(), and its `data` is the UPDATED
+ * subscription object — which the caller reconciles entitlement from, so a
+ * delayed `customer.subscription.updated` cannot leave a paying customer
+ * reading as though they had never upgraded.
+ */
+function stripe_change_subscription_plan(string $subscriptionId, array $params): array
+{
+    $subscriptionId = trim($subscriptionId);
+    if ($subscriptionId === '') {
+        return ['ok' => false, 'http' => 0, 'data' => [], 'error' => 'no subscription to change'];
+    }
+
+    return stripe_request('POST', 'v1/subscriptions/' . rawurlencode($subscriptionId), $params);
 }

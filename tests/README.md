@@ -79,12 +79,20 @@ executed.
 | `test_webhook.php` | the real endpoint over HTTP: replay, out-of-order delivery, forgery |
 | `test_reconciliation.php` | the real success page: settled/paid checks, ownership, staleness |
 | `test_cancellation.php` | the cancellation lifecycle, including re-subscription |
+| `test_upgrade_in_place.php` | the checkout changing a running subscription instead of selling a second one |
 | `test_subscription_updated.php` | Stripe-side plan changes and status transitions, through `.created`/`.updated` |
 | `test_lead_search_queue.php` | the async lead search: atomic claiming, crash recovery, enqueue gating, quota, and a completed search run end to end through the worker |
 
 Stripe is replaced by `tests/lib/stripe_stub.php`. That is not a test-only branch
 inside the application: it is reached by setting `STRIPE_API_BASE`, a supported
 configuration, so the request-building code under test is the real thing.
+
+The stub records every request into `tests/tmp/stripe_requests.log`, not just the
+most recent one, because the assertions that matter most here are about calls
+that must NOT happen — `t_stripe_requests_to('/v1/checkout/sessions')` being
+empty is what proves a second subscription was not sold. `t_set_stripe_failures()`
+injects an error status for a given `METHOD PATH`, so "what does the app do when
+Stripe is unreachable" can be asked without breaking the network.
 
 The suite is built around scenarios that cost money:
 
@@ -95,6 +103,8 @@ The suite is built around scenarios that cost money:
 - `?plan=entrepreneur` on the success URL
 - a Stripe session belonging to a different account
 - a customer who cancels and then buys again
+- a customer with a running subscription pressing upgrade, double-clicking the
+  same plan, or upgrading while Stripe is unreachable
 
 ### The lead-search queue
 
@@ -133,21 +143,25 @@ Deploying this needs a cron entry, same shape as the other workers:
   names against Stripe's current API. The webhook's field paths are corroborated
   by the Checkout Session object documented at
   `docs.stripe.com/api/checkout/sessions/object`.
-- **Billing-portal plan changes are handled, but only for the subscription the
-  app holds.** `customer.subscription.created`/`.updated` are now interpreted
-  (see `test_subscription_updated.php`), and every branch matches on the
-  subscription id, so an event naming a subscription the account has replaced is
-  ignored rather than applied. That guard is what makes an old subscription's
-  update harmless — but it also means an update to a *newer* subscription the
-  account has not recorded yet is ignored too, and the app never learns about a
-  subscription started in the Stripe dashboard against a customer id it does not
-  know. Reconciling that needs a call to Stripe's subscription list, which this
-  suite has no way to make.
-- **Nothing cancels a superseded subscription at checkout.** Buying a second plan
-  creates a second live Stripe subscription rather than changing the first, so a
-  customer who upgrades twice through checkout is billed twice until one is
-  cancelled by hand. The webhook handles the entitlement correctly either way;
-  the billing is the part that would need the Stripe API.
+- **Billing-portal plan changes are handled, but events are still gated on the
+  subscription the app holds.** `customer.subscription.created`/`.updated` are
+  interpreted (see `test_subscription_updated.php`), and every branch matches on
+  the subscription id, so an event naming a subscription the account has
+  replaced is ignored rather than applied. That guard is what makes an old
+  subscription's update harmless — but it also means an update to a *newer*
+  subscription the account has not recorded yet is ignored. The one gap that is
+  now closed is the one that mattered: the checkout asks Stripe's subscription
+  list which subscription is live before it sells anything, and records it even
+  when the stored id disagrees (see `test_upgrade_in_place.php`). An event that
+  arrives before any purchase still has nothing to match on.
+- **A plan change made in the Stripe dashboard, with no purchase here, is still
+  not noticed.** `test_upgrade_in_place.php` proves the checkout now asks Stripe
+  which subscription a customer has running and changes that one, and that it
+  records what it finds — so a customer whose stored subscription id was stale is
+  picked up the next time they start a purchase. What is still missing is a
+  subscription started entirely outside the app being learned about *without* a
+  purchase: that would be a reconciliation job over Stripe's subscription list,
+  and it is not covered here.
 - **Plans granted by an administrator before migration 023 keep a NULL ordering
   clock** until their next entitlement change, so a stale event could still
   apply to them. The migration backfills every account that has a
