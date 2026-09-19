@@ -36,7 +36,11 @@
     return n.toLocaleString() + ' active ' + (n === 1 ? 'site' : 'sites');
   };
 
-  // Copy mirrors index.php's #pricing section so the two read identically.
+  // Copy mirrors index.php's #pricing section so the two read identically, and
+  // each card's url mirrors that section's CTA — so choosing a plan here lands
+  // on signup with that plan already selected. The url used to be missing
+  // entirely, which sent the button to the literal string "undefined";
+  // test_signup_modal.php now fails if a card is added without one.
   const PLANS = [
     {
       key:      'free',
@@ -46,6 +50,7 @@
       name:     'Free',
       desc:     'Explore Utiligo with no commitment.',
       price:    '$0',
+      url:      '/register.php',
       features: [
         num(P('free').leads, 3) + ' lead results per search',
         sitesStr(P('free').sites, 1),
@@ -62,6 +67,7 @@
       name:     'Pro',
       desc:     'For freelancers ready to land real clients.',
       price:    priceNum(P('pro').price, 21.99),
+      url:      '/register.php?plan=pro',
       features: [
         leadsStr(P('pro').leads, 700),
         sitesStr(P('pro').sites, 20),
@@ -79,6 +85,7 @@
       name:     'Entrepreneur',
       desc:     'Scale with a full agency operation.',
       price:    priceNum(P('entrepreneur').price, 49.99),
+      url:      '/register.php?plan=entrepreneur',
       features: [
         leadsStr(P('entrepreneur').leads, -1),
         sitesStr(P('entrepreneur').sites, 500),

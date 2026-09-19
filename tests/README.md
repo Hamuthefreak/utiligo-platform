@@ -165,6 +165,20 @@ One thing this file cannot reach: whether the panel *renders*. See
 `tests/browser/dock_harness.html` for that, which is how the collapse bug and the
 unsaved first-run position were found.
 
+### The signup plan modal
+
+`test_signup_modal.php` guards the plan showcase on a fresh `register.php`. Its
+primary CTA navigates to `selectedPlan.url`, but no card in the modal's PLANS
+array defined `url` — so choosing a plan sent the browser to the literal string
+"undefined", and the chosen plan never reached signup. Nothing looked broken: the
+cards rendered perfectly, and the button did nothing useful.
+
+The file reads the card `key`/`url` pairs out of the JS (it is a JS literal, and
+this suite has no JS engine), asserts each card names a rooted target that matches
+its plan, then fetches that target over real HTTP — a 200 from the real
+`register.php`, with a body that already has the plan selected. Free is included,
+and must NOT arrive with a paid plan baked in.
+
 ### The scheduled-search automation
 
 A saved search with `notify_email = 1` used to be a notifier and nothing more: the
