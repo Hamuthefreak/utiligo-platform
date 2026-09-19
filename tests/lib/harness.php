@@ -187,6 +187,36 @@ function t_db(): PDO
     return $pdo;
 }
 
+/**
+ * Platform database handle.
+ *
+ * The account tables live in the user DB (t_db()); everything the lead
+ * workspace owns — the lead pool, the cache and the search queue — lives in
+ * the platform DB. Same loopback guard as t_db().
+ */
+function t_platform_db(): PDO
+{
+    static $pdo = null;
+    if ($pdo instanceof PDO) {
+        return $pdo;
+    }
+
+    t_assert_loopback((string)DB_HOST, 'DB');
+
+    try {
+        $pdo = new PDO(
+            'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=utf8mb4',
+            DB_USER,
+            DB_PASS,
+            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC]
+        );
+    } catch (Throwable $e) {
+        throw new T_Skip('platform database unreachable at ' . DB_HOST . ': ' . $e->getMessage());
+    }
+
+    return $pdo;
+}
+
 /** Create or reset an account fixture, and return its id. */
 function t_fixture(array $overrides = []): int
 {

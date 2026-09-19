@@ -69,6 +69,19 @@ $defaults = [
     'USERDB_NAME'           => 'utiligo_test_users',
     'USERDB_USER'           => 'root',
     'USERDB_PASS'           => 'utiligo_test_pw',
+    // Fixed so the test process and the spawned application server agree on
+    // CRON_SECRET. Left unset, config.php generates a random one per process,
+    // which makes the cron endpoints (lead_search_worker.php) untestable.
+    'UTILIGO_CRON_SECRET'   => 'cron_test_secret',
+    // Pinned to the placeholder so a developer machine with a real Places key
+    // in its environment can never make the suite call Google for real. The
+    // runner refuses to start on this value, which is what the worker's
+    // failure-path test asserts.
+    'GOOGLE_PLACES_API_KEY' => 'YOUR_GOOGLE_PLACES_API_KEY',
+    // The background worker is invoked explicitly by the tests, so the
+    // fire-and-forget kick is off: otherwise the enqueue would start a worker
+    // against the job before the test has finished arranging its fixtures.
+    'UTILIGO_LEAD_SEARCH_KICK' => '0',
     'STRIPE_SECRET_KEY'     => 'sk_test_stub_key',
     'STRIPE_WEBHOOK_SECRET' => 'whsec_test_stub_secret',
     'STRIPE_PRO_PRICE_ID'   => 'price_test_pro',
