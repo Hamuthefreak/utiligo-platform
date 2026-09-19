@@ -76,6 +76,46 @@ function csrf_verify(?string $token): bool
 }
 
 /**
+ * Is this account entitled to see this lead's contact details?
+ *
+ * The lead pool is shared and has no per-user ownership on the rows themselves,
+ * so "which leads may this account read" is not answerable from utiligo_leads at
+ * all. What IS recorded is the grant: `unlocked_leads` gets a row every time a
+ * search hands a lead to a paid account, and the Pro lead cap is counted from the
+ * same table.
+ *
+ * So the rule is: a paid account may read the leads its searches delivered to it,
+ * and nothing else. Without a check like this, any signed-in account can POST a
+ * lead id and be handed the phone number and email address that the free tier
+ * deliberately masks and that Pro customers pay to unlock — one id at a time, over
+ * sequential ids.
+ *
+ * Free accounts are refused. Their preview leads are served inside a search
+ * RESPONSE (the first few rows, unmasked) rather than recorded as a durable grant,
+ * so there is no per-lead record to check against; treating the lack of a record
+ * as permission is what made the pool readable in the first place.
+ *
+ * Never throws: a database problem here must deny, not allow.
+ */
+function lead_visible_to(PDO $pdo, int $userId, int $leadId): bool
+{
+    if ($userId <= 0 || $leadId <= 0) {
+        return false;
+    }
+
+    try {
+        $stmt = $pdo->prepare('SELECT 1 FROM unlocked_leads WHERE user_id = ? AND lead_id = ? LIMIT 1');
+        $stmt->execute([$userId, $leadId]);
+        return (bool)$stmt->fetchColumn();
+    } catch (\Throwable $e) {
+        if (function_exists('log_error')) {
+            log_error('lead_visible_check', $e, ['uid' => $userId, 'lead_id' => $leadId]);
+        }
+        return false;
+    }
+}
+
+/**
  * Per-minute rate limit check for ajax endpoints.
  *
  * Implementation notes:

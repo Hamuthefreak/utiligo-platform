@@ -1149,12 +1149,26 @@ function openLeadSlideOver(leadData) {
   document.body.style.overflow = 'hidden';
 
   // Phase 2: async-fetch lead_enrichments rows + merge them into the panel.
-  // The fetched data is public-side (scraped website / public emails) so
-  // no IDOR guard beyond CSRF applies. We never block rendering on this —
-  // the static lead fields render immediately, extras append on resolve.
+  // Not public data: that endpoint returns the lead row itself, including the
+  // contact details the free tier masks and Pro pays to unlock, so it is gated on
+  // the plan and on this account having been delivered that lead. A refusal is an
+  // upsell rather than a fault, so it gets a note instead of an error.
+  // We never block rendering on this — the static lead fields render
+  // immediately, extras append on resolve.
   if (leadData && leadData.id && window._leadsFetchEnrichments) {
     window._leadsFetchEnrichments(leadData.id, function (err, enrichments) {
-      if (err || !enrichments || !enrichments.length) return;
+      if (err) {
+        if (err === 'plan_required' || err === 'lead_not_unlocked') {
+          var note = document.createElement('p');
+          note.className = 'text-[11px] text-amber-300/80 pt-4 mt-4 border-t border-white/5';
+          note.textContent = err === 'plan_required'
+            ? 'Enrichment data is part of the lead workspace plans.'
+            : 'Detailed enrichment is available on the leads your searches unlocked.';
+          body.appendChild(note);
+        }
+        return;
+      }
+      if (!enrichments || !enrichments.length) return;
       try { window._leadsAppendEnrichments(body, enrichments); } catch (e) {}
     });
   }

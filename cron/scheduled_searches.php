@@ -135,9 +135,27 @@ try {
 
     if ($ids) {
         $ph = implode(',', array_fill(0, count($ids), '?'));
-        $us = get_user_db()->prepare("SELECT id, email, plan FROM utiligo_users WHERE id IN ($ph)");
-        $us->execute($ids);
-        foreach ($us->fetchAll(PDO::FETCH_ASSOC) as $u) {
+
+        // full_name + outreach_profile are read for the digest's draft opening
+        // line. `SELECT *` is not used here because these rows include password
+        // hashes and 2FA secrets. The reduced retry covers an install whose
+        // migration runner has not reached 026 yet — a missing column must cost
+        // the digest its preview sentence, not the whole cron.
+        $withProfile = "SELECT id, email, plan, full_name, outreach_profile FROM utiligo_users WHERE id IN ($ph)";
+        $plain       = "SELECT id, email, plan FROM utiligo_users WHERE id IN ($ph)";
+
+        try {
+            $us = get_user_db()->prepare($withProfile);
+            $us->execute($ids);
+            $rows = $us->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Throwable $e) {
+            leads_log_warn('scheduled_searches_owner_profile', $e);
+            $us = get_user_db()->prepare($plain);
+            $us->execute($ids);
+            $rows = $us->fetchAll(PDO::FETCH_ASSOC);
+        }
+
+        foreach ($rows as $u) {
             $owners[(int)$u['id']] = $u;
         }
     }
@@ -210,7 +228,13 @@ foreach ($awaiting as $row) {
     $digest = auto_search_digest(is_array($result) ? $result : []);
 
     if ($digest['count'] > 0 && ($who['email'] ?? '') !== '') {
-        $sent = auto_search_send_digest((string)$who['email'], $row, $digest, $base_url);
+        $sent = auto_search_send_digest(
+            (string)$who['email'],
+            $row,
+            $digest,
+            $base_url,
+            outreach_profile_from_user($who)
+        );
         if ($sent) {
             $emails++;
             try {

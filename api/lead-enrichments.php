@@ -7,10 +7,20 @@
  *   POST lead_id (int)   required
  *   POST csrf_token      required
  *
- * IDOR: lead enrichments are public-side data (website scrape + public
- * email regex). The lead itself is also a row in the shared
- * utiligo_leads pool. There is no per-user ownership to enforce. CSRF
- * is still required so a malicious third-party site can't probe for
+ * IDOR: this endpoint USED to answer to login + CSRF alone, on the reasoning that
+ * enrichments are public-side data (a website scrape, a public email regex) and
+ * that a shared pool has no per-user ownership to enforce. That reasoning was
+ * wrong about the row it actually returns: `SELECT * FROM utiligo_leads` carries
+ * business_phone and business_email — exactly the fields the free tier masks and
+ * Pro customers pay to unlock. Anyone with a session could read the whole contact
+ * database one sequential id at a time, and the paywall meant nothing.
+ *
+ * Two gates now, matching api/lead-outreach.php:
+ *   - the lead workspace plan (can_use_lead_workspace), so the feature is not
+ *     available on a plan that cannot open the page it belongs to; and
+ *   - lead_visible_to(), which asks the grant table whether a search ever
+ *     delivered THIS lead to THIS account.
+ * CSRF is still required as well, so a malicious third-party site can't probe for
  * lead existence by issuing cross-site POSTs.
  *
  * Response shape:
@@ -27,7 +37,9 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/functions.php';
+require_once __DIR__ . '/../includes/error_logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -50,7 +62,29 @@ if ($lead_id <= 0) {
     exit;
 }
 
+$account = current_user();
+if (!$account) {
+    http_response_code(401);
+    echo json_encode(['success' => false, 'error' => 'not_logged_in']);
+    exit;
+}
+
+if (!can_use_lead_workspace((string)($account['plan'] ?? 'free'))) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'plan_required']);
+    exit;
+}
+
 $pdo = get_platform_db();
+
+// Is this a lead this account was actually delivered? See the ownership note at
+// the top of this file — without this check the response is the paid contact
+// record for any id the caller cares to guess.
+if (!lead_visible_to($pdo, (int)$account['id'], $lead_id)) {
+    http_response_code(403);
+    echo json_encode(['success' => false, 'error' => 'lead_not_unlocked']);
+    exit;
+}
 
 // Fetch the lead itself. The slide-over can re-render from this single row
 // (with raw_payload un-serialized for the JS). We never expose user_id or

@@ -49,6 +49,7 @@
 
 require_once __DIR__ . '/lead_search_jobs.php';
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/outreach.php';
 
 /** How many leads one automated run asks for. */
 if (!defined('AUTO_SEARCH_LEAD_COUNT'))      define('AUTO_SEARCH_LEAD_COUNT', 20);
@@ -214,6 +215,11 @@ function auto_search_digest(array $result): array
             'business_phone'    => (string)($lead['business_phone'] ?? ''),
             'business_email'    => (string)($lead['business_email'] ?? ''),
             'website'           => (string)($lead['website'] ?? ''),
+            // Kept because the outreach draft reasons about them: "4.8 stars from
+            // 120 reviews" must not be reported as a problem, and "4.0 from one
+            // review" is not a reason to email anybody.
+            'rating'            => $lead['rating'] ?? null,
+            'total_ratings'     => (int)($lead['total_ratings'] ?? 0),
         ];
     }
 
@@ -235,8 +241,13 @@ function auto_search_subject(string $name, int $count): string
  * Send one digest. Returns true when the email was accepted for delivery.
  *
  * $row is the saved_searches row; $digest is auto_search_digest()'s output.
+ *
+ * $profile is the owner's outreach profile. When it is supplied, each lead in the
+ * digest carries the opening sentence of the email the workspace would draft for
+ * it — the digest is what the customer reads first, and "here is who to contact"
+ * is worth much less than "here is what to say".
  */
-function auto_search_send_digest(string $email, array $row, array $digest, string $baseUrl): bool
+function auto_search_send_digest(string $email, array $row, array $digest, string $baseUrl, array $profile = []): bool
 {
     $name     = (string)($row['name'] ?? 'Saved search');
     $baseUrl  = rtrim($baseUrl, '/');
@@ -264,6 +275,22 @@ function auto_search_send_digest(string $email, array $row, array $digest, strin
             }
         }
 
+        // The opening line of the draft. One sentence, not the whole email: the
+        // digest has to stay short enough to actually be read, and the rest is one
+        // click away.
+        $opening = '';
+        if ($profile) {
+            try {
+                $opening = (string)(outreach_draft($lead, $profile)['opening'] ?? '');
+            } catch (\Throwable $e) {
+                $opening = '';
+            }
+        }
+        if ($opening !== '') {
+            $html .= '<br><span style="color:#64748b;font-size:11px;font-style:italic;">“'
+                   . _auto_search_h($opening) . '”</span>';
+        }
+
         $html .= '</td><td style="padding:10px 4px;vertical-align:top;text-align:right;">';
         if ($lead['business_phone'] !== '') {
             $html .= '<span style="display:block;color:#475569;">' . _auto_search_h($lead['business_phone']) . '</span>';
@@ -282,7 +309,7 @@ function auto_search_send_digest(string $email, array $row, array $digest, strin
     $html .= '</table>';
     $html .= '<p style="margin:18px 0 0;font-size:11px;color:#94a3b8;">Sent by your Utiligo scheduled search · '
            . '<a href="' . _auto_search_h($leadsUrl) . '" style="color:#2563eb;">Open the lead workspace</a> '
-           . 'to change how often this runs.</p>';
+           . 'for the full email and to change how often this runs.</p>';
     $html .= '</div>';
 
     $text = $count . " new lead" . ($count === 1 ? '' : 's') . " from your saved search: " . $name . "\n\n"

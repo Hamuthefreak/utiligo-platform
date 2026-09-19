@@ -1012,6 +1012,228 @@ function _refreshBulkSelectionVisual() {
     });
 }
 
+// ── Outreach: turn a lead into something sendable ─────────────────────────
+
+// The block itself is inert markup. Everything that needs a network round-trip
+// happens on the button press, so opening a lead costs nothing and the draft is
+// always built from the row as it is now.
+function _outreachBlockHtml() {
+    return '<div id="outreachBlock" class="pt-4 mt-4 border-t border-white/5">'
+        + '<div class="flex items-center justify-between gap-2 mb-2">'
+            + '<div class="flex items-center gap-2">'
+                + '<div class="w-6 h-6 rounded-md bg-white/5 border border-white/10 flex items-center justify-center">'
+                    + '<i class="fa-regular fa-paper-plane text-emerald-300 text-[10px]"></i></div>'
+                + '<p class="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Outreach</p>'
+            + '</div>'
+            + '<button type="button" id="outreachDraftBtn" class="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white transition">Draft email</button>'
+        + '</div>'
+        + '<div id="outreachDraftBody" class="text-[11px] text-slate-600 leading-relaxed">Write to this business without starting from a blank page.</div>'
+    + '</div>';
+}
+
+function _wireOutreachBlock(body, lead) {
+    var btn = body.querySelector('#outreachDraftBtn');
+    if (!btn) return;
+    var out = body.querySelector('#outreachDraftBody');
+    btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        _leadsLoadDraft(lead, btn, out);
+    });
+}
+
+function _leadsOutreachFail(out, err) {
+    var copy = {
+        plan_required:      'Outreach drafts are part of the lead workspace plans.',
+        lead_not_unlocked:  'This lead is not one of the leads your searches unlocked.',
+        missing_lead_id:    'That lead could not be identified.',
+        not_found:          'That lead is no longer in the pool.',
+        profile_not_storable: 'Your details could not be saved right now.',
+    }[err] || 'The draft could not be prepared. Please try again.';
+
+    out.innerHTML = '<p class="text-[11px] text-amber-300/80">' + esc(copy) + '</p>';
+}
+
+// Build a mailto from whatever is in the fields RIGHT NOW, not from the draft the
+// server sent — the customer is expected to edit the wording, and a Send button
+// that quietly reverts their edits is worse than no button.
+function _leadsBuildMailto(lead, subject, body) {
+    var to = String(lead.business_email || '').trim();
+    // Same shape test the server applies before it will call a listing "email".
+    // Without it a malformed address produced a mailto: that opened an empty
+    // compose window, which reads to the customer as the app being broken.
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) return '';
+    var text = String(body || '').replace(/\r\n|\r/g, '\n').replace(/\n/g, '\r\n');
+    return 'mailto:' + encodeURIComponent(to)
+        + '?subject=' + encodeURIComponent(String(subject || ''))
+        + '&body=' + encodeURIComponent(text);
+}
+
+function _leadsCopyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        return navigator.clipboard.writeText(text).then(function () { return true; }, function () { return false; });
+    }
+    try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        var ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return Promise.resolve(ok);
+    } catch (e) {
+        return Promise.resolve(false);
+    }
+}
+
+function _leadsLoadDraft(lead, btn, out) {
+    btn.disabled = true;
+    var original = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+    out.innerHTML = '<span class="text-[11px] text-slate-500">Writing…</span>';
+
+    fetch('/api/lead-outreach.php', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ op: 'draft', lead_id: lead.id, csrf_token: csrfToken }),
+    })
+    .then(function (r) { return r.json(); })
+    .then(function (j) {
+        btn.disabled = false;
+        btn.innerHTML = original;
+        if (!j || !j.success) return _leadsOutreachFail(out, j && j.error);
+        _leadsRenderDraft(out, btn, lead, j);
+    })
+    .catch(function () {
+        btn.disabled = false;
+        btn.innerHTML = original;
+        _leadsOutreachFail(out, 'network');
+    });
+}
+
+function _leadsRenderDraft(out, btn, lead, payload) {
+    var draft   = payload.draft || {};
+    var profile = payload.profile || {};
+    var field   = 'w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-[12px] text-slate-200 focus:outline-none focus:border-indigo-400/60';
+    var label   = 'block text-[9px] font-semibold text-slate-600 uppercase tracking-widest mb-1';
+
+    var html = '';
+
+    // Say which evidence the draft is using. A customer who does not know why the
+    // email mentions their website will not trust it — and, worse, might send it.
+    html += '<div class="flex items-center gap-2 flex-wrap mb-3">'
+         + '<span class="text-[10px] font-semibold px-2 py-0.5 rounded-full" style="background:rgba(16,185,129,.12);color:#6ee7b7">'
+         + esc(draft.angle_label || '') + '</span>'
+         + '<span class="text-[10px] text-slate-600">' + esc(draft.channel_label || '') + '</span>'
+         + '</div>';
+
+    html += '<div class="mb-2"><label class="' + label + '" for="outreachSubject">Subject</label>'
+         + '<input type="text" id="outreachSubject" class="' + field + '" value="' + esc(draft.subject || '') + '"></div>';
+
+    html += '<div class="mb-3"><label class="' + label + '" for="outreachBody">Message</label>'
+         + '<textarea id="outreachBody" rows="13" class="' + field + ' leading-relaxed">' + esc(draft.body || '') + '</textarea></div>';
+
+    html += '<div class="flex items-center gap-2 flex-wrap mb-2">';
+    html += '<button type="button" id="outreachCopy" class="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white transition"><i class="fa-regular fa-copy mr-1"></i>Copy</button>';
+
+    // Gated on the channel the server reported, not on whether an address merely
+    // exists on the row: the two must not disagree about whether email is the way
+    // in, or the page offers a button the API already decided against.
+    var mailto = draft.channel === 'email' ? _leadsBuildMailto(lead, draft.subject, draft.body) : '';
+    if (mailto) {
+        html += '<a id="outreachSend" href="' + esc(mailto) + '" class="text-[11px] font-semibold px-3 py-1.5 rounded-lg text-black bg-white hover:bg-slate-100 transition"><i class="fa-regular fa-envelope mr-1"></i>Open in email app</a>';
+    }
+    if (payload.tel) {
+        html += '<a href="' + esc(payload.tel) + '" class="text-[11px] font-semibold px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 text-slate-300 hover:bg-white/10 hover:text-white transition"><i class="fa-solid fa-phone mr-1"></i>Call</a>';
+    }
+    html += '</div>';
+
+    if (!draft.profile_complete) {
+        // The draft is signed with what the customer sells. Nobody fills that in on
+        // a settings page they never visit, so the form is here, at the moment the
+        // omission is visible.
+        html += '<div class="rounded-xl border border-white/10 bg-white/[.03] p-3 mt-3">'
+             + '<p class="text-[10px] text-slate-400 mb-2"><i class="fa-solid fa-circle-info mr-1 text-slate-600"></i>Add your details once and every draft will use them.</p>'
+             + '<div class="space-y-2">'
+             + '<input type="text" id="outreachSenderName" class="' + field + '" placeholder="Your name" value="' + esc(profile.sender_name || '') + '">'
+             + '<input type="text" id="outreachOffer" class="' + field + '" placeholder="What you sell, e.g. websites for local businesses">'
+             + '<input type="text" id="outreachBusinessName" class="' + field + '" placeholder="Your business name (optional)">'
+             + '<input type="text" id="outreachPhone" class="' + field + '" placeholder="Your phone (optional)">'
+             + '<button type="button" id="outreachSaveProfile" class="w-full text-[11px] font-semibold px-3 py-2 rounded-lg bg-white/10 border border-white/10 text-white hover:bg-white/15 transition">Save and rewrite my draft</button>'
+             + '</div></div>';
+    }
+
+    out.innerHTML = html;
+
+    var subjectEl = out.querySelector('#outreachSubject');
+    var bodyEl    = out.querySelector('#outreachBody');
+
+    // Keep the Send link in step with the edits, so what opens in the mail client
+    // is what is on screen.
+    function syncMailto() {
+        var link = out.querySelector('#outreachSend');
+        if (!link) return;
+        var m = _leadsBuildMailto(lead, subjectEl.value, bodyEl.value);
+        if (m) link.setAttribute('href', m);
+    }
+    if (subjectEl) subjectEl.addEventListener('input', syncMailto);
+    if (bodyEl)    bodyEl.addEventListener('input', syncMailto);
+
+    var copyBtn = out.querySelector('#outreachCopy');
+    if (copyBtn) {
+        copyBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            _leadsCopyText('Subject: ' + subjectEl.value + '\n\n' + bodyEl.value).then(function (ok) {
+                if (typeof leadsToast === 'function') {
+                    leadsToast(ok ? 'Copied' : 'Copy failed', ok ? 'Subject and message are on your clipboard.' : 'Select the text and copy it manually.', ok ? 'success' : 'warn');
+                }
+            });
+        });
+    }
+
+    var saveBtn = out.querySelector('#outreachSaveProfile');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            saveBtn.disabled = true;
+            saveBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i>';
+            fetch('/api/lead-outreach.php', {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {'Content-Type':'application/json'},
+                body: JSON.stringify({
+                    op: 'save_profile',
+                    csrf_token: csrfToken,
+                    sender_name: (out.querySelector('#outreachSenderName') || {}).value || '',
+                    offer:       (out.querySelector('#outreachOffer') || {}).value || '',
+                    business_name: (out.querySelector('#outreachBusinessName') || {}).value || '',
+                    phone:       (out.querySelector('#outreachPhone') || {}).value || '',
+                }),
+            })
+            .then(function (r) { return r.json(); })
+            .then(function (j) {
+                if (!j || !j.success) {
+                    saveBtn.disabled = false;
+                    saveBtn.textContent = 'Save and rewrite my draft';
+                    return _leadsOutreachFail(out, j && j.error);
+                }
+                _leadsLoadDraft(lead, btn, out);
+            })
+            .catch(function () {
+                saveBtn.disabled = false;
+                saveBtn.textContent = 'Save and rewrite my draft';
+                _leadsOutreachFail(out, 'network');
+            });
+        });
+    }
+}
+
 // Slide-over renderer — exposed for the portal-page HTML to call
 function _renderSlideOver(body, lead) {
     if (!body || !lead) return;
@@ -1068,7 +1290,14 @@ function _renderSlideOver(body, lead) {
         html += linkrow('Coordinates', lead.lat + ', ' + lead.lng, href);
     }
     html += '</div>';
+
+    html += _outreachBlockHtml();
+
     body.innerHTML = html;
+
+    // Wired here rather than in the page's openLeadSlideOver() so the block works
+    // wherever the slide-over is rendered from.
+    try { _wireOutreachBlock(body, lead); } catch (e) {}
 }
 
 // ----- Wire up the toolbar + bulk + slide-over + view-mode buttons -----
@@ -1285,6 +1514,9 @@ window._leadsRenderSlideOver = _renderSlideOver;
 
 // Phase 2: fetch enrichments from lead_enrichments table for the slide-over.
 window._leadsFetchEnrichments = function (leadId, cb) {
+    // plan_required / lead_not_unlocked are refusals, not failures: the slide-over
+    // shows them as an upsell line rather than an error toast.
+
     fetch('/api/lead-enrichments.php', {
         method: 'POST',
         credentials: 'same-origin',

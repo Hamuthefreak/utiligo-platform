@@ -235,6 +235,14 @@ t_like($mails[0]['html'], 'Cafe Alpha', 'and a body listing the leads');
 t_like($mails[0]['html'], 'Cafe Beta', 'all of them');
 t_like($mails[0]['text'], '/portal/leads.php', 'and a plain-text fallback pointing at the workspace');
 
+// The digest is what the customer reads first, and "here is who to contact" is
+// worth much less than "here is what to say". Each lead carries the opening line
+// of the email the workspace would draft for it.
+t_like($mails[0]['html'], 'I came across Cafe Alpha',
+    'and the opening line of the outreach draft for each lead');
+t_like($mails[0]['html'], 'no website on your Google listing',
+    'built from the evidence on the row');
+
 $row = $savedSearch($runSs);
 t_is((int)$row['last_count'], 2, 'the saved search records how many were found');
 t_is(trim((string)$row['job_token']), '', 'and is released, so it can run again');
