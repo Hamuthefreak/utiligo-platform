@@ -1,7 +1,8 @@
 <?php http_response_code(404); ?>
 <!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/png" href="/assets/images/newsitelogo.png">
-<link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
+<link rel="icon" type="image/svg+xml" href="/assets/images/icon.svg">
+<link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
+<link rel="mask-icon" href="/assets/images/logo-mark.svg" color="#020817">
 <title>Page Not Found — Utiligo</title>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
 <style><?php include __DIR__ . '/error_styles.css.php'; ?></style>

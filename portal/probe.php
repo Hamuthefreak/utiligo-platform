@@ -10,8 +10,9 @@ error_reporting(E_ALL);
 header('Content-Type: text/html; charset=utf-8');
 ?>
 <!DOCTYPE html><html><head><meta charset=UTF-8>
-<link rel="icon" type="image/png" href="/assets/images/newsitelogo.png">
-<link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
+<link rel="icon" type="image/svg+xml" href="/assets/images/icon.svg">
+<link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
+<link rel="mask-icon" href="/assets/images/logo-mark.svg" color="#020817">
 <title>Probe</title>
 <style>body{font:13px monospace;background:#0d0d14;color:#cdd6f4;padding:24px}
 .ok{color:#a6e3a1}.fail{color:#f38ba8}.warn{color:#fab387}

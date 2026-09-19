@@ -18,8 +18,8 @@ $_plan_labels = [
     'entrepreneur' => 'Entrepreneur — ' . $_ent_price_fmt . '/mo',
 ];
 
-$_logo_path = __DIR__ . '/assets/images/utiligoheaderlogo.png';
-$_logo_url  = '/assets/images/utiligoheaderlogo.png';
+$_logo_path = __DIR__ . '/assets/images/logo.svg';
+$_logo_url  = '/assets/images/logo.svg';
 $_has_logo  = file_exists($_logo_path);
 
 $error   = '';

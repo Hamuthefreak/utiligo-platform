@@ -12,8 +12,8 @@ if (!function_exists('asset_url')) {
 
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.'; }
 $loggedIn = function_exists('is_logged_in') && is_logged_in();
-$_logo_path = __DIR__ . '/../assets/images/utiligoheaderlogo.png';
-$_logo_url  = '/assets/images/utiligoheaderlogo.png';
+$_logo_path = __DIR__ . '/../assets/images/logo.svg';
+$_logo_url  = '/assets/images/logo.svg';
 $_has_logo  = file_exists($_logo_path);
 ?>
 <!DOCTYPE html>
@@ -54,8 +54,9 @@ if ($seoImage && strpos($seoImage, 'http') !== 0) $seoImage = $_seo_base . $seoI
 <meta name="twitter:title" content="<?= htmlspecialchars($seoTitle) ?>">
 <meta name="twitter:description" content="<?= htmlspecialchars($seoDescription, ENT_QUOTES, 'UTF-8') ?>">
 <meta name="twitter:image" content="<?= htmlspecialchars($seoImage) ?>">
-<link rel="icon" type="image/png" href="/assets/images/newsitelogo.png">
-<link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
+<link rel="icon" type="image/svg+xml" href="/assets/images/icon.svg">
+<link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
+<link rel="mask-icon" href="/assets/images/logo-mark.svg" color="#020817">
 <?php
 // ── JSON-LD structured data: Organization + WebSite always, plus any
 //    page-specific graph (e.g. homepage adds FAQPage/Product) via $seo_json_ld. ──

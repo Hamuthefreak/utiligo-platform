@@ -4,8 +4,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link rel="icon" type="image/png" href="/assets/images/newsitelogo.png">
-<link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
+<link rel="icon" type="image/svg+xml" href="/assets/images/icon.svg">
+<link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
+<link rel="mask-icon" href="/assets/images/logo-mark.svg" color="#020817">
 <title>500 — Server Error — Utiligo</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box}

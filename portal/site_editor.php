@@ -22,8 +22,8 @@ if (!array_key_exists($currentPage, $pages)) $currentPage = 'index';
 
 $slugDir = $site['public_slug'] ?: (slugify($site['business_name']) . '-' . $site['id']);
 
-$_logo_path = __DIR__ . '/../assets/images/utiligoheaderlogo.png';
-$_logo_url  = '/assets/images/utiligoheaderlogo.png';
+$_logo_path = __DIR__ . '/../assets/images/logo.svg';
+$_logo_url  = '/assets/images/logo.svg';
 $_has_logo  = file_exists($_logo_path);
 ?>
 <!DOCTYPE html>
@@ -31,8 +31,9 @@ $_has_logo  = file_exists($_logo_path);
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<link rel="icon" type="image/png" href="/assets/images/newsitelogo.png">
-<link rel="apple-touch-icon" href="/assets/images/newsitelogo.png">
+<link rel="icon" type="image/svg+xml" href="/assets/images/icon.svg">
+<link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
+<link rel="mask-icon" href="/assets/images/logo-mark.svg" color="#020817">
 <title>Site Editor &mdash; <?= htmlspecialchars($site['business_name']) ?></title>
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
