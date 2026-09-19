@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Call dock — browser harness</title>
+<link rel="stylesheet" href="/assets/css/call_scripts.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+<style>body{background:#020817;color:#e2e8f0;font-family:system-ui;margin:0;padding:40px}
+.page{max-width:640px}.page h1{font-size:20px}.page p{color:#94a3b8;font-size:13px;line-height:1.6}
+.page code{padding:1px 4px;border-radius:4px;background:rgba(255,255,255,.08);font-size:12px}</style>
+</head>
+<body data-csrf="harness-csrf-token">
+
+<!--
+  ============================================================================
+  Call dock — manual browser harness
+  ----------------------------------------------------------------------------
+  WHY THIS FILE IS IN THE REPO
+    The dock is ~700 lines of DOM code whose failure modes are visual and
+    interactive: a panel that will not collapse, a placeholder that prints a
+    blank, a position that is forgotten on the next page load. The PHP suite
+    cannot see any of that — it never renders a pixel. Every bug this file has
+    already caught was found here and nowhere else:
+
+      - collapse did nothing at all (the mobile sheet pinned it open with
+        62vh !important, and min-height pinned it on desktop)
+      - the first-run position was computed by place() but saved BEFORE it, so
+        x/y persisted as null and the panel re-centred on every page load
+      - the pop-out layout only filled the window when the host document had no
+        padding of its own
+
+  HOW TO RUN IT
+    It must be served by the application's own server, because it loads the real
+    /assets/css/call_scripts.css and /assets/js/call_scripts.js:
+
+        php -S 127.0.0.1:8123 -t .        # from the project root
+
+    then open (in this app's Preview tab, or any browser):
+
+        /tests/browser/dock_harness.html                 floating panel
+        /tests/browser/dock_harness.html?standalone=1    the pop-out window
+
+    It answers /api/call-scripts.php with a canned reply, so it needs no
+    session, no database and no Stripe.
+
+  WHAT TO CHECK
+    - the launcher opens the panel, and the panel shows a script immediately
+    - the seed placeholder is filled: "Hi, is this the owner of Bright Smile
+      Dental?" — that is window.UTILIGO_CURRENT_LEAD below
+    - set UTILIGO_CURRENT_LEAD to null and dispatch a 'utiligo:lead-close'
+      event: the token must stay visible and be highlighted, with a warning
+    - Alt+ArrowDown / Alt+ArrowUp cycle scripts and wrap
+    - "All scripts" filters, and Enter takes the highlighted row
+    - collapsing shrinks the panel to a bar (it did not, before)
+    - drag it, resize it, reload the page: it must come back exactly there, on
+      the same script, still open
+    - ?standalone=1 must fill the window with no launcher and no collapse,
+      close or resize controls
+
+    A wide viewport is needed for the floating layout; the panel becomes a
+    bottom sheet at 767px and below by design, so a narrow preview window will
+    show the sheet instead. Wrap the page in a wide iframe to exercise both.
+  ============================================================================
+-->
+
+<div class="page">
+  <h1>Call dock — browser harness</h1>
+  <p id="status">Waiting for the dock to boot.</p>
+  <p>This page loads the REAL <code>call_scripts.css</code> and
+     <code>call_scripts.js</code> and answers with a canned API, so the panel's
+     rendering, keyboard shortcuts, persistence and placeholder substitution can
+     be exercised without a session or a database. Add <code>?standalone=1</code>
+     to mirror the pop-out window. See the comment in the source for what to check.</p>
+</div>
+
+<script>
+/* ── A canned API, so the dock can be driven with no session and no DB ───── */
+var SCRIPTS = [
+  { id: 11, name: 'No website — first call', source: 'starter', sort_order: 10,
+    times_used: 0, last_used_at: null,
+    body: 'Hi, is this the owner of {{business_name}}?\n\nMy name is {{sender_name}}.\n\n[Wait. Let them answer.]',
+    tokens: ['business_name', 'sender_name'] },
+  { id: 12, name: 'Follow-up', source: 'starter', sort_order: 20,
+    times_used: 3, last_used_at: '2026-09-18 10:00:00',
+    body: 'Hi, it is {{sender_name}} — about {{business_name}} in {{business_city}}.',
+    tokens: [] },
+  { id: 13, name: 'Voicemail', source: 'manual', sort_order: 30,
+    times_used: 0, last_used_at: null, body: 'Hi, {{sender_name}} here. Call me back.', tokens: [] }
+];
+
+var CALLS = [];
+window.__CALLS = CALLS;
+
+window.fetch = function (url, opts) {
+  var body = {};
+  try { body = JSON.parse((opts && opts.body) || '{}'); } catch (e) {}
+  CALLS.push({ op: body.op, id: body.id, name: body.name, blob: body.blob });
+
+  var reply = { success: true };
+  if (body.op === 'list') {
+    reply = {
+      success: true, scripts: SCRIPTS, cap: 200, seeded: false,
+      max_name: 120, max_body: 12000,
+      fields: { business_name: 'Business name', business_city: 'City',
+                business_category: 'Category', business_phone: 'Phone',
+                sender_name: 'Your name' }
+    };
+  } else if (body.op === 'create') { reply = { success: true, id: 99 }; }
+  else if (body.op === 'import')   { reply = { success: true, created: 2, skipped: 0, dropped: 0 }; }
+  else if (body.op === 'touch')    { reply = { success: true, id: body.id }; }
+  else if (body.op === 'update')   { reply = { success: true, id: body.id }; }
+  else if (body.op === 'delete')   { reply = { success: true, id: body.id }; }
+  else if (body.op === 'reorder')  { reply = { success: true, applied: 3 }; }
+
+  return Promise.resolve({ json: function () { return Promise.resolve(reply); } });
+};
+
+/* The config portal_layout.php emits, and the lead portal/leads.php publishes.
+   ?standalone=1 mirrors portal/call-scripts-window.php, where the panel IS the
+   page — a different CSS class (.is-full) and a different render branch. */
+window.UTILIGO_CALL_SCRIPTS = {
+  api: '/api/call-scripts.php',
+  senderName: 'Dana Reid',
+  standalone: /(^|[?&])standalone=1/.test(location.search)
+};
+window.UTILIGO_CURRENT_LEAD = {
+  business_name: 'Bright Smile Dental', business_city: 'Vancouver',
+  business_category: 'Dentist', business_phone: '604-555-0134'
+};
+</script>
+<script src="/assets/js/call_scripts.js"></script>
+<script>
+window.addEventListener('load', function () {
+  var el = document.getElementById('status');
+  if (!el) return;
+  var dock = document.getElementById('csDock');
+  var launcher = document.getElementById('csLauncher');
+  el.textContent = 'booted: dock=' + !!dock + ' launcher=' + !!launcher
+    + ' listCalls=' + CALLS.filter(function (c) { return c.op === 'list'; }).length;
+});
+</script>
+</body>
+</html>

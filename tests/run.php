@@ -108,6 +108,13 @@ require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/entitlements.php';
 require_once __DIR__ . '/../includes/stripe_api.php';
 require_once __DIR__ . '/../includes/auto_search.php';
+// The call dock's rules (validation, ordering, seeding, import parsing,
+// placeholder substitution) are pure functions, so the suite asserts them
+// directly rather than only through the endpoint that wraps them.
+require_once __DIR__ . '/../includes/call_scripts.php';
+// The call-script seed marker is an activity action, and the tests assert the
+// seed happens once by looking at that marker. Its constants live here.
+require_once __DIR__ . '/../includes/lead_activity_log.php';
 
 // config.php loads includes/global_error_handler.php, which points PHP's own
 // error_log at storage/php_errors.log — a tracked file. Several tests

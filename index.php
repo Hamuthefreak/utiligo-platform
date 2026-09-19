@@ -239,6 +239,28 @@ require_once __DIR__ . '/includes/header.php';
     </div>
     <?php endforeach; ?>
   </div>
+
+  <?php /* The call dock gets its own full-width card rather than a seventh tile:
+           a 3-column grid of 7 leaves an orphan, and this is the one feature
+           where "it is always there while you dial" is the whole pitch — which
+           needs a sentence, not a bullet. */
+  ?>
+  <div class="glass rounded-xl p-6 md:p-8 mt-6 flex flex-col md:flex-row md:items-center gap-6">
+    <div class="flex items-center gap-4 md:w-1/3 shrink-0">
+      <div class="w-12 h-12 rounded-xl bg-white/5 border border-white/10 flex items-center justify-center">
+        <i class="fa-solid fa-phone-volume text-xl text-white"></i>
+      </div>
+      <h3 class="font-semibold text-lg">Call Scripts That Follow You</h3>
+    </div>
+    <p class="text-slate-400 text-sm md:flex-1">
+      Your pitch, open in a floating panel that stays with you as you move through
+      the dashboard &mdash; dimmed until you look at it, collapsible mid-sentence, and
+      on every page you land on. Put a lead's name, city and number straight into a
+      script with <code class="px-1.5 py-0.5 rounded bg-white/10 text-xs text-slate-300">{{business_name}}</code>,
+      switch scripts with one key while the phone is ringing, or pop the panel into
+      its own window and leave it on a second monitor.
+    </p>
+  </div>
 </section>
 
 <!-- PRICING -->
@@ -281,6 +303,7 @@ require_once __DIR__ . '/includes/header.php';
         <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= $TMPL_COUNT ?> templates</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>ZIP export</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Full revenue dashboard</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i>Call scripts on every page</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Priority support</li>
       </ul>
       <a href="/register.php?plan=pro" class="mt-auto block text-center bg-white hover:bg-slate-200 text-black py-3 rounded-full font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Pro</a>
@@ -298,6 +321,7 @@ require_once __DIR__ . '/includes/header.php';
         <li><i class="fa-solid fa-check text-white mr-2"></i>All <?= $TMPL_COUNT ?> templates</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>ZIP export</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Full revenue dashboard</li>
+        <li><i class="fa-solid fa-check text-white mr-2"></i>Call scripts on every page</li>
         <li><i class="fa-solid fa-check text-white mr-2"></i>Priority support</li>
         <li class="flex items-center gap-2">
           <i class="fa-solid fa-clock text-slate-500 mr-2"></i>

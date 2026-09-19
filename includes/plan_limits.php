@@ -79,4 +79,8 @@ if (!defined('RATE_LIMIT_SAVED_SEARCH')) define('RATE_LIMIT_SAVED_SEARCH', 20);
 if (!defined('RATE_LIMIT_LEAD_TAG'))     define('RATE_LIMIT_LEAD_TAG',    40);
 if (!defined('RATE_LIMIT_LEAD_NOTE'))    define('RATE_LIMIT_LEAD_NOTE',   30);
 if (!defined('RATE_LIMIT_LEAD_BULK'))    define('RATE_LIMIT_LEAD_BULK',   10);
+// The call dock saves on every edit and records every use, and those requests
+// are tiny — so the ceiling is set where a person cannot reach it by working
+// normally, and only a script or a stuck client will.
+if (!defined('RATE_LIMIT_CALL_SCRIPT'))  define('RATE_LIMIT_CALL_SCRIPT', 120);
 

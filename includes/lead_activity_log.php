@@ -31,8 +31,13 @@ const LEAD_ACT_LEAD_VIEW     = 'lead_view';       // user opened slide-over
 const LEAD_ACT_EXPORT_RUN    = 'export_run';      // user kicked off an export
 const LEAD_ACT_LEAD_ADD_CRM  = 'lead_add_crm';    // user added a lead to CRM
 const LEAD_ACT_SAVED_SEARCH  = 'saved_search';    // user saved a search
-const LEAD_ACT_NOTIFY_TOGGLE = 'notify_toggle';   // user toggled notify_email on a saved search
-const LEAD_ACT_NOTIFY_SENT   = 'notify_sent';     // scheduled-search cron emailed the user
+const LEAD_ACT_NOTIFY_TOGGLE = 'notify_toggle';   // user toggled notify_email on a saved searchconst LEAD_ACT_NOTIFY_SENT   = 'notify_sent';    // scheduled-search cron emailed the user
+// Call scripts are user-scope, so target_id is the script id (or NULL).
+//
+// Note what is NOT here: the "this account has been seeded" marker. It is
+// utiligo_users.call_script_seeded_at instead, because this log is best-effort
+// by design and the seeding rule must not be — see api/call-scripts.php.
+const LEAD_ACT_CALL_SCRIPT = 'call_script';  // create / update / delete / import
 
 /**
  * @param PDO    $pdo
@@ -47,6 +52,7 @@ function log_lead_activity(\PDO $pdo, int $user_id, string $action, ?int $target
         LEAD_ACT_SEARCH_RUN, LEAD_ACT_LEAD_UNLOCK, LEAD_ACT_LEAD_VIEW,
         LEAD_ACT_EXPORT_RUN, LEAD_ACT_LEAD_ADD_CRM,
         LEAD_ACT_SAVED_SEARCH, LEAD_ACT_NOTIFY_TOGGLE, LEAD_ACT_NOTIFY_SENT,
+        LEAD_ACT_CALL_SCRIPT,
     ];
     if (!in_array($action, $allowed, true)) return false;
     if ($user_id <= 0) return false;

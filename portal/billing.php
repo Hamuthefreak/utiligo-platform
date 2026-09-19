@@ -317,6 +317,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <span class="pill-feature"><i class="fa-solid fa-globe"></i>Custom domains</span>
       <span class="pill-feature"><i class="fa-solid fa-users"></i><?= $_ent_seats ?> team seats</span>
       <span class="pill-feature"><i class="fa-solid fa-chart-line"></i>Client reports</span>
+      <span class="pill-feature"><i class="fa-solid fa-phone-volume"></i>Call scripts</span>
       <span class="pill-feature"><i class="fa-solid fa-server"></i><?= $_ent_sites ?> sites</span>
       <span class="pill-feature"><i class="fa-solid fa-headset"></i>Priority support</span>
     </div>
@@ -447,6 +448,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i><?= number_format($_pro_leads) ?> leads / period</li>
         <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i><?= $_pro_sites ?> active websites</li>
         <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>Full phone numbers</li>
+        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>Call scripts on every page</li>
         <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>All templates + ZIP export</li>
         <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>Revenue dashboard</li>
       </ul>

@@ -114,6 +114,32 @@ The suite is built around scenarios that cost money:
 - a customer with a running subscription pressing upgrade, double-clicking the
   same plan, or upgrading while Stripe is unreachable
 
+### Call scripts (the floating dock)
+
+`test_call_scripts.php` covers `includes/call_scripts.php` (validation, ordering,
+starter scripts, bulk-import parsing, placeholder substitution) and
+`api/call-scripts.php`. The model layer is pure, so its rules are asserted
+directly rather than only through the endpoint.
+
+The assertions that matter most, because each one is a way this could quietly be
+wrong:
+
+- **the starters are seeded once, ever.** Deleting all three and listing again
+  must leave an empty panel. The marker is `utiligo_users.call_script_seeded_at`,
+  NOT a row in `lead_activity_log` where it started — that log is best-effort by
+  design, and a correctness rule cannot rest on a write the code is told it may
+  drop.
+- **an unfilled placeholder is left standing and reported**, never blanked. A
+  script that silently says "Hi ," is discovered mid-call.
+- **every op is scoped to the caller**, including `reorder`, which takes a list of
+  ids and would otherwise be a way to rewrite another account's ordering.
+- **the dock is not served to a free plan at all** — not the script, not the
+  stylesheet, not the config — and the pop-out window redirects.
+
+One thing this file cannot reach: whether the panel *renders*. See
+`tests/browser/dock_harness.html` for that, which is how the collapse bug and the
+unsaved first-run position were found.
+
 ### The scheduled-search automation
 
 A saved search with `notify_email = 1` used to be a notifier and nothing more: the
@@ -219,6 +245,19 @@ Deploying this needs a cron entry, same shape as the other workers:
 - PHP's built-in server is single-threaded, so a test cannot poll the status
   endpoint *while* a worker is running. The tests wait for the job row to
   terminalize instead — the same thing the browser achieves by polling.
+
+## Testing something visual
+
+The PHP suite never renders a pixel, so anything whose failure mode is visual or
+interactive is not covered by it — the call dock being the current example. For
+those, `tests/browser/*.html` holds a harness served by the app's own dev server
+that loads the real assets against a canned API:
+
+    php -S 127.0.0.1:8123 -t .      # from the project root
+    # then open /tests/browser/dock_harness.html
+
+These are manual and are not run in CI. They earn their place anyway: every bug
+the dock has had was found there and nowhere else.
 
 ## Adding a case
 

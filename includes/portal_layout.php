@@ -51,6 +51,16 @@ if (!function_exists('_nav_active')) {
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="<?= asset_url('/assets/css/style.css') ?>">
+<?php /* Call-script dock.
+         Loaded here, from the one layout every portal page includes, because the
+         feature's entire promise is that it is on the page you happen to be on.
+         Paid plans only — a free account is never sent the stylesheet, the script
+         or the config, so there is nothing to unlock with devtools either.
+         The script is `defer`red so it runs after the document is parsed without
+         blocking the page, which is also why it needs no per-page include. */
+if (plan_has_pro_features($_plan)): ?>
+<link rel="stylesheet" href="<?= asset_url('/assets/css/call_scripts.css') ?>">
+<?php endif; ?>
 <?php if (isset($_GET['welcome']) || !empty($_SESSION['purchase_animation_plan'])): ?>
 <?php /* Onboarding splash stylesheet — loaded here (not at the end of the body)
          so the overlay is already styled by the time its deferred script runs.
@@ -133,6 +143,17 @@ if (!function_exists('_nav_active')) {
     pointer-events: none;
   }
 </style>
+<?php if (plan_has_pro_features($_plan)): ?>
+<script>
+  /* sender_name is the only placeholder the panel cannot get from the open lead,
+     so it is handed over here rather than costing a request. */
+  window.UTILIGO_CALL_SCRIPTS = {
+    api: '/api/call-scripts.php',
+    senderName: <?= json_encode(trim((string)($_user['full_name'] ?? '')), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES) ?>
+  };
+</script>
+<script defer src="<?= asset_url('/assets/js/call_scripts.js') ?>"></script>
+<?php endif; ?>
 </head>
 <body class="antialiased bg-slate-950 text-white"
       data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>"

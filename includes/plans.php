@@ -204,6 +204,7 @@ function plan_config(): array {
                 'basic_dashboard','website_generation','zip_export',
                 'revenue_dashboard','priority_support',
                 'lead_workspace','lead_export','lead_enrich_basic','saved_searches',
+                'call_scripts',
             ],
         ],
         'entrepreneur' => [
@@ -227,6 +228,7 @@ function plan_config(): array {
                 'custom_domains','client_reports','team_seats',
                 'lead_workspace','lead_export','lead_enrich_full',
                 'saved_searches','scheduled_searches','bulk_unlock',
+                'call_scripts',
             ],
         ],
     ];

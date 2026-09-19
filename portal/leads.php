@@ -1133,6 +1133,11 @@ document.addEventListener('DOMContentLoaded', function(){
 <script>
 function openLeadSlideOver(leadData) {
   if (!leadData) return;
+  // Published for the call-script dock, which fills {{business_name}} and the
+  // rest from whichever lead is open. This is the only page that knows a lead is
+  // open, so it is the only page where those placeholders can resolve.
+  window.UTILIGO_CURRENT_LEAD = leadData;
+  window.dispatchEvent(new CustomEvent('utiligo:lead-open', { detail: leadData }));
   var panel = document.getElementById('leadSlideOver');
   var overlay = document.getElementById('leadSlideOverOverlay');
   var title = document.getElementById('slideOverTitle');
@@ -1179,6 +1184,10 @@ function closeLeadSlideOver() {
   if (panel) { panel.classList.remove('open'); panel.setAttribute('aria-hidden','true'); }
   if (overlay) overlay.classList.remove('open');
   document.body.style.overflow = '';
+  // Cleared on the way out: a stale lead left here would have the dock happily
+  // addressing the previous business's name on the next call.
+  window.UTILIGO_CURRENT_LEAD = null;
+  window.dispatchEvent(new CustomEvent('utiligo:lead-close'));
 }
 function openExportSheet() {
   var sheet = document.getElementById('exportSheet');
