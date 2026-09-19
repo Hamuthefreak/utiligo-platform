@@ -11,9 +11,10 @@
  *   { csrf_token, op: "touch", id }          // "I used this one"
  *   { csrf_token, op: "import", blob }       // several at once, split on ---
  *
- * Plan gate: Pro and Entrepreneur (`plan_has_pro_features`). Free accounts are
- * refused with `plan_required`, and the dock is not even rendered for them, so
- * this is the backstop rather than the first line.
+ * Plan gate: Pro ONLY, via can_use_call_scripts(). Not plan_has_pro_features():
+ * this is the one feature Entrepreneur is deliberately locked out of. Free and
+ * Entrepreneur accounts are both refused with `plan_required`, and neither is
+ * even sent the dock, so this is the backstop rather than the first line.
  *
  * Authorization: every read and every write is scoped by user_id. There is no
  * op that takes an id without also matching it against the caller, because a
@@ -68,7 +69,7 @@ if ($uid <= 0) cs_fail(401, 'not_logged_in');
 // Read the plan from the record, not the session: nothing writes $_SESSION['plan'].
 $user = current_user() ?: [];
 $plan = (string)($user['plan'] ?? 'free');
-if (!plan_has_pro_features($plan)) {
+if (!can_use_call_scripts($plan)) {
     cs_fail(403, 'plan_required');
 }
 

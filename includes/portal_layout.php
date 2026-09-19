@@ -54,11 +54,12 @@ if (!function_exists('_nav_active')) {
 <?php /* Call-script dock.
          Loaded here, from the one layout every portal page includes, because the
          feature's entire promise is that it is on the page you happen to be on.
-         Paid plans only — a free account is never sent the stylesheet, the script
-         or the config, so there is nothing to unlock with devtools either.
+         Pro only (can_use_call_scripts, NOT plan_has_pro_features): free and
+         Entrepreneur accounts are never sent the stylesheet, the script or the
+         config, so there is nothing to unlock with devtools either.
          The script is `defer`red so it runs after the document is parsed without
          blocking the page, which is also why it needs no per-page include. */
-if (plan_has_pro_features($_plan)): ?>
+if (can_use_call_scripts($_plan)): ?>
 <link rel="stylesheet" href="<?= asset_url('/assets/css/call_scripts.css') ?>">
 <?php endif; ?>
 <?php if (isset($_GET['welcome']) || !empty($_SESSION['purchase_animation_plan'])): ?>
@@ -143,7 +144,7 @@ if (plan_has_pro_features($_plan)): ?>
     pointer-events: none;
   }
 </style>
-<?php if (plan_has_pro_features($_plan)): ?>
+<?php if (can_use_call_scripts($_plan)): ?>
 <script>
   /* sender_name is the only placeholder the panel cannot get from the open lead,
      so it is handed over here rather than costing a request. */

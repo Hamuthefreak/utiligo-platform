@@ -133,8 +133,14 @@ wrong:
   script that silently says "Hi ," is discovered mid-call.
 - **every op is scoped to the caller**, including `reorder`, which takes a list of
   ids and would otherwise be a way to rewrite another account's ordering.
-- **the dock is not served to a free plan at all** — not the script, not the
-  stylesheet, not the config — and the pop-out window redirects.
+- **the dock is served to Pro and to nobody else.** Free AND Entrepreneur get
+  no script, no stylesheet and no config, and the pop-out window redirects both.
+  This is the one feature deliberately scoped DOWN from the higher tier, so there
+  are two assertions that exist purely as a tripwire: Entrepreneur still has
+  `plan_has_pro_features()` and `can_use_lead_workspace()`. Narrowing the shared
+  predicate instead of adding `can_use_call_scripts()` would strip lead search,
+  export and enrichment from every Entrepreneur customer as a side effect — the
+  mutation test for it fails 8 assertions, six of them in other files.
 
 One thing this file cannot reach: whether the panel *renders*. See
 `tests/browser/dock_harness.html` for that, which is how the collapse bug and the

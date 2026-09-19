@@ -228,7 +228,6 @@ function plan_config(): array {
                 'custom_domains','client_reports','team_seats',
                 'lead_workspace','lead_export','lead_enrich_full',
                 'saved_searches','scheduled_searches','bulk_unlock',
-                'call_scripts',
             ],
         ],
     ];
@@ -372,4 +371,26 @@ function can_use_lead_workspace(string $plan): bool {
 /** Whether a user is allowed to schedule recurring searches (Ent only). */
 function can_schedule_searches(string $plan): bool {
     return $plan === 'entrepreneur';
+}
+
+/**
+ * Whether a user gets the call-script dock. Pro ONLY.
+ *
+ * DELIBERATE EXCEPTION to the ladder rule in this file.  Entrepreneur is
+ * normally a strict superset of Pro — that is why every other "is this a paid
+ * customer?" test here goes through plan_has_pro_features().  Call scripts are
+ * the one feature scoped DOWN instead of up, so Entrepreneur must be tested for
+ * and excluded explicitly rather than swept in by the shared helper.
+ *
+ * Read the consequence before changing this: an Entrepreneur customer who
+ * downgrades to Pro GAINS call scripts, and one who upgrades from Pro LOSES
+ * them.  portal/billing.php's comparison table says so in as many words, because
+ * a pricing table that quietly omits a row like this is worse than the row.
+ *
+ * Use THIS, never plan_has_pro_features(), for anything call-script shaped —
+ * including the stylesheet and script tags in includes/portal_layout.php, so a
+ * locked-out account is never sent the asset in the first place.
+ */
+function can_use_call_scripts(?string $plan): bool {
+    return (string)$plan === 'pro';
 }

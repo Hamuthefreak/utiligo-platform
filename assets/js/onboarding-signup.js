@@ -84,7 +84,6 @@
         sitesStr(P('entrepreneur').sites, 500),
         num(P('entrepreneur').seats, 5) + ' team seats',
         'Custom domains',
-        'Call scripts on every page',
         'White-label branding',
       ],
     },

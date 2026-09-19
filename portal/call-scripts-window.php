@@ -12,8 +12,10 @@
  * customer clicking through the app in their main tab, and the two copies of the
  * panel stay in step over BroadcastChannel (assets/js/call_scripts.js).
  *
- * Gated server-side like every other door into the feature: a free account
- * cannot reach the panel by typing this URL.
+ * Gated server-side like every other door into the feature. Pro only — see
+ * can_use_call_scripts() in includes/plans.php for why Entrepreneur is excluded
+ * from this one feature — so neither a free nor an Entrepreneur account can
+ * reach the panel by typing this URL.
  */
 
 require_once __DIR__ . '/../config.php';
@@ -26,7 +28,7 @@ require_login();
 $user = current_user();
 $plan = (string)($user['plan'] ?? 'free');
 
-if (!plan_has_pro_features($plan)) {
+if (!can_use_call_scripts($plan)) {
     header('Location: /portal/billing?upgrade=1&feature=call_scripts');
     exit;
 }
