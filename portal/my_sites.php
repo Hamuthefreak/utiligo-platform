@@ -44,14 +44,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   position: relative;
   border-radius: 20px;
   overflow: hidden;
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.08);
+  background: var(--fill-1);
+  border: 1px solid var(--hair);
   transition: border-color .2s, box-shadow .2s, transform .2s;
   display: flex;
   flex-direction: column;
 }
 .site-card:hover {
-  border-color: rgba(255,255,255,.18);
+  border-color: var(--hair-2);
   box-shadow: 0 8px 40px rgba(0,0,0,.45);
   transform: translateY(-3px);
 }
@@ -75,7 +75,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .swatch-bubble {
   width: 28px; height: 28px;
   border-radius: 50%;
-  border: 2px solid rgba(255,255,255,.25);
+  border: 2px solid var(--hair-2);
   flex-shrink: 0;
 }
 .swatch-label {
@@ -111,7 +111,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   padding: 2px 8px;
   border-radius: 999px;
   background: rgba(0,0,0,.45);
-  color: rgba(255,255,255,.8);
+  color: var(--ink);
   backdrop-filter: blur(6px);
   display: flex;
   align-items: center;
@@ -132,11 +132,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #f1f5f9;
+  color: var(--ink);
 }
 .card-meta {
   font-size: .7rem;
-  color: #64748b;
+  color: var(--ink-3);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -144,7 +144,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 }
 .card-link {
   font-size: .67rem;
-  color: #475569;
+  color: var(--ink-4);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -155,7 +155,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   transition: color .15s;
   text-decoration: none;
 }
-.card-link:hover { color: #94a3b8; }
+.card-link:hover { color: var(--ink-2); }
 
 /* ── Action strip ─────────────────────────────────────────────────────── */
 .card-actions {
@@ -163,7 +163,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   display: flex;
   gap: 6px;
   flex-wrap: wrap;
-  border-top: 1px solid rgba(255,255,255,.05);
+  border-top: 1px solid var(--hair);
   margin-top: auto;
 }
 .ca-btn {
@@ -181,15 +181,15 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   text-decoration: none;
 }
 .ca-btn-ghost {
-  background: rgba(255,255,255,.06);
-  color: #94a3b8;
+  background: var(--fill-2);
+  color: var(--ink-2);
 }
-.ca-btn-ghost:hover { background: rgba(255,255,255,.12); color: #f1f5f9; }
+.ca-btn-ghost:hover { background: var(--fill-3); color: var(--ink); }
 .ca-btn-white {
-  background: rgba(255,255,255,.1);
-  color: #e2e8f0;
+  background: var(--fill-3);
+  color: var(--ink);
 }
-.ca-btn-white:hover { background: rgba(255,255,255,.18); color: #fff; }
+.ca-btn-white:hover { background: var(--fill-4); color: var(--pure); }
 .ca-btn-danger {
   background: rgba(239,68,68,.08);
   color: #f87171;
@@ -204,7 +204,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 /* ── Empty state ──────────────────────────────────────────────────────── */
 .empty-state {
-  border: 1.5px dashed rgba(255,255,255,.1);
+  border: 1.5px dashed var(--hair);
   border-radius: 20px;
   padding: 60px 20px;
   text-align: center;
@@ -340,11 +340,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
       <!-- Status badge -->
       <?php if ($isLive): ?>
-        <span class="card-status-badge" style="background:rgba(16,185,129,.2);color:#6ee7b7;border:1px solid rgba(16,185,129,.3);">● Live</span>
+        <span class="card-status-badge" style="background:var(--accent-a22, rgba(127,227,168,.2));color:#6ee7b7;border:1px solid var(--accent-a28, rgba(127,227,168,.3));">● Live</span>
       <?php elseif ($isExpired): ?>
         <span class="card-status-badge" style="background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3);">⏱ Expired</span>
       <?php else: ?>
-        <span class="card-status-badge" style="background:rgba(255,255,255,.06);color:#64748b;border:1px solid rgba(255,255,255,.08);">Offline</span>
+        <span class="card-status-badge" style="background:var(--fill-2);color:var(--ink-3);border:1px solid var(--hair);">Offline</span>
       <?php endif; ?>
 
       <!-- Views badge -->

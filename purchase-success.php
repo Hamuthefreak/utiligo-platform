@@ -273,8 +273,10 @@ function _purchase_unverified_session(): ?array
 <meta name="robots" content="noindex, nofollow">
 <title>Setting up your account — Utiligo</title>
 <style>
-  /* Inline so this page needs no external stylesheet at all. */
-  html, body { height: 100%; margin: 0; background: #020817; color: #94a3b8; }
+  /* Inline so this page needs no external stylesheet at all. The canvas is
+     written literally rather than read from a token for the same reason —
+     theme.css is not loaded here — and it matches theme.css's --canvas. */
+  html, body { height: 100%; margin: 0; background: #0a0f1e; color: #94a3b8; }
   body {
     display: flex; align-items: center; justify-content: center; text-align: center;
     font-family: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;

@@ -174,7 +174,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
 .ebl:hover .ebl-type-badge { display:block; }
 
 /* floating toolbar */
-.ebl-bar { display:none; position:absolute; top:0; right:0; z-index:20; background:rgba(15,23,42,.92); border-radius:0 0 0 10px; backdrop-filter:blur(8px); border-left:1px solid rgba(255,255,255,.1); border-bottom:1px solid rgba(255,255,255,.1); }
+.ebl-bar { display:none; position:absolute; top:0; right:0; z-index:20; background:rgb(var(--panel-rgb) / 92%); border-radius:0 0 0 10px; backdrop-filter:blur(8px); border-left:1px solid rgba(255,255,255,.1); border-bottom:1px solid rgba(255,255,255,.1); }
 .ebl:hover .ebl-bar, .ebl.sel .ebl-bar { display:flex; }
 .ebl-bar button { border:none; background:transparent; color:#94a3b8; padding:6px 9px; cursor:pointer; font-size:.7rem; transition:color .1s,background .1s; }
 .ebl-bar button:hover { color:#fff; background:rgba(255,255,255,.1); }

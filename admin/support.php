@@ -266,11 +266,13 @@ try {
 require_once __DIR__ . '/../includes/admin_layout.php';
 ?>
 
+<?php /* Confirmations are neutral chrome; only a refusal gets the accent, so the eye
+         is drawn to the one that needs doing something about. */ ?>
 <?php if ($success): ?>
-  <div class="mb-6 bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 px-4 py-3 rounded-xl text-sm"><?= $success ?></div>
+  <div class="mb-6 bg-white/[.04] border border-white/10 text-slate-200 px-4 py-3 rounded-lg text-sm"><?= $success ?></div>
 <?php endif; ?>
 <?php if ($error): ?>
-  <div class="mb-6 bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm"><?= $error ?></div>
+  <div class="mb-6 bg-[#f0a83c]/10 border border-[#f0a83c]/30 text-[#f0a83c] px-4 py-3 rounded-lg text-sm"><?= $error ?></div>
 <?php endif; ?>
 
 <?php if ($viewId > 0 && $thread): ?>
@@ -288,14 +290,11 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       #<?= (int)$thread['id'] ?> &middot;
       <?= htmlspecialchars($custName) ?><?= $custEmail !== '' ? ' &lt;' . htmlspecialchars($custEmail) . '&gt;' : '' ?>
       &middot;
-      <span class="text-[10px] bg-white/5 text-slate-400 border border-white/10 px-2 py-0.5 rounded-full font-semibold uppercase"><?= htmlspecialchars((string)$custPlan) ?></span>
+      <span class="text-[10px] text-slate-300 border border-white/20 px-2 py-0.5 rounded-[5px] font-semibold uppercase tracking-[.1em]"><?= htmlspecialchars((string)$custPlan) ?></span>
     </p>
   </div>
   <div class="flex items-center gap-2">
-    <span class="text-xs px-3 py-1 rounded-full border
-      <?= $tstatus === 'open' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-            : ($tstatus === 'pending' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-            : 'bg-white/5 border-white/10 text-slate-400') ?>">
+    <span class="sp-pill <?= $tstatus === 'open' ? 'is-open' : ($tstatus === 'pending' ? 'is-pending' : '') ?>">
       <?= htmlspecialchars(support_status_label($tstatus)) ?>
     </span>
     <form method="POST" class="flex items-center gap-1.5">
@@ -304,21 +303,21 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       <input type="hidden" name="action"     value="set_status">
       <?php /* Value is the stored status; the label is what "awaiting support"
                means to the person reading the queue. */ ?>
-      <select name="status" class="bg-white/5 border border-white/10 text-xs rounded-lg px-2 py-1.5 text-slate-300">
+      <select name="status" class="bg-white/5 border border-white/10 text-xs rounded-md px-2 py-1.5 text-slate-300">
         <?php foreach (support_statuses() as $s): ?>
           <option value="<?= $s ?>" <?= $s === $tstatus ? 'selected' : '' ?>><?= htmlspecialchars(support_status_label($s)) ?></option>
         <?php endforeach; ?>
       </select>
-      <button class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-lg text-xs transition">Set</button>
+      <button class="bg-white/10 hover:bg-white/20 text-white px-3 py-1.5 rounded-md text-xs transition">Set</button>
     </form>
   </div>
 </div>
 
-<div class="space-y-4 mb-6">
+<div class="space-y-4 mb-6 sp-channel">
   <?php foreach ($messages as $m): ?>
-  <div class="glass rounded-2xl border <?= $m['author_type'] === 'admin' ? 'border-purple-500/20' : 'border-white/10' ?> p-5">
+  <div class="glass rounded-xl border <?= $m['author_type'] === 'admin' ? 'border-white/20' : 'border-white/10' ?> p-5">
     <div class="flex items-center justify-between mb-2">
-      <span class="text-xs font-bold <?= $m['author_type'] === 'admin' ? 'text-purple-300' : 'text-white' ?>">
+      <span class="text-xs font-bold <?= $m['author_type'] === 'admin' ? 'text-slate-200' : 'text-white' ?>">
         <?php /* The customer by name where we have it: in a queue that spans
                  accounts, "Customer" on its own says nothing about who is waiting. */ ?>
         <?= htmlspecialchars(support_author_label((string)$m['author_type'], $threadCustomerName)) ?>
@@ -356,21 +355,21 @@ require_once __DIR__ . '/../includes/admin_layout.php';
 
 <?php if (support_can_admin_reply($tstatus)): ?>
 <form method="POST" enctype="multipart/form-data" action="/admin/support.php?view=<?= (int)$thread['id'] ?>"
-      class="glass rounded-2xl border border-white/10 p-5">
+      class="glass rounded-xl border border-white/10 p-5 sp-channel">
   <input type="hidden" name="csrf_token" value="<?= htmlspecialchars($csrf) ?>">
   <input type="hidden" name="ticket_id"  value="<?= (int)$thread['id'] ?>">
   <input type="hidden" name="action"     value="reply">
   <label class="text-xs font-semibold text-slate-400 uppercase tracking-widest">Reply</label>
   <textarea name="body" rows="5" maxlength="<?= SUPPORT_MAX_BODY ?>"
             placeholder="Write a reply… links are clickable automatically."
-            class="w-full mt-2 bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-purple-500 transition"></textarea>
+            class="w-full mt-2 bg-white/5 border border-white/10 rounded-lg px-4 py-3 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-white/40 transition"></textarea>
   <div class="flex items-center justify-between gap-3 mt-3 flex-wrap">
     <div class="text-xs text-slate-500">
       <input type="file" name="files[]" multiple accept="image/*,application/pdf"
              class="text-xs text-slate-400 file:mr-3 file:bg-white/10 file:border-0 file:rounded-lg file:px-3 file:py-1.5 file:text-slate-300 file:text-xs file:cursor-pointer">
       <span class="ml-1">up to <?= SUPPORT_MAX_ATTACHMENTS ?> files, <?= support_format_bytes(support_max_attachment_bytes()) ?> each</span>
     </div>
-    <button class="bg-purple-500 hover:bg-purple-400 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition">
+    <button class="bg-white hover:bg-slate-200 text-black px-6 py-2.5 rounded-lg font-bold text-sm transition">
       <i class="fa-solid fa-paper-plane mr-1"></i> Send reply
     </button>
   </div>
@@ -380,7 +379,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
 <?php elseif ($viewId > 0): ?>
   <div class="glass rounded-2xl border border-white/10 p-12 text-center">
     <p class="text-slate-400">That ticket no longer exists.</p>
-    <a href="/admin/support.php" class="inline-block mt-4 text-sm text-purple-300 hover:text-purple-200">Back to support inbox</a>
+    <a href="/admin/support.php" class="inline-block mt-4 text-sm text-slate-300 hover:text-white">Back to support inbox</a>
   </div>
 
 <?php else: ?>
@@ -391,30 +390,38 @@ require_once __DIR__ . '/../includes/admin_layout.php';
   </div>
 </div>
 
-<form method="GET" class="flex gap-3 mb-6 flex-wrap">
-  <input name="q" value="<?= htmlspecialchars($filterQ) ?>" placeholder="Search subject, customer name or email…"
-         class="flex-1 min-w-[240px] bg-white/5 border border-white/10 text-white placeholder-slate-500 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-purple-500 transition">
-  <select name="status" class="bg-white/5 border border-white/10 text-slate-300 rounded-xl px-4 py-2.5 text-sm">
+<form method="GET" class="flex gap-3 mb-6 flex-wrap">        <input name="q" value="<?= htmlspecialchars($filterQ) ?>" placeholder="Search subject, customer name or email…"
+         class="flex-1 min-w-[240px] bg-white/5 border border-white/10 text-white placeholder-slate-500 rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:border-white/40 transition">
+  <select name="status" class="bg-white/5 border border-white/10 text-slate-300 rounded-lg px-4 py-2.5 text-sm">
     <option value="">All statuses</option>
     <?php foreach (support_statuses() as $s): ?>
       <option value="<?= $s ?>" <?= $filterSt === $s ? 'selected' : '' ?>><?= htmlspecialchars(support_status_label($s)) ?></option>
     <?php endforeach; ?>
   </select>
-  <button class="bg-purple-500 hover:bg-purple-400 text-white px-6 py-2.5 rounded-xl font-bold text-sm transition">Filter</button>
+  <button class="bg-white hover:bg-slate-200 text-black px-6 py-2.5 rounded-lg font-bold text-sm transition">Filter</button>
   <?php if ($filterQ !== '' || $filterSt !== ''): ?>
-    <a href="/admin/support.php" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-xl text-sm flex items-center transition">Clear</a>
+    <a href="/admin/support.php" class="bg-white/10 hover:bg-white/20 text-white px-4 py-2.5 rounded-lg text-sm flex items-center transition">Clear</a>
   <?php endif; ?>
 </form>
 
-<div class="glass rounded-2xl border border-white/5 overflow-hidden">
+<div class="glass rounded-xl border border-white/5 overflow-hidden">
   <div class="overflow-x-auto">
     <table class="w-full text-sm">
       <thead><tr class="border-b border-white/5 text-slate-500 text-xs uppercase">
         <th class="px-5 py-3 text-left">Subject</th>
         <th class="px-5 py-3 text-left">Customer</th>
         <th class="px-5 py-3 text-left">Status</th>
-        <th class="px-5 py-3 text-left">Messages</th>
-        <th class="px-5 py-3 text-left">Last activity</th>
+        <?php /* Dropped on a narrow screen: the queue is scanned by subject, customer
+                 and state, and this one column was costing the other three the room
+                 they need — the table scrolls, but a cut-off status is worse than a
+                 hidden count. */ ?>
+        <th class="px-5 py-3 text-left hidden sm:table-cell">Messages</th>
+        <?php /* Same rule as the count, applied to the two widest cells left. The
+                 table scrolls, but a queue whose timestamp is half-visible reads as a
+                 broken page rather than as a wide table, and the timestamp is the
+                 least load-bearing thing here: it answers "is this current?", which
+                 the unread badge already answers when it matters. */ ?>
+        <th class="px-5 py-3 text-left hidden md:table-cell">Last activity</th>
       </tr></thead>
       <tbody class="divide-y divide-white/5">
       <?php if (!$tickets): ?>
@@ -436,11 +443,11 @@ require_once __DIR__ . '/../includes/admin_layout.php';
           <?php /* The badge sits beside the subject rather than after it in the flow:
                    otherwise a wrapped subject drops "1 new" onto its own line. */ ?>
           <div class="flex items-center gap-2">
-            <a href="/admin/support.php?view=<?= (int)$t['id'] ?>" class="font-medium text-white hover:text-purple-300 transition">
+            <a href="/admin/support.php?view=<?= (int)$t['id'] ?>" class="font-medium text-white hover:text-slate-300 transition">
               <?= htmlspecialchars((string)$t['subject']) ?>
             </a>
             <?php if ($unread > 0): ?>
-              <span class="flex-none text-[10px] bg-purple-500/25 text-purple-200 border border-purple-500/40 px-2 py-0.5 rounded-full font-bold whitespace-nowrap"><?= $unread ?> new</span>
+              <span class="flex-none text-[10px] bg-[#f0a83c] text-[#1c1917] px-2 py-0.5 rounded-[5px] font-bold whitespace-nowrap"><?= $unread ?> new</span>
             <?php endif; ?>
           </div>
         </td>
@@ -449,21 +456,18 @@ require_once __DIR__ . '/../includes/admin_layout.php';
         <td class="px-5 py-3 text-slate-400 whitespace-nowrap">
           <?php if ($acct): ?>
             <?= htmlspecialchars((string)$acct['full_name']) ?>
-            <span class="block text-[11px] text-slate-600"><?= htmlspecialchars((string)$acct['email']) ?></span>
+            <span class="hidden md:block text-[11px] text-slate-600"><?= htmlspecialchars((string)$acct['email']) ?></span>
           <?php else: ?>
             <span class="text-slate-600">account #<?= (int)$t['user_id'] ?></span>
           <?php endif; ?>
         </td>
         <td class="px-5 py-3">
-          <span class="text-[10px] px-2 py-0.5 rounded-full border font-semibold whitespace-nowrap
-            <?= $tstatus === 'open' ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-300'
-                  : ($tstatus === 'pending' ? 'bg-amber-500/10 border-amber-500/30 text-amber-300'
-                  : 'bg-white/5 border-white/10 text-slate-400') ?>">
+          <span class="sp-pill <?= $tstatus === 'open' ? 'is-open' : ($tstatus === 'pending' ? 'is-pending' : '') ?> whitespace-nowrap">
             <?= htmlspecialchars(support_status_label($tstatus)) ?>
           </span>
         </td>
-        <td class="px-5 py-3 text-slate-500"><?= (int)$t['message_count'] ?></td>
-        <td class="px-5 py-3 text-slate-500 whitespace-nowrap"
+        <td class="px-5 py-3 text-slate-500 hidden sm:table-cell"><?= (int)$t['message_count'] ?></td>
+        <td class="px-5 py-3 text-slate-500 whitespace-nowrap hidden md:table-cell"
             title="<?= htmlspecialchars(date('D, M j, Y H:i', $tAt !== false ? $tAt : time())) ?>">
           <?= htmlspecialchars($tStamp) ?>
         </td>

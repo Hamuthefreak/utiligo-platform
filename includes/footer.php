@@ -5,16 +5,20 @@
 if (!function_exists('asset_url')) {
     require_once __DIR__ . '/functions.php';
 }
-$_logo_path = __DIR__ . '/../assets/images/logo.svg';
-$_logo_url  = '/assets/images/logo.svg';
-$_has_logo  = file_exists($_logo_path);
+// Inline wordmark: see includes/brand.php — a logo file cannot follow the theme.
+require_once __DIR__ . '/brand.php';
+// The theme system, for the compact switcher in the bottom bar below. Footer is
+// included by pages that never went through header.php (the error pages reach it
+// directly), so it loads what it needs rather than assuming.
+require_once __DIR__ . '/appearance.php';
+$_has_logo = brand_logo_exists();
 ?>
 <footer class="bg-slate-900/60 border-t border-white/10 mt-20">
   <div class="max-w-6xl mx-auto px-6 py-14 grid md:grid-cols-4 gap-10">
     <div>
       <a href="/" class="text-lg font-bold flex items-center gap-2 mb-3">
         <?php if ($_has_logo): ?>
-          <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-6 w-auto">
+          <?= brand_logo('h-6 w-auto') ?>
         <?php else: ?>
           <i class="fa-solid fa-bolt text-emerald-400"></i>
         <?php endif; ?><?php if (!$_has_logo): ?>Utiligo<?php endif; ?>
@@ -64,9 +68,12 @@ $_has_logo  = file_exists($_logo_path);
   <div class="border-t border-white/10">
     <div class="max-w-6xl mx-auto px-6 py-6 flex flex-col md:flex-row justify-between items-center gap-4">
       <p class="text-slate-500 text-xs">&copy; <?= date('Y') ?> Utiligo.ca — All rights reserved.</p>
+      <?php /* The three themes and the accent, for anyone who wants them without
+               an account and without opening a settings tab. */ ?>
+      <?= appearance_switcher_html() ?>
       <span class="inline-flex items-center gap-1.5 bg-white/5 border border-white/10 rounded-full px-3 py-1 text-xs text-slate-400">
         <?php if ($_has_logo): ?>
-          <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-3.5 w-auto">
+          <?= brand_logo('h-3.5 w-auto') ?>
         <?php else: ?>
           <i class="fa-solid fa-bolt text-emerald-400"></i>
         <?php endif; ?> Powered by Utiligo

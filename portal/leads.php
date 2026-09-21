@@ -106,20 +106,31 @@ require_once __DIR__ . '/../includes/portal_layout.php';
    LEAD INTELLIGENCE — design system (premium dark glass)
    ============================================================ */
 :root {
-  --la-acc:   #818cf8;                   /* signature indigo */
-  --la-acc-2: #a78bfa;                   /* violet           */
-  --la-glow:  rgba(129,140,248,.35);
-  --la-line:  rgba(255,255,255,.06);
-  --la-surf:  rgba(15,23,42,.55);
+  /* This page used to carry its own accent — a signature indigo with a violet
+     second, on the theory that Lead Intelligence deserved its own look. It did
+     not: it meant the one page a customer spends the most time on was the one
+     page not speaking the product's language, and "indigo + violet + glow" is
+     the single loudest generated-UI signature there is. These four tokens now
+     point at the theme's accent, which is the whole fix — every rule below is
+     written in terms of them, so the page follows the palette instead of owning
+     a copy of it. The literals remain as fallbacks for the case where theme.css
+     has not loaded yet (the page is still readable, just not tinted). */
+  --la-acc:   var(--accent, #7fe3a8);
+  --la-acc-2: var(--accent, #7fe3a8);
+  --la-glow:  var(--accent-glow, var(--accent-a28, rgba(127,227,168,.28)));
+  --la-line:  var(--hair, rgba(255,255,255,.10));
+  --la-surf:  rgba(15,21,38,.55);
 }
 
 /* ---- Ambient command-center backdrop ---- */
 #leadsAmbience {
   position: fixed; inset: 0; z-index: -1; pointer-events: none;
   background:
-    radial-gradient(760px 500px at 8% -8%,  rgba(99,102,241,.14), transparent 62%),
-    radial-gradient(860px 560px at 92% 2%,  rgba(167,139,250,.10), transparent 60%),
-    radial-gradient(1100px 700px at 50% 114%, rgba(99,102,241,.08), transparent 62%);
+    /* Two very faint pools of the accent, doing what the aurora in theme.css
+       does on every other page. The page's own backdrop used to be indigo at
+       14% — bright enough to be a thing you look at rather than through. */
+    radial-gradient(760px 500px at 8% -8%,  var(--accent-a05, rgba(127,227,168,.06)), transparent 62%),
+    radial-gradient(1100px 700px at 50% 114%, var(--accent-a05, rgba(127,227,168,.04)), transparent 62%);
 }
 #leadsAmbience::before {
   content: ''; position: absolute; inset: 0;
@@ -135,13 +146,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 /* ---- Gradient-border card ---- */
 .gb {
   position: relative;
-  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,.02) 42%, rgba(15,23,42,.42));
+  background: linear-gradient(180deg, var(--fill-1), var(--fill-1) 42%, transparent);
   border: 1px solid var(--la-line);
   border-radius: 18px;
 }
 .gb::before {
   content: ''; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
-  background: linear-gradient(165deg, rgba(255,255,255,.18), rgba(255,255,255,.02) 40%, rgba(129,140,248,.16) 84%, rgba(255,255,255,.06));
+  background: linear-gradient(165deg, var(--fill-3), var(--fill-1) 46%, var(--fill-1) 84%, var(--fill-3));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
           mask-composite: exclude;
@@ -150,39 +161,42 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .gb-hover { transition: transform .2s cubic-bezier(.4,0,.2,1), border-color .2s, box-shadow .25s; }
 .gb-hover:hover {
   transform: translateY(-2px);
-  border-color: rgba(255,255,255,.13);
-  box-shadow: 0 14px 44px rgba(2,6,23,.55), 0 0 0 1px rgba(129,140,248,.07);
+  border-color: var(--hair-2);
+  box-shadow: 0 18px 44px -26px rgba(0,0,0,.9);
 }
 
 /* ---- Eyebrow / gradient headline / hero chips ---- */
 .eyebrow {
   display: inline-flex; align-items: center; gap: .5rem;
   font-size: 10px; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
-  color: #7c8db5; padding: .34rem .75rem; border-radius: 999px;
-  background: rgba(255,255,255,.04); border: 1px solid var(--la-line);
+  color: var(--ink-3, #8b95a8); padding: .34rem .75rem; border-radius: 7px;
+  background: var(--fill-1); border: 1px solid var(--la-line);
 }
 .eyebrow .dot {
   width: 6px; height: 6px; border-radius: 50%;
-  background: var(--la-acc); box-shadow: 0 0 10px var(--la-glow);
-  animation: la-pulse 2.4s ease-in-out infinite;
+  /* No glow and no pulse: a status dot that breathes forever is decoration
+     pretending to be information, and this page already has a live spinner for
+     the one thing that is actually in progress. */
+  background: var(--la-acc);
 }
-@keyframes la-pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
 .grad-text {
-  background: linear-gradient(92deg, #ffffff 8%, #c7d2fe 52%, #a5b4fc 96%);
-  -webkit-background-clip: text; background-clip: text; color: transparent;
+  /* Was a three-stop white-to-periwinkle gradient clipped to the glyphs — the
+     most literal "AI generated" tell on the page. A headline does not need a
+     gradient to be a headline; the type scale already does that work. */
+  color: var(--ink, #e9edf5);
 }
 .hero-chip {
   display: inline-flex; align-items: center; gap: .45rem;
   padding: .4rem .75rem; border-radius: 12px;
-  background: rgba(255,255,255,.035); border: 1px solid var(--la-line);
-  font-size: 11px; color: #8ea0c0; font-weight: 600; white-space: nowrap;
+  background: var(--fill-1); border: 1px solid var(--la-line);
+  font-size: 11px; color: var(--ink-3, rgba(233,237,245,.46)); font-weight: 600; white-space: nowrap;
 }
 .hero-chip i { color: var(--la-acc); font-size: 10px; }
-.hero-chip b { color: #e2e8f0; font-weight: 800; }
+.hero-chip b { color: var(--ink); font-weight: 800; }
 
 /* ---- Stat tiles (free plan) ---- */
 .stat-tile { position: relative; overflow: hidden; }
-.stat-tile .stat-num { font-size: 1.6rem; font-weight: 900; color: #fff; letter-spacing: -.02em; line-height: 1; }
+.stat-tile .stat-num { font-size: 1.6rem; font-weight: 900; color: var(--pure); letter-spacing: -.02em; line-height: 1; }
 .stat-tile .stat-rule {
   position: absolute; left: 12%; right: 12%; bottom: 0; height: 2px; border-radius: 2px;
   background: linear-gradient(90deg, transparent, var(--la-acc), transparent);
@@ -193,41 +207,42 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 /* ---- Meter bars (quota / lead / site) ---- */
 .q-track {
-  height: 6px; background: rgba(255,255,255,.06);
+  height: 6px; background: var(--fill-2);
   border-radius: 999px; overflow: hidden; position: relative;
 }
 .q-fill {
   height: 100%; border-radius: 999px; position: relative; overflow: hidden;
   transition: width .6s cubic-bezier(.4,0,.2,1);
 }
-.q-fill-acc { background: linear-gradient(90deg, #e2e8f0, var(--la-acc) 58%, var(--la-acc-2)) !important; box-shadow: 0 0 12px rgba(129,140,248,.35); }
+.q-fill-acc { background: var(--la-acc) !important; }
 .q-fill::after {
   content: ''; position: absolute; inset: 0;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
-  transform: translateX(-120%);
-  animation: la-shimmer 3s ease-in-out infinite;
+  /* The travelling highlight is gone. A meter that shimmers never stops asking
+     for attention, and the number beside it is what the customer actually reads. */
+  display: none;
 }
-@keyframes la-shimmer { 0%{transform:translateX(-120%)} 55%{transform:translateX(120%)} 100%{transform:translateX(120%)} }
 
 /* ---- Primary / ghost buttons ---- */
 .btn-primary {
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
-  background: linear-gradient(92deg, #ffffff, #e0e7ff 55%, #c7d2fe);
-  color: #0b1020; font-weight: 800;
-  border-radius: 12px; border: none; white-space: nowrap;
-  box-shadow: 0 6px 22px rgba(129,140,248,.28), inset 0 1px 0 rgba(255,255,255,.8);
-  transition: transform .15s, box-shadow .2s;
+  /* The accent, matching every other primary action in the product. A white
+     gradient fill on a dark page is a glare, and there were two of them here. */
+  background: var(--accent, #7fe3a8);
+  color: var(--accent-ink, #04150c); font-weight: 800;
+  border-radius: 10px; border: none; white-space: nowrap;
+  box-shadow: 0 10px 28px -16px var(--accent-glow, var(--accent-a28, rgba(127,227,168,.28)));
+  transition: transform .15s, box-shadow .2s, background .15s;
 }
-.btn-primary:hover { transform: translateY(-1px); box-shadow: 0 10px 30px rgba(129,140,248,.42), inset 0 1px 0 rgba(255,255,255,.9); }
-.btn-primary:active { transform: translateY(0) scale(.98); }
+.btn-primary:hover { transform: translateY(-1px); background: var(--accent-hi, #a2f3c4); box-shadow: 0 14px 34px -16px var(--accent-glow, var(--accent-a28, rgba(127,227,168,.28))); }
+.btn-primary:active { transform: translateY(0); }
 .btn-primary:disabled { opacity: .5; cursor: not-allowed; box-shadow: none; transform: none; }
 .btn-ghost {
   display: inline-flex; align-items: center; justify-content: center; gap: .5rem;
-  background: rgba(255,255,255,.05); color: #cbd5e1; font-weight: 700;
-  border: 1px solid rgba(255,255,255,.1); border-radius: 12px; white-space: nowrap;
+  background: var(--fill-2); color: var(--ink-2); font-weight: 700;
+  border: 1px solid var(--hair); border-radius: 12px; white-space: nowrap;
   transition: background .15s, border-color .15s, color .15s, transform .15s;
 }
-.btn-ghost:hover { background: rgba(255,255,255,.09); color: #fff; border-color: rgba(255,255,255,.18); }
+.btn-ghost:hover { background: var(--fill-2); color: var(--pure); border-color: var(--hair-2); }
 .btn-ghost:active { transform: scale(.98); }
 
 /* ---- Monogram avatar ---- */
@@ -236,29 +251,34 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   display: flex; align-items: center; justify-content: center;
   font-weight: 800; font-size: .85rem; letter-spacing: -.01em;
   color: #e8ecf7;
-  background: linear-gradient(150deg, rgba(129,140,248,.28), rgba(15,23,42,.4) 70%);
-  border: 1px solid rgba(129,140,248,.25);
+  /* One neutral plate for every source. Google blue, OSM green, Yelp red,
+     TomTom orange and Wikidata periwinkle in a row is a colour chart, and the
+     source's own two-letter label already says which one it is. */
+  background: var(--fill-2);
+  border: 1px solid var(--la-line);
   box-shadow: inset 0 1px 0 rgba(255,255,255,.12);
 }
 .mono-avatar.sm { width: 34px; height: 34px; border-radius: 10px; font-size: .72rem; }
-.mono-avatar.ga { background: linear-gradient(150deg, rgba(66,133,244,.32), rgba(15,23,42,.4) 70%); border-color: rgba(66,133,244,.3); }
-.mono-avatar.os { background: linear-gradient(150deg, rgba(124,186,52,.30), rgba(15,23,42,.4) 70%); border-color: rgba(124,186,52,.32); }
-.mono-avatar.yelp { background: linear-gradient(150deg, rgba(211,35,35,.32), rgba(15,23,42,.4) 70%); border-color: rgba(211,35,35,.32); }
-.mono-avatar.tomtom { background: linear-gradient(150deg, rgba(230,51,18,.32), rgba(15,23,42,.4) 70%); border-color: rgba(230,51,18,.32); }
-.mono-avatar.wikidata { background: linear-gradient(150deg, rgba(140,160,220,.25), rgba(15,23,42,.4) 70%); border-color: rgba(140,160,220,.3); }
+.mono-avatar.ga,
+.mono-avatar.os,
+.mono-avatar.yelp,
+.mono-avatar.tomtom,
+.mono-avatar.wikidata { background: var(--fill-2); border-color: var(--la-line); }
 
 /* ---- Source pill ---- */
 .src-pill {
   display: inline-flex; align-items: center; gap: .35rem;
   font-size: 10px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
   padding: .22rem .55rem; border-radius: 999px;
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid var(--hair);
 }
-.src-pill.ga { color: #93b4f5; background: rgba(66,133,244,.12); border-color: rgba(66,133,244,.22); }
-.src-pill.os { color: #a9d97a; background: rgba(124,186,52,.12); border-color: rgba(124,186,52,.22); }
-.src-pill.yelp { color: #ff8a7a; background: rgba(211,35,35,.12); border-color: rgba(211,35,35,.25); }
-.src-pill.tomtom { color: #ff9474; background: rgba(230,51,18,.13); border-color: rgba(230,51,18,.28); }
-.src-pill.wikidata { color: #dbe2f0; background: rgba(220,230,255,.08); border-color: rgba(220,230,255,.16); }
+/* One ink, one hairline, told apart by the label inside it. */
+.src-pill.ga, .src-pill.os, .src-pill.yelp, .src-pill.tomtom, .src-pill.wikidata {
+  color: var(--ink-2, rgba(233,237,245,.68));
+  background: var(--fill-1);
+  border-color: var(--la-line);
+  border-radius: 6px;
+}
 
 /* ---- Score meter chip ---- */
 .score-chip {
@@ -266,17 +286,17 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   font-size: 10px; font-weight: 800; padding: .22rem .6rem; border-radius: 999px;
   border: 1px solid transparent;
 }
-.score-chip .score-bar { width: 34px; height: 3px; border-radius: 999px; background: rgba(255,255,255,.14); overflow: hidden; }
+.score-chip .score-bar { width: 34px; height: 3px; border-radius: 999px; background: var(--fill-3); overflow: hidden; }
 .score-chip .score-bar i { display: block; height: 100%; border-radius: inherit; background: currentColor; }
 
 /* ---- Segmented view toggle ---- */
-.view-toggle { background: rgba(255,255,255,.04); border: 1px solid var(--la-line); border-radius: 11px; padding: 3px; gap: 3px; }
-.view-toggle button { border-radius: 8px; font-size: .72rem; font-weight: 700; color: #94a3b8; transition: all .18s; }
-.view-toggle button:hover { color: #fff; }
+.view-toggle { background: var(--fill-1); border: 1px solid var(--la-line); border-radius: 11px; padding: 3px; gap: 3px; }
+.view-toggle button { border-radius: 8px; font-size: .72rem; font-weight: 700; color: var(--ink-2); transition: all .18s; }
+.view-toggle button:hover { color: var(--pure); }
 .view-toggle button.active {
-  background: linear-gradient(180deg, rgba(129,140,248,.22), rgba(129,140,248,.10));
-  color: #fff;
-  box-shadow: inset 0 1px 0 rgba(255,255,255,.12), 0 0 14px rgba(129,140,248,.22);
+  background: linear-gradient(180deg, var(--accent-a22, rgba(127,227,168,.22)), var(--accent-a08, rgba(127,227,168,.10)));
+  color: var(--pure);
+  box-shadow: none;
 }
 
 /* ---- Limit notice (inserted by JS below the search button) ---- */
@@ -295,26 +315,26 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 /* ---- Export format tiles ---- */
 .export-format-btn {
   position: relative; border-radius: 12px; padding: .7rem .5rem;
-  background: rgba(255,255,255,.035); border: 1px solid var(--la-line);
-  color: #94a3b8; transition: all .18s;
+  background: var(--fill-1); border: 1px solid var(--la-line);
+  color: var(--ink-2); transition: all .18s;
 }
-.export-format-btn:hover { background: rgba(255,255,255,.07); border-color: rgba(255,255,255,.18); color: #e2e8f0; transform: translateY(-1px); }
-.export-format-btn i { font-size: 1.1rem; color: #7c8db5; transition: color .18s; }
-.export-format-btn:hover i { color: #a5b4fc; }
+.export-format-btn:hover { background: var(--fill-2); border-color: var(--hair-2); color: var(--ink); transform: translateY(-1px); }
+.export-format-btn i { font-size: 1.1rem; color: var(--ink-3, rgba(233,237,245,.46)); transition: color .18s; }
+.export-format-btn:hover i { color: var(--accent, #7fe3a8); }
 .export-format-btn.border-white\/40 {
-  border-color: rgba(129,140,248,.55) !important;
-  background: rgba(129,140,248,.12);
-  color: #fff;
-  box-shadow: 0 0 0 1px rgba(129,140,248,.15), 0 10px 26px rgba(129,140,248,.18);
+  border-color: var(--accent-line, var(--accent-a34, rgba(127,227,168,.34))) !important;
+  background: var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12)));
+  color: var(--ink, #e9edf5);
+  box-shadow: none;
 }
-.export-format-btn.border-white\/40 i { color: #a5b4fc; }
+.export-format-btn.border-white\/40 i { color: var(--accent, #7fe3a8); }
 
 /* ---- Rail (desktop xl+) ---- */
 #leadsRail {
   position:fixed; top:0; right:0; width:256px; height:100vh;
   display:none; flex-direction:column;
-  background:rgba(15,23,42,.95);
-  border-left:1px solid rgba(255,255,255,.05);
+  background:rgb(var(--panel-rgb) / 95%);
+  border-left:1px solid var(--hair);
   backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
   z-index:20; overflow:hidden;
 }
@@ -325,49 +345,49 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   display:flex; flex-direction:column; gap:2px;
   width:100%; padding:10px 14px; border-radius:12px;
   border:1px solid transparent; text-align:left;
-  font-size:.875rem; color:#94a3b8;
+  font-size:.875rem; color:var(--ink-2);
   transition:background .15s,color .15s,border-color .15s;
   cursor:pointer; background:none;
 }
-.hist-item:hover  { background:rgba(255,255,255,.06); color:#fff; border-color:rgba(255,255,255,.06); }
-.hist-item:active { background:rgba(255,255,255,.1); }
-.hist-item .hi-title { font-size:.8rem; font-weight:600; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.hist-item .hi-meta  { font-size:.7rem; color:#475569; }
+.hist-item:hover  { background:var(--fill-2); color:var(--pure); border-color:var(--hair); }
+.hist-item:active { background:var(--fill-3); }
+.hist-item .hi-title { font-size:.8rem; font-weight:600; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.hist-item .hi-meta  { font-size:.7rem; color:var(--ink-4); }
 .leads-input {
-  width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07);
-  color:#f1f5f9; font-size:.875rem; padding:.7rem .8rem .7rem 2.3rem;
+  width:100%; background:var(--fill-1); border:1px solid var(--hair);
+  color:var(--ink); font-size:.875rem; padding:.7rem .8rem .7rem 2.3rem;
   border-radius:12px; outline:none;
   transition:border-color .15s,background .15s,box-shadow .15s;
   -webkit-appearance:none;
 }
-.leads-input::placeholder { color:#475569; }
+.leads-input::placeholder { color:var(--ink-4); }
 .leads-input:focus {
-  border-color:rgba(129,140,248,.5);
-  background:rgba(255,255,255,.06);
-  box-shadow:0 0 0 3px rgba(129,140,248,.12);
+  border-color:var(--accent-a45, rgba(127,227,168,.5));
+  background:var(--fill-2);
+  box-shadow:0 0 0 3px var(--accent-a12, rgba(127,227,168,.12));
 }
 .leads-icon {
   position:absolute; left:.75rem; top:50%; transform:translateY(-50%);
-  color:#475569; font-size:.7rem; pointer-events:none;
+  color:var(--ink-4); font-size:.7rem; pointer-events:none;
 }
-.q-track { height:6px; background:rgba(255,255,255,.06); border-radius:999px; overflow:hidden; }
+.q-track { height:6px; background:var(--fill-2); border-radius:999px; overflow:hidden; }
 .q-fill  { height:100%; border-radius:999px; transition:width .6s cubic-bezier(.4,0,.2,1); }
 
 /* ---- Slider ---- */
-.leads-slider { -webkit-appearance:none; appearance:none; width:100%; height:6px; background:linear-gradient(90deg, var(--la-acc) var(--fill,50%), rgba(255,255,255,.1) var(--fill,50%)); border-radius:999px; outline:none; cursor:pointer; }
-.leads-slider::-webkit-slider-thumb { -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:#fff; cursor:pointer; box-shadow:0 0 0 4px rgba(129,140,248,.18),0 2px 8px rgba(0,0,0,.4); transition:transform .1s, box-shadow .1s; }
-.leads-slider::-webkit-slider-thumb:hover { transform:scale(1.15); box-shadow:0 0 0 5px rgba(129,140,248,.26),0 2px 10px rgba(0,0,0,.45); }
-.leads-slider::-moz-range-thumb { width:20px; height:20px; border-radius:50%; background:#fff; border:none; cursor:pointer; box-shadow:0 0 0 4px rgba(129,140,248,.18),0 2px 8px rgba(0,0,0,.4); }
+.leads-slider { -webkit-appearance:none; appearance:none; width:100%; height:6px; background:linear-gradient(90deg, var(--la-acc) var(--fill,50%), var(--fill-3) var(--fill,50%)); border-radius:999px; outline:none; cursor:pointer; }
+.leads-slider::-webkit-slider-thumb { -webkit-appearance:none; width:18px; height:18px; border-radius:50%; background:var(--accent, #7fe3a8); border:3px solid var(--canvas, #0a0f1e); cursor:pointer; box-shadow:0 0 0 1px var(--accent-line, var(--accent-a34, rgba(127,227,168,.34))), 0 2px 8px rgba(0,0,0,.4); transition:transform .1s, box-shadow .1s; }
+.leads-slider::-webkit-slider-thumb:hover { transform:scale(1.15); box-shadow:0 0 0 5px var(--accent-a28, rgba(127,227,168,.26)),0 2px 10px rgba(0,0,0,.45); }
+.leads-slider::-moz-range-thumb { width:18px; height:18px; border-radius:50%; background:var(--accent, #7fe3a8); border:3px solid var(--canvas, #0a0f1e); cursor:pointer; box-shadow:0 0 0 1px var(--accent-line, var(--accent-a34, rgba(127,227,168,.34))); }
 
 /* ---- Toggle ---- */
-.tog-track { width:36px; height:20px; background:rgba(255,255,255,.08); border-radius:10px; position:relative; transition:background .2s; flex-shrink:0; }
-.tog-track.on { background:rgba(129,140,248,.42); box-shadow:0 0 8px rgba(129,140,248,.25); }
+.tog-track { width:36px; height:20px; background:var(--fill-2); border-radius:10px; position:relative; transition:background .2s; flex-shrink:0; }
+.tog-track.on { background:var(--accent-a45, rgba(127,227,168,.42)); box-shadow:0 0 8px var(--accent-a28, rgba(127,227,168,.25)); }
 .tog-thumb { position:absolute; top:3px; left:3px; width:14px; height:14px; border-radius:50%; background:#475569; transition:transform .18s,background .18s; }
-.tog-track.on .tog-thumb { transform:translateX(16px); background:#fff; }
+.tog-track.on .tog-thumb { transform:translateX(16px); background:var(--pure); }
 
 /* ---- Skeleton ---- */
 @keyframes leads-shimmer { 0%{background-position:-500px 0} 100%{background-position:500px 0} }
-.skel { background:linear-gradient(90deg,rgba(255,255,255,.03) 25%,rgba(255,255,255,.07) 50%,rgba(255,255,255,.03) 75%); background-size:500px 100%; animation:leads-shimmer 1.5s infinite linear; border-radius:6px; }
+.skel { background:linear-gradient(90deg,var(--fill-1) 25%,var(--fill-2) 50%,var(--fill-1) 75%); background-size:500px 100%; animation:leads-shimmer 1.5s infinite linear; border-radius:6px; }
 @keyframes lead-in { from{opacity:0;transform:translateY(6px)} to{opacity:1;transform:translateY(0)} }
 .lead-in { animation:lead-in .22s ease both; }
 
@@ -375,8 +395,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 #historyDrawer {
   position:fixed; bottom:0; left:0; right:0; z-index:60;
   transform:translateY(100%); transition:transform .28s cubic-bezier(.4,0,.2,1);
-  max-height:72vh; background:rgba(15,23,42,.98);
-  border-top:1px solid rgba(255,255,255,.08); border-radius:20px 20px 0 0;
+  max-height:72vh; background:rgb(var(--panel-rgb) / 98%);
+  border-top:1px solid var(--hair); border-radius:20px 20px 0 0;
   backdrop-filter:blur(24px); display:flex; flex-direction:column;
 }
 #historyDrawer.open { transform:translateY(0); }
@@ -415,44 +435,44 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .source-chip-box {
   display:inline-flex; align-items:center; gap:.4rem;
   padding:.4rem .7rem;
-  border-radius:9999px;
-  background:rgba(255,255,255,.04);
-  border:1px solid rgba(255,255,255,.08);
-  color:#94a3b8;
+  border-radius:7px;
+  background:var(--fill-1);
+  border:1px solid var(--hair);
+  color:var(--ink-2);
   font-size:.75rem; font-weight:600;
   transition: background .15s, border-color .15s, color .15s;
 }
-.source-chip:hover .source-chip-box { background:rgba(255,255,255,.06); color:#e2e8f0; }
+.source-chip:hover .source-chip-box { background:var(--fill-2); color:var(--ink); }
 .source-chip-cb:checked + .source-chip-box {
-  background:rgba(129,140,248,.14);
-  border-color:rgba(129,140,248,.45);
-  color:#e2e8f0;
-  box-shadow:0 0 0 1px rgba(129,140,248,.08), 0 4px 14px rgba(129,140,248,.14);
+  background:var(--accent-a12, rgba(127,227,168,.14));
+  border-color:var(--accent-a45, rgba(127,227,168,.45));
+  color:var(--ink);
+  box-shadow:none;
 }
 .source-chip-cb:checked + .source-chip-box .source-chip-check { color:var(--la-acc); }
-.source-chip-check { color:#475569; font-size:9px; margin-left:.05rem; }
+.source-chip-check { color:var(--ink-4); font-size:9px; margin-left:.05rem; }
 .source-chip[data-locked="1"] .source-chip-box { cursor:not-allowed; }
 
 /* View toggle (card/table) */
-.view-toggle { display:inline-flex; background:rgba(255,255,255,.04); border:1px solid var(--la-line); border-radius:11px; padding:3px; gap:3px; }
-.view-toggle button { padding:.4rem .7rem; border-radius:8px; font-size:.72rem; font-weight:700; color:#94a3b8; transition:all .18s; cursor:pointer; background:none; border:none; }
-.view-toggle button:hover { color:#fff; }
-.view-toggle button.active { background:linear-gradient(180deg, rgba(129,140,248,.22), rgba(129,140,248,.10)); color:#fff; box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 0 14px rgba(129,140,248,.22); }
+.view-toggle { display:inline-flex; background:var(--fill-1); border:1px solid var(--la-line); border-radius:11px; padding:3px; gap:3px; }
+.view-toggle button { padding:.4rem .7rem; border-radius:8px; font-size:.72rem; font-weight:700; color:var(--ink-2); transition:all .18s; cursor:pointer; background:none; border:none; }
+.view-toggle button:hover { color:var(--pure); }
+.view-toggle button.active { background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12))); color:var(--accent, #7fe3a8); box-shadow:none; }
 
 /* Bulk-select checkbox column */
-.bulk-cb { width:16px; height:16px; cursor:pointer; accent-color:#818cf8; }
+.bulk-cb { width:16px; height:16px; cursor:pointer; accent-color:var(--accent, #7fe3a8); }
 .leads-table { width:100%; border-collapse:collapse; }
-.leads-table th { text-align:left; padding:.5rem .65rem; color:#94a3b8; font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid rgba(255,255,255,.06); }
-.leads-table td { padding:.6rem .65rem; border-bottom:1px solid rgba(255,255,255,.04); font-size:.8rem; }
-.leads-table tr:hover td { background:rgba(255,255,255,.025); }
-.leads-table tr.is-selected td { background:rgba(129,140,248,.07); }
+.leads-table th { text-align:left; padding:.5rem .65rem; color:var(--ink-2); font-size:.7rem; font-weight:600; text-transform:uppercase; letter-spacing:.06em; border-bottom:1px solid var(--hair); }
+.leads-table td { padding:.6rem .65rem; border-bottom:1px solid var(--hair); font-size:.8rem; }
+.leads-table tr:hover td { background:var(--fill-1); }
+.leads-table tr.is-selected td { background:var(--accent-soft, var(--accent-a08, rgba(127,227,168,.08))); }
 
 /* Bulk action bar */
 #bulkActionBar {
   position:fixed; bottom:24px; left:50%; transform:translateX(-50%) translateY(120%);
   transition:transform .25s cubic-bezier(.4,0,.2,1);
-  background:rgba(15,23,42,.98); border:1px solid rgba(129,140,248,.22);
-  padding:.7rem 1rem; border-radius:16px; box-shadow:0 8px 32px rgba(2,6,23,.6), 0 0 0 1px rgba(129,140,248,.06), 0 0 30px rgba(129,140,248,.08);
+  background:rgb(var(--panel-rgb) / 98%); border:1px solid var(--accent-a22, rgba(127,227,168,.22));
+  padding:.7rem 1rem; border-radius:16px; box-shadow:0 8px 32px rgba(2,6,23,.6), 0 0 0 1px var(--accent-a05, rgba(127,227,168,.06)), 0 0 30px var(--accent-a08, rgba(127,227,168,.08));
   z-index:90; display:flex; align-items:center; gap:.7rem;
   backdrop-filter:blur(24px); -webkit-backdrop-filter:blur(24px);
 }
@@ -461,8 +481,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 /* Slide-over detail panel */
 #leadSlideOver {
   position:fixed; top:0; right:0; bottom:0; width:min(420px, 88vw);
-  background:rgba(15,23,42,.98);
-  border-left:1px solid rgba(255,255,255,.1);
+  background:rgb(var(--panel-rgb) / 98%);
+  border-left:1px solid var(--hair);
   transform:translateX(100%);
   transition:transform .28s cubic-bezier(.4,0,.2,1);
   z-index:80; overflow-y:auto;
@@ -479,8 +499,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 /* ---- Phase 3 polish: saved-searches drawer + keyboard hint ---- */
 #savedSearchesDrawer {
   position:fixed; top:0; right:0; bottom:0; width:min(380px, 86vw);
-  background:rgba(15,23,42,.98);
-  border-left:1px solid rgba(255,255,255,.1);
+  background:rgb(var(--panel-rgb) / 98%);
+  border-left:1px solid var(--hair);
   transform:translateX(100%);
   transition:transform .28s cubic-bezier(.4,0,.2,1);
   z-index:82; overflow-y:auto;
@@ -497,33 +517,33 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   background:none; width:100%;
   transition:background .15s,border-color .15s;
 }
-.saved-search-item:hover { background:rgba(129,140,248,.07); border-color:rgba(129,140,248,.18); }
+.saved-search-item:hover { background:var(--accent-a08, rgba(127,227,168,.07)); border-color:var(--accent-a22, rgba(127,227,168,.18)); }
 /* How often the automation runs a saved search. Styled here rather than by utility
    classes because a native <select> keeps the OS menu, which is the behaviour you
    want inside a drawer that closes on outside clicks. */
 .ss-cadence {
   appearance:none; -webkit-appearance:none;
-  background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
-  border-radius:6px; color:#cbd5e1; font-size:11px; font-weight:600;
+  background:var(--fill-2); border:1px solid var(--hair);
+  border-radius:6px; color:var(--ink-2); font-size:11px; font-weight:600;
   padding:.15rem 1.35rem .15rem .45rem; cursor:pointer;
   background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%2394a3b8' stroke-width='1.5'><path d='M3 4.5 6 7.5 9 4.5'/></svg>");
   background-repeat:no-repeat; background-position:right .35rem center; background-size:10px;
 }
-.ss-cadence:hover { background-color:rgba(255,255,255,.1); color:#e2e8f0; }
-.ss-cadence:focus-visible { outline:2px solid rgba(129,140,248,.6); outline-offset:1px; }
+.ss-cadence:hover { background-color:var(--fill-3); color:var(--ink); }
+.ss-cadence:focus-visible { outline:2px solid var(--accent-a45, rgba(127,227,168,.6)); outline-offset:1px; }
 .ss-status { line-height:1.4; }
-.saved-search-item .ss-title { font-size:.82rem; font-weight:600; color:#e2e8f0; }
-.saved-search-item .ss-meta  { font-size:.7rem; color:#94a3b8; }
-.saved-search-item .ss-del  { font-size:.7rem; color:#475569; align-self:flex-start; margin-top:4px; }
+.saved-search-item .ss-title { font-size:.82rem; font-weight:600; color:var(--ink); }
+.saved-search-item .ss-meta  { font-size:.7rem; color:var(--ink-2); }
+.saved-search-item .ss-del  { font-size:.7rem; color:var(--ink-4); align-self:flex-start; margin-top:4px; }
 .saved-search-item .ss-del:hover { color:#ef4444; }
 .kbd { display:inline-block; min-width:1.2em; padding:1px 5px; border-radius:4px;
-       background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1);
+       background:var(--fill-2); border:1px solid var(--hair);
        font-family:ui-monospace,Menlo,Consolas,monospace; font-size:10px;
-       color:#94a3b8; line-height:1.2; }
+       color:var(--ink-2); line-height:1.2; }
 .card-active {
-  outline:2px solid rgba(129,140,248,.55) !important;
+  outline:2px solid var(--accent-a45, rgba(127,227,168,.55)) !important;
   outline-offset:1px !important;
-  box-shadow:0 0 0 4px rgba(129,140,248,.1) !important;
+  box-shadow:0 0 0 4px var(--accent-a08, rgba(127,227,168,.1)) !important;
 }
 </style>
 
@@ -591,7 +611,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <!-- Phase 3 polish: saved-searches drawer (desktop + mobile) -->
 <div id="savedSearchesDrawerOverlay" onclick="closeSavedSearchesDrawer()"></div>
 <aside id="savedSearchesDrawer" aria-hidden="true" aria-labelledby="saveSecHeader">
-  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-slate-950/80 z-10" style="background:rgba(15,23,42,.92)">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-slate-950/80 z-10" style="background:rgb(var(--panel-rgb) / 92%)">
     <div>
       <p class="text-[10px] text-indigo-300 uppercase tracking-widest font-bold">Favorites</p>
       <h3 id="saveSecHeader" class="text-base font-bold text-white leading-tight mt-0.5">Saved Searches</h3>
@@ -643,7 +663,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- History FAB (mobile) -->
 <button id="historyFab"
   class="xl:hidden fixed bottom-6 right-6 z-50 h-12 px-5 btn-primary text-sm"
-  style="border-radius:999px;box-shadow:0 8px 30px rgba(129,140,248,.35),inset 0 1px 0 rgba(255,255,255,.8)"
+  style="border-radius:10px;box-shadow:0 12px 30px -16px var(--accent-a45, rgba(127,227,168,.45))"
   onclick="openHistoryDrawer()">
   <i class="fa-solid fa-clock-rotate-left"></i>
   <span>History</span>
@@ -885,7 +905,13 @@ document.addEventListener('DOMContentLoaded', function(){
             $cls     = $enabled ? '' : 'opacity-50 cursor-not-allowed';
             $icon    = $meta['icon'] ?? 'fa-database';
             $label   = $meta['label'] ?? $key;
-            $color   = $meta['color'] ?? '#94a3b8';
+            /* Each source used to paint its icon in its brand colour (Google
+               blue, OSM green, Yelp red…), which made a row of five chips the
+               most colourful thing on the page. The icon is a label, not a
+               logo: it stays ink, and the only chip that carries the accent is
+               the one that is switched on — which is the one piece of
+               information in the row. */
+            $color   = 'inherit';
           ?>
           <label class="source-chip <?= htmlspecialchars($cls) ?>" data-source="<?= htmlspecialchars($key) ?>" <?= $enabled ? '' : 'title="Available on Pro and Entrepreneur plans" data-locked="1"' ?>>
             <input type="checkbox" class="sr-only source-chip-cb" <?= $checked ?> data-source="<?= htmlspecialchars($key) ?>" <?= $enabled ? '' : 'disabled' ?>>
@@ -1023,7 +1049,7 @@ document.addEventListener('DOMContentLoaded', function(){
 <!-- Phase 3: slide-over detail panel + overlay + bulk action bar + export sheet -->
 <div id="leadSlideOverOverlay" onclick="closeLeadSlideOver()"></div>
 <aside id="leadSlideOver" aria-hidden="true" aria-labelledby="slideOverTitle">
-  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-slate-950/80 backdrop-blur z-10" style="background:rgba(15,23,42,.9)">
+  <div class="flex items-center justify-between px-5 py-4 border-b border-white/5 sticky top-0 bg-slate-950/80 backdrop-blur z-10" style="background:rgb(var(--panel-rgb) / 90%)">
     <div>
       <p class="text-[10px] text-indigo-300 uppercase tracking-widest font-bold">Lead Detail</p>
       <h3 id="slideOverTitle" class="text-base font-bold text-white leading-tight mt-0.5">—</h3>

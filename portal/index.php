@@ -125,12 +125,22 @@ $viewsLabels = json_encode(array_map(fn($d) => date('M j', strtotime($d)), array
 $viewsData   = json_encode(array_values($views14));
 $stageLabels = json_encode(array_column(array_values($stageMeta), 0));
 $stageData   = json_encode(array_values($stageCounts));
-$stageColors = json_encode(array_column(array_values($stageMeta), 1));
+// No per-stage bar colours: each bar already carries its stage name under it, so a
+// second channel encoding the same thing was colour spent on nothing.
 
+/* Plans are told apart by WEIGHT, not by hue.
+ *
+ * This used to paint the tag amber for Entrepreneur and violet for Pro, on top of
+ * four more colours in the KPI tiles, three in the task buckets and a gradient
+ * banner — nine saturated colours on one screen, none of which meant anything. A
+ * colour that appears four times for four unrelated reasons reads as decoration,
+ * which is exactly the look this page is being walked back from. The tag keeps
+ * three steps of brightness and ink instead, and the only colour left on the
+ * dashboard is the amber that says a reply is waiting. */
 $planBadge = match($plan) {
-    'entrepreneur' => ['Entrepreneur', '#f59e0b'],
-    'pro'          => ['Pro',          '#8b5cf6'],
-    default        => ['Free',         '#64748b'],
+    'entrepreneur' => ['Entrepreneur', 'is-ent'],
+    'pro'          => ['Pro',          'is-pro'],
+    default        => ['Free',         'is-free'],
 };
 
 $pageTitle = 'Dashboard — Utiligo';
@@ -138,36 +148,60 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
-.dash-card { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:18px; padding:20px; }
+.dash-card { background:var(--fill-1); border:1px solid var(--hair); border-radius:12px; padding:20px; }
 @media (max-width:639px) {
-  .dash-card { padding:16px; border-radius:14px; }
+  .dash-card { padding:16px; border-radius:10px; }
   .kpi-value { font-size:1.55rem; }
   .kpi-icon { width:32px; height:32px; font-size:.78rem; }
 }
 .kpi { display:flex; flex-direction:column; gap:4px; position:relative; overflow:hidden; }
-.kpi-icon { position:absolute; top:16px; right:16px; width:36px; height:36px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:.85rem; }
-.kpi-label { font-size:.65rem; text-transform:uppercase; letter-spacing:.08em; color:#64748b; }
-.kpi-value { font-size:1.9rem; font-weight:900; color:#f1f5f9; line-height:1.05; }
-.kpi-sub   { font-size:.7rem; color:#475569; }
-.qa-btn { display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:14px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); transition:all .15s; text-decoration:none; }
-.qa-btn:hover { background:rgba(255,255,255,.08); border-color:rgba(255,255,255,.15); transform:translateY(-2px); }
+/* One tile for every feature. Each of these used to be filled with its own
+   translucent colour — emerald for sites, indigo for views, violet for clients,
+   amber for money — so four unrelated things shouted in four hues and none of them
+   was easier to find. The glyph already says which is which. */
+.icon-tile {
+  display:flex; align-items:center; justify-content:center;
+  border:1px solid var(--hair); border-radius:9px;
+  background:var(--fill-1); color:var(--ink-2);
+}
+.kpi-icon { position:absolute; top:16px; right:16px; width:36px; height:36px; font-size:.85rem; }
+.kpi-label { font-size:.65rem; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-3); }
+.kpi-value { font-size:1.9rem; font-weight:900; color:var(--ink); line-height:1.05; }
+.kpi-sub   { font-size:.7rem; color:var(--ink-4); }
+.qa-btn { display:flex; align-items:center; gap:12px; padding:14px 16px; border-radius:10px; background:var(--fill-1); border:1px solid var(--hair); transition:background .15s, border-color .15s; text-decoration:none; }
+.qa-btn:hover { background:var(--fill-2); border-color:var(--hair-2); }
+.qa-btn:hover .icon-tile { border-color:var(--hair-2); color:var(--ink); }
 @media (max-width:639px) {
   .qa-btn { padding:12px 14px; gap:10px; }
   .qa-icon { width:34px; height:34px; font-size:.82rem; }
 }
-.qa-icon { width:38px; height:38px; border-radius:11px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:.9rem; }
-.feed-row { display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.qa-icon { width:38px; height:38px; flex-shrink:0; font-size:.9rem; }
+.feed-row { display:flex; align-items:center; gap:11px; padding:10px 0; border-bottom:1px solid var(--hair); }
 .feed-row:last-child { border-bottom:none; }
-.feed-dot { width:32px; height:32px; border-radius:10px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.7rem; color:#fff; }
-.feed-title { font-size:.82rem; font-weight:700; color:#e2e8f0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.feed-sub { font-size:.68rem; color:#64748b; }
-.stage-badge { font-size:.6rem; font-weight:800; padding:2px 8px; border-radius:999px; text-transform:uppercase; letter-spacing:.04em; }
-.section-title { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:#64748b; margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; }
-.section-title a { color:#818cf8; text-transform:none; letter-spacing:0; font-weight:600; font-size:.72rem; }
-.section-title a:hover { color:#a5b4fc; }
-.live-pill { font-size:.58rem; font-weight:800; padding:2px 7px; border-radius:999px; background:rgba(16,185,129,.15); color:#6ee7b7; }
-.offline-pill { font-size:.58rem; font-weight:800; padding:2px 7px; border-radius:999px; background:rgba(255,255,255,.06); color:#64748b; }
-.task-due { font-size:.62rem; font-weight:700; padding:2px 8px; border-radius:999px; }
+.feed-dot { width:30px; height:30px; border-radius:8px; flex-shrink:0; display:flex; align-items:center; justify-content:center; font-size:.7rem; color:#0b1220; font-weight:800; }
+.feed-title { font-size:.82rem; font-weight:700; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.feed-sub { font-size:.68rem; color:var(--ink-3); }
+/* Stage badges carry a dot of the stage's own colour rather than a wash of it, the
+   same shape the support panel uses for ticket state. The colour is data here —
+   the CRM chart is drawn from it — so it stays, at one dot's worth. */
+.stage-badge { display:inline-flex; align-items:center; gap:5px; font-size:.6rem; font-weight:700; padding:2px 7px; border-radius:5px; text-transform:uppercase; letter-spacing:.06em; border:1px solid var(--hair); color:var(--ink-2); }
+.stage-badge::before { content:''; width:5px; height:5px; border-radius:2px; background:currentColor; flex:none; }
+/* The plan tag: three steps of brightness, no hue. */
+.plan-tag { font-size:.58rem; font-weight:700; padding:3px 7px; border-radius:5px; text-transform:uppercase; letter-spacing:.12em; border:1px solid var(--hair); color:var(--ink-2); }
+.plan-tag.is-free { color:var(--ink-2); }
+.plan-tag.is-pro  { color:var(--ink); border-color:var(--hair-2); }
+.plan-tag.is-ent  { color:var(--pure);    border-color:var(--hair-2); }
+.section-title { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:.08em; color:var(--ink-3); margin-bottom:14px; display:flex; align-items:center; justify-content:space-between; }
+.section-title a { color:var(--ink-2); text-transform:none; letter-spacing:0; font-weight:600; font-size:.72rem; }
+.section-title a:hover { color:var(--pure); }
+.live-pill { display:inline-flex; align-items:center; gap:5px; font-size:.58rem; font-weight:700; padding:2px 7px; border-radius:5px; border:1px solid var(--hair-2); color:var(--ink-2); text-transform:uppercase; letter-spacing:.06em; }
+.live-pill::before { content:''; width:5px; height:5px; border-radius:2px; background:#e2e8f0; flex:none; }
+.offline-pill { display:inline-flex; align-items:center; gap:5px; font-size:.58rem; font-weight:700; padding:2px 7px; border-radius:5px; border:1px solid var(--hair); color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; }
+.offline-pill::before { content:''; width:5px; height:5px; border-radius:2px; background:#334155; flex:none; }
+.task-due { font-size:.62rem; font-weight:700; padding:2px 7px; border-radius:5px; border:1px solid var(--hair); color:var(--ink-2); }
+/* One accent for emphasis anywhere on this page, reused rather than re-invented. */
+.is-due-now  { border-color:rgba(240,168,60,.3); color:#d8c3a0; }
+.is-overdue  { border-color:rgba(240,168,60,.45); color:#f0a83c; }
 </style>
 
 <!-- Greeting header -->
@@ -175,10 +209,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   <div class="min-w-0">
     <div class="flex items-center gap-2 sm:gap-3 flex-wrap">
       <h1 class="text-2xl sm:text-3xl font-black tracking-tight"><?= $greeting ?>, <?= htmlspecialchars($firstName) ?></h1>
-      <span class="text-[10px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider"
-            style="background:<?= $planBadge[1] ?>22;color:<?= $planBadge[1] ?>;border:1px solid <?= $planBadge[1] ?>44;">
-        <?= $planBadge[0] ?>
-      </span>
+      <span class="plan-tag <?= $planBadge[1] ?>"><?= $planBadge[0] ?></span>
     </div>
     <p class="text-slate-500 text-xs sm:text-sm mt-1"><?= date('l, F j') ?> — here's what's happening across your sites and clients.</p>
   </div>
@@ -191,25 +222,25 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <!-- KPI cards -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5 sm:mb-6">
   <div class="dash-card kpi">
-    <div class="kpi-icon" style="background:rgba(16,185,129,.12);color:#34d399;"><i class="fa-solid fa-globe"></i></div>
+    <div class="kpi-icon icon-tile"><i class="fa-solid fa-globe"></i></div>
     <p class="kpi-label">Live Sites</p>
-    <p class="kpi-value"><?= $liveSites ?><span style="font-size:1rem;color:#475569;"> / <?= $totalSites ?></span></p>
+    <p class="kpi-value"><?= $liveSites ?><span style="font-size:1rem;color:var(--ink-4);"> / <?= $totalSites ?></span></p>
     <p class="kpi-sub"><?= $totalSites - $liveSites ?> offline or expired</p>
   </div>
   <div class="dash-card kpi">
-    <div class="kpi-icon" style="background:rgba(99,102,241,.12);color:#818cf8;"><i class="fa-solid fa-eye"></i></div>
+    <div class="kpi-icon icon-tile"><i class="fa-solid fa-eye"></i></div>
     <p class="kpi-label">Views · 14 days</p>
     <p class="kpi-value"><?= number_format($views14Total) ?></p>
     <p class="kpi-sub"><?= number_format($totalViews) ?> all time</p>
   </div>
   <div class="dash-card kpi">
-    <div class="kpi-icon" style="background:rgba(139,92,246,.12);color:#a78bfa;"><i class="fa-solid fa-users"></i></div>
+    <div class="kpi-icon icon-tile"><i class="fa-solid fa-users"></i></div>
     <p class="kpi-label">CRM Clients</p>
     <p class="kpi-value"><?= $is_paid ? $crmTotal : '—' ?></p>
     <p class="kpi-sub"><?= $is_paid ? ($stageCounts['won'] . ' won · ' . $stageCounts['lead'] . ' leads') : 'Upgrade to unlock' ?></p>
   </div>
   <div class="dash-card kpi">
-    <div class="kpi-icon" style="background:rgba(245,158,11,.12);color:#fbbf24;"><i class="fa-solid fa-sack-dollar"></i></div>
+    <div class="kpi-icon icon-tile"><i class="fa-solid fa-sack-dollar"></i></div>
     <p class="kpi-label">Pipeline Value</p>
     <p class="kpi-value"><?= $is_paid ? '$' . number_format($pipelineVal, 0) : '—' ?></p>
     <p class="kpi-sub"><?= $is_paid ? 'Probability-weighted' : 'Upgrade to unlock' ?></p>
@@ -219,19 +250,19 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <!-- Quick actions -->
 <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3 mb-5 sm:mb-6">
   <a href="/portal/generate.php" class="qa-btn">
-    <div class="qa-icon" style="background:rgba(16,185,129,.12);color:#34d399;"><i class="fa-solid fa-bolt"></i></div>
+    <div class="qa-icon icon-tile"><i class="fa-solid fa-bolt"></i></div>
     <div><p class="text-sm font-bold text-slate-200">Generate Site</p><p class="text-[11px] text-slate-500">AI site in 60s</p></div>
   </a>
   <a href="/portal/leads.php" class="qa-btn">
-    <div class="qa-icon" style="background:rgba(99,102,241,.12);color:#818cf8;"><i class="fa-solid fa-magnifying-glass"></i></div>
+    <div class="qa-icon icon-tile"><i class="fa-solid fa-magnifying-glass"></i></div>
     <div><p class="text-sm font-bold text-slate-200">Find Leads</p><p class="text-[11px] text-slate-500">Search businesses</p></div>
   </a>
   <a href="/portal/crm.php" class="qa-btn">
-    <div class="qa-icon" style="background:rgba(139,92,246,.12);color:#a78bfa;"><i class="fa-solid fa-users"></i></div>
+    <div class="qa-icon icon-tile"><i class="fa-solid fa-users"></i></div>
     <div><p class="text-sm font-bold text-slate-200">Client CRM</p><p class="text-[11px] text-slate-500">Pipeline &amp; tasks</p></div>
   </a>
   <a href="/portal/my_sites.php" class="qa-btn">
-    <div class="qa-icon" style="background:rgba(245,158,11,.12);color:#fbbf24;"><i class="fa-solid fa-layer-group"></i></div>
+    <div class="qa-icon icon-tile"><i class="fa-solid fa-layer-group"></i></div>
     <div><p class="text-sm font-bold text-slate-200">My Sites</p><p class="text-[11px] text-slate-500">Manage &amp; share</p></div>
   </a>
 </div>
@@ -297,7 +328,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
             && (empty($rs['link_expires_at']) || strtotime($rs['link_expires_at']) > $now);
     ?>
       <div class="feed-row">
-        <div class="feed-dot" style="background:linear-gradient(135deg,<?= htmlspecialchars($rtpl['secondary']) ?>,<?= htmlspecialchars($rtpl['primary']) ?>);">
+        <?php /* Flat, in the template's own primary colour. It was a two-stop
+                 gradient — which carried no more information than one colour and
+                 cost the page a bit of its own identity to say so. */ ?>
+        <div class="feed-dot" style="background:<?= htmlspecialchars($rtpl['primary']) ?>;">
           <i class="fa-solid fa-globe"></i>
         </div>
         <div class="flex-1 min-w-0">
@@ -335,7 +369,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           <p class="feed-title"><?= htmlspecialchars($rc['name']) ?></p>
           <p class="feed-sub"><?= htmlspecialchars($rc['business'] ?: '—') ?><?= (float)$rc['deal_value'] > 0 ? ' · $' . number_format((float)$rc['deal_value'], 0) : '' ?></p>
         </div>
-        <span class="stage-badge" style="background:<?= $sm[1] ?>22;color:<?= $sm[1] ?>;"><?= $sm[0] ?></span>
+        <span class="stage-badge" style="color:<?= $sm[1] ?>;"><?= $sm[0] ?></span>
       </div>
     <?php endforeach; endif; ?>
   </div>
@@ -356,18 +390,20 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         All caught up. Nothing due.
       </div>
     <?php else: ?>
-      <!-- Buckets -->
+      <!-- Buckets. Neutral boxes; the amber is spent only where a number is asking
+           to be acted on, so "Overdue 3" is the one thing on the row that lights up
+           and "7 days 4" is not competing with it. -->
       <div class="grid grid-cols-3 gap-2 mb-3">
-        <div class="rounded-xl p-2.5 text-center" style="background:rgba(239,68,68,.08);border:1px solid rgba(239,68,68,.15);">
-          <p class="text-lg font-extrabold text-red-400"><?= $tasksOverdue ?></p>
+        <div class="rounded-lg p-2.5 text-center border border-white/10 bg-white/[.025]">
+          <p class="text-lg font-extrabold <?= $tasksOverdue > 0 ? 'text-[#f0a83c]' : 'text-slate-300' ?>"><?= $tasksOverdue ?></p>
           <p class="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Overdue</p>
         </div>
-        <div class="rounded-xl p-2.5 text-center" style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.15);">
-          <p class="text-lg font-extrabold" style="color:#fbbf24;"><?= $tasksToday ?></p>
+        <div class="rounded-lg p-2.5 text-center border border-white/10 bg-white/[.025]">
+          <p class="text-lg font-extrabold text-slate-200"><?= $tasksToday ?></p>
           <p class="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">Today</p>
         </div>
-        <div class="rounded-xl p-2.5 text-center" style="background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.15);">
-          <p class="text-lg font-extrabold" style="color:#818cf8;"><?= $tasksUpcoming ?></p>
+        <div class="rounded-lg p-2.5 text-center border border-white/10 bg-white/[.025]">
+          <p class="text-lg font-extrabold text-slate-300"><?= $tasksUpcoming ?></p>
           <p class="text-[10px] text-slate-500 uppercase tracking-wide font-semibold">7 days</p>
         </div>
       </div>
@@ -379,11 +415,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           $due    = $tk['due_date'] ?? null;
           $overdue = $due && strtotime($due) < strtotime('today');
           $today   = $due && date('Y-m-d', strtotime($due)) === date('Y-m-d');
-          $priColor = ['high'=>'#f87171','medium'=>'#fbbf24','low'=>'#64748b'][$tk['priority'] ?? 'medium'];
+          // Priority is a rank, so it is shown as three steps of ink; only "high"
+          // earns the page's single accent.
+          $priColor = ['high'=>'#f0a83c','medium'=>'#94a3b8','low'=>'#64748b'][$tk['priority'] ?? 'medium'];
           $renderedList++;
       ?>
         <div class="feed-row">
-          <div class="feed-dot" style="background:rgba(255,255,255,.06);color:<?= $priColor ?>;">
+          <div class="feed-dot" style="background:var(--fill-2);color:<?= $priColor ?>;">
             <i class="fa-solid fa-flag"></i>
           </div>
           <div class="flex-1 min-w-0">
@@ -391,7 +429,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
             <p class="feed-sub"><?= htmlspecialchars($tk['client_name'] ?? 'General') ?></p>
           </div>
           <?php if ($due): ?>
-            <span class="task-due" style="background:<?= $overdue ? 'rgba(239,68,68,.15);color:#f87171' : ($today ? 'rgba(245,158,11,.15);color:#fbbf24' : 'rgba(255,255,255,.06);color:#94a3b8') ?>;">
+            <span class="task-due <?= $overdue ? 'is-overdue' : ($today ? 'is-due-now' : '') ?>">
               <?= $overdue ? 'Overdue' : ($today ? 'Today' : date('M j', strtotime($due))) ?>
             </span>
           <?php endif; ?>
@@ -407,10 +445,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <!-- Upgrade banner (free only) -->
 <?php if (!$is_paid): ?>
-<div class="dash-card" style="background:linear-gradient(135deg,rgba(139,92,246,.12),rgba(99,102,241,.08));border-color:rgba(139,92,246,.25);">
+<div class="dash-card">
   <div class="flex items-center justify-between flex-wrap gap-4">
     <div>
-      <p class="font-bold text-slate-100 mb-1"><i class="fa-solid fa-rocket mr-2" style="color:#a78bfa;"></i>Unlock the full toolkit</p>
+      <p class="font-bold text-slate-100 mb-1"><i class="fa-solid fa-rocket mr-2 text-slate-400"></i>Unlock the full toolkit</p>
       <p class="text-slate-400 text-sm">Client CRM, pipeline tracking, tasks, notes and more site slots — starting with Pro.</p>
     </div>
     <a href="/portal/billing.php?upgrade=1" class="inline-flex items-center gap-2 bg-white hover:bg-slate-200 text-black px-5 py-2.5 rounded-xl text-sm font-bold transition">
@@ -446,65 +484,105 @@ endif; ?>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
+/* The two dashboard charts.
+
+   Every colour below is read from the page's own tokens at draw time, because a
+   canvas cannot resolve `var()`: assigning one to fillStyle is not an error, it
+   is simply ignored, and the chart then draws in whatever colour was set before
+   — black. That is how a "tokenised" chart ends up invisible on the dark canvas.
+   Reading them through UtligoMotion.token() keeps one palette in the product.
+
+   The charts are rebuilt on `utligo:theme` rather than reloading the page, so
+   switching theme in Settings repaints them in place. */
 (function(){
-  const vc = document.getElementById('viewsChart');
-  if (vc) {
-    const ctx = vc.getContext('2d');
-    const grad = ctx.createLinearGradient(0, 0, 0, 220);
-    grad.addColorStop(0, 'rgba(99,102,241,.35)');
-    grad.addColorStop(1, 'rgba(99,102,241,0)');
-    new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: <?= $viewsLabels ?>,
-        datasets: [{
-          data: <?= $viewsData ?>,
-          fill: true,
-          backgroundColor: grad,
-          borderColor: '#6366f1',
-          borderWidth: 2,
-          pointRadius: 3,
-          pointBackgroundColor: '#6366f1',
-          tension: .35
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false },
-          tooltip: { backgroundColor:'#1e293b', borderColor:'rgba(255,255,255,.1)', borderWidth:1,
-            callbacks: { label: c => ' ' + c.parsed.y + ' views' } } },
-        scales: {
-          x: { ticks: { color:'#475569', font:{size:10}, maxTicksLimit:7 }, grid:{ color:'rgba(255,255,255,.04)' } },
-          y: { beginAtZero:true, ticks:{ color:'#475569', font:{size:10}, precision:0 }, grid:{ color:'rgba(255,255,255,.06)' } }
+  const T = (name, fallback) => (window.UtligoMotion && UtligoMotion.token)
+    ? (UtligoMotion.token(name) || fallback) : fallback;
+  const A = (name, a, fallback) => (window.UtligoMotion && UtligoMotion.alpha)
+    ? UtligoMotion.alpha(name, a, fallback) : fallback;
+
+  const viewsCanvas = document.getElementById('viewsChart');
+  const stageCanvas = document.getElementById('stageChart');
+  if (!viewsCanvas && !stageCanvas) return;
+
+  let drawn = [];
+
+  function draw() {
+    const ink  = T('--ink', '#e2e8f0');
+    const muted = T('--ink-4', '#94a3b8');
+    const grid = A('--ink', 0.07, 'rgba(255,255,255,.07)');
+    const tip = {
+      backgroundColor: T('--panel-2', '#1e293b'),
+      borderColor: T('--hair', 'rgba(255,255,255,.1)'),
+      borderWidth: 1,
+      titleColor: T('--ink-2', '#94a3b8'),
+      bodyColor: T('--ink', '#f1f5f9')
+    };
+
+    if (viewsCanvas) {
+      const ctx = viewsCanvas.getContext('2d');
+      const grad = ctx.createLinearGradient(0, 0, 0, 220);
+      grad.addColorStop(0, A('--ink', 0.22, 'rgba(226,232,240,.22)'));
+      grad.addColorStop(1, A('--ink', 0, 'rgba(226,232,240,0)'));
+      drawn.push(new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: <?= $viewsLabels ?>,
+          datasets: [{
+            data: <?= $viewsData ?>,
+            fill: true,
+            backgroundColor: grad,
+            borderColor: ink,
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBackgroundColor: ink,
+            tension: .35
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false },
+            tooltip: Object.assign({}, tip, { callbacks: { label: c => ' ' + c.parsed.y + ' views' } }) },
+          scales: {
+            x: { ticks: { color: muted, font:{size:10}, maxTicksLimit:7 }, grid:{ color: grid } },
+            y: { beginAtZero:true, ticks:{ color: muted, font:{size:10}, precision:0 }, grid:{ color: grid } }
+          }
         }
-      }
-    });
+      }));
+    }
+
+    if (stageCanvas) {
+      drawn.push(new Chart(stageCanvas.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: <?= $stageLabels ?>,
+          datasets: [{
+            data: <?= $stageData ?>,
+            backgroundColor: A('--ink', 0.55, 'rgba(226,232,240,.55)'),
+            hoverBackgroundColor: ink,
+            borderRadius: 3,
+            maxBarThickness: 26
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { display: false },
+            tooltip: Object.assign({}, tip, { callbacks: { label: c => ' ' + c.parsed.y + ' clients' } }) },
+          scales: {
+            x: { ticks: { color: muted, font:{size:9} }, grid:{ display:false } },
+            y: { beginAtZero:true, ticks:{ color: muted, font:{size:10}, precision:0 }, grid:{ color: grid } }
+          }
+        }
+      }));
+    }
   }
 
-  const sc = document.getElementById('stageChart');
-  if (sc) {
-    new Chart(sc.getContext('2d'), {
-      type: 'bar',
-      data: {
-        labels: <?= $stageLabels ?>,
-        datasets: [{
-          data: <?= $stageData ?>,
-          backgroundColor: <?= $stageColors ?>,
-          borderRadius: 6,
-          maxBarThickness: 28
-        }]
-      },
-      options: {
-        responsive: true,
-        plugins: { legend: { display: false },
-          tooltip: { backgroundColor:'#1e293b', borderColor:'rgba(255,255,255,.1)', borderWidth:1,
-            callbacks: { label: c => ' ' + c.parsed.y + ' clients' } } },
-        scales: {
-          x: { ticks: { color:'#475569', font:{size:9} }, grid:{ display:false } },
-          y: { beginAtZero:true, ticks:{ color:'#475569', font:{size:10}, precision:0 }, grid:{ color:'rgba(255,255,255,.06)' } }
-        }
-      }
-    });
+  function rebuild() {
+    drawn.forEach(c => c.destroy());
+    drawn = [];
+    draw();
   }
+
+  draw();
+  document.addEventListener('utligo:theme', rebuild);
 })();
 </script>

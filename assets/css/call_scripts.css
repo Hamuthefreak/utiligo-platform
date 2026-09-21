@@ -25,13 +25,17 @@
   max-width: min(560px, calc(100vw - 24px));
   min-height: 200px;
   max-height: min(720px, calc(100vh - 24px));
-  border: 1px solid rgba(255, 255, 255, .12);
+  border: 1px solid var(--hair-2);
   border-radius: 14px;
   background: rgba(2, 8, 23, .94);
+  /* The dock is glass over whatever the customer is working in, so its fill has to
+     be the canvas rather than a literal: on the light theme a near-opaque navy
+     panel floating over a white dashboard is a hole in the page. */
+  background: color-mix(in srgb, var(--canvas, var(--canvas)) 94%, transparent);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   box-shadow: 0 18px 50px -12px rgba(0, 0, 0, .75);
-  color: #e2e8f0;
+  color: var(--ink);
   font-size: 13px;
   line-height: 1.55;
   /* Sits above Tailwind's z-50 overlays and the lead slide-over. */
@@ -61,7 +65,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 8px 8px 12px;
-  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  border-bottom: 1px solid var(--hair);
   cursor: grab;
   touch-action: none; /* let pointermove drag instead of scrolling the page */
   flex: 0 0 auto;
@@ -70,7 +74,7 @@
 
 .cs-dot {
   width: 6px; height: 6px; border-radius: 999px;
-  background: #fff; opacity: .55; flex: 0 0 auto;
+  background: var(--pure); opacity: .55; flex: 0 0 auto;
 }
 
 .cs-title {
@@ -80,7 +84,7 @@
   font-weight: 700;
   letter-spacing: .08em;
   text-transform: uppercase;
-  color: #94a3b8;
+  color: var(--ink-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -94,7 +98,7 @@
   padding: 2px 4px;
   margin: -2px 0;
   border-radius: 6px;
-  color: #f1f5f9;
+  color: var(--ink);
   font: inherit;
   font-weight: 600;
   font-size: 12px;
@@ -104,7 +108,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.cs-name-btn:hover { background: rgba(255, 255, 255, .07); }
+.cs-name-btn:hover { background: var(--fill-2); }
 .cs-name-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
 .cs-name-btn i { font-size: 9px; opacity: .5; margin-left: 4px; }
 
@@ -114,14 +118,14 @@
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 7px;
   background: transparent;
-  color: #94a3b8;
+  color: var(--ink-2);
   font-size: 11px;
   cursor: pointer;
   transition: background .12s ease, color .12s ease;
 }
-.cs-icon-btn:hover { background: rgba(255, 255, 255, .1); color: #fff; }
+.cs-icon-btn:hover { background: var(--fill-3); color: var(--pure); }
 .cs-icon-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.cs-icon-btn.is-on { background: rgba(255, 255, 255, .16); color: #fff; }
+.cs-icon-btn.is-on { background: var(--fill-4); color: var(--pure); }
 .cs-icon-btn[disabled] { opacity: .35; cursor: default; }
 
 /* ── Body ────────────────────────────────────────────────────────────────── */
@@ -146,9 +150,9 @@
 .cs-script {
   white-space: pre-wrap;
   word-break: break-word;
-  color: #e2e8f0;
+  color: var(--ink);
 }
-.cs-script.is-empty { color: #64748b; font-style: italic; }
+.cs-script.is-empty { color: var(--ink-3); font-style: italic; }
 
 /* An unfilled {{token}}. Highlighted rather than hidden: a script that quietly
    says "Hi ," mid-call is worse than one that shows you the gap. */
@@ -167,9 +171,9 @@
   gap: 6px;
   margin-top: 10px;
   padding-top: 10px;
-  border-top: 1px solid rgba(255, 255, 255, .07);
+  border-top: 1px solid var(--hair);
   font-size: 10.5px;
-  color: #64748b;
+  color: var(--ink-3);
 }
 .cs-note i { font-size: 10px; }
 .cs-note.is-warn { color: #fbbf24; }
@@ -181,15 +185,15 @@
   box-sizing: border-box;
   padding: 7px 10px;
   margin-bottom: 8px;
-  border: 1px solid rgba(255, 255, 255, .12);
+  border: 1px solid var(--hair-2);
   border-radius: 8px;
-  background: rgba(255, 255, 255, .05);
-  color: #f1f5f9;
+  background: var(--fill-2);
+  color: var(--ink);
   font: inherit;
   font-size: 12px;
 }
-.cs-search:focus { outline: none; border-color: rgba(255, 255, 255, .4); }
-.cs-search::placeholder { color: #64748b; }
+.cs-search:focus { outline: none; border-color: var(--hair-2); }
+.cs-search::placeholder { color: var(--ink-3); }
 
 .cs-list { display: flex; flex-direction: column; gap: 2px; }
 
@@ -203,30 +207,30 @@
   border: 0;
   border-radius: 8px;
   background: transparent;
-  color: #cbd5e1;
+  color: var(--ink-2);
   font: inherit;
   font-size: 12px;
   text-align: left;
   cursor: pointer;
 }
-.cs-row:hover { background: rgba(255, 255, 255, .07); }
+.cs-row:hover { background: var(--fill-2); }
 .cs-row:focus-visible { outline: 2px solid #fff; outline-offset: -2px; }
-.cs-row.is-active { background: rgba(255, 255, 255, .12); color: #fff; font-weight: 600; }
+.cs-row.is-active { background: var(--fill-3); color: var(--pure); font-weight: 600; }
 .cs-row.is-cursor { box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .35); }
 .cs-row-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cs-row-meta { flex: 0 0 auto; font-size: 10px; color: #64748b; }
+.cs-row-meta { flex: 0 0 auto; font-size: 10px; color: var(--ink-3); }
 .cs-row-edit {
   flex: 0 0 auto;
   opacity: 0;
   width: 22px; height: 22px;
   display: inline-flex; align-items: center; justify-content: center;
   border: 0; border-radius: 6px;
-  background: transparent; color: #94a3b8; font-size: 10px; cursor: pointer;
+  background: transparent; color: var(--ink-2); font-size: 10px; cursor: pointer;
 }
 .cs-row:hover .cs-row-edit, .cs-row:focus-within .cs-row-edit { opacity: 1; }
-.cs-row-edit:hover { background: rgba(255, 255, 255, .12); color: #fff; }
+.cs-row-edit:hover { background: var(--fill-3); color: var(--pure); }
 
-.cs-empty { padding: 14px 4px; color: #64748b; font-size: 12px; text-align: center; }
+.cs-empty { padding: 14px 4px; color: var(--ink-3); font-size: 12px; text-align: center; }
 
 /* ── Forms ───────────────────────────────────────────────────────────────── */
 
@@ -237,31 +241,31 @@
   font-weight: 700;
   letter-spacing: .09em;
   text-transform: uppercase;
-  color: #64748b;
+  color: var(--ink-3);
 }
 
 .cs-input, .cs-textarea {
   width: 100%;
   box-sizing: border-box;
   padding: 7px 9px;
-  border: 1px solid rgba(255, 255, 255, .12);
+  border: 1px solid var(--hair-2);
   border-radius: 8px;
-  background: rgba(255, 255, 255, .05);
-  color: #f1f5f9;
+  background: var(--fill-2);
+  color: var(--ink);
   font: inherit;
   font-size: 12px;
 }
-.cs-input:focus, .cs-textarea:focus { outline: none; border-color: rgba(255, 255, 255, .4); }
+.cs-input:focus, .cs-textarea:focus { outline: none; border-color: var(--hair-2); }
 .cs-textarea { resize: vertical; line-height: 1.5; }
 .cs-field { margin-bottom: 10px; }
 
-.cs-hint { margin: 4px 0 0; font-size: 10px; color: #64748b; }
+.cs-hint { margin: 4px 0 0; font-size: 10px; color: var(--ink-3); }
 .cs-hint code {
   padding: 1px 4px;
   border-radius: 4px;
-  background: rgba(255, 255, 255, .08);
+  background: var(--fill-2);
   font-size: 10px;
-  color: #cbd5e1;
+  color: var(--ink-2);
 }
 
 /* ── Footer actions ──────────────────────────────────────────────────────── */
@@ -272,7 +276,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 10px;
-  border-top: 1px solid rgba(255, 255, 255, .08);
+  border-top: 1px solid var(--hair);
   flex-wrap: wrap;
 }
 
@@ -281,26 +285,34 @@
   align-items: center;
   gap: 5px;
   padding: 5px 10px;
-  border: 1px solid rgba(255, 255, 255, .12);
+  border: 1px solid var(--hair-2);
   border-radius: 8px;
-  background: rgba(255, 255, 255, .06);
-  color: #cbd5e1;
+  background: var(--fill-2);
+  color: var(--ink-2);
   font: inherit;
   font-size: 11px;
   font-weight: 600;
   cursor: pointer;
   transition: background .12s ease, color .12s ease;
 }
-.cs-btn:hover { background: rgba(255, 255, 255, .12); color: #fff; }
-.cs-btn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
-.cs-btn.is-primary { background: #fff; border-color: #fff; color: #020817; }
-.cs-btn.is-primary:hover { background: #e2e8f0; }
+.cs-btn:hover { background: var(--fill-3); color: var(--pure); }
+/* Focus rings and the one primary action use the theme's accent, so the dock
+   belongs to the same product as the panel it opens next to. The fallbacks
+   matter here: the dock is rendered inside a pop-out window (see
+   portal/call-scripts-window.php) that loads this file without theme.css. */
+.cs-btn:focus-visible { outline: 2px solid var(--accent, #7fe3a8); outline-offset: 1px; }
+.cs-btn.is-primary {
+  background: var(--accent, #7fe3a8);
+  border-color: var(--accent, #7fe3a8);
+  color: var(--accent-ink, #04150c);
+}
+.cs-btn.is-primary:hover { background: var(--accent-hi, #a2f3c4); }
 .cs-btn[disabled] { opacity: .45; cursor: default; }
 .cs-spacer { flex: 1 1 auto; }
 
-.cs-status { font-size: 10.5px; color: #64748b; }
+.cs-status { font-size: 10.5px; color: var(--ink-3); }
 .cs-status.is-warn { color: #fbbf24; }
-.cs-status.is-good { color: #cbd5e1; }
+.cs-status.is-good { color: var(--ink-2); }
 
 /* ── Resize handle ───────────────────────────────────────────────────────── */
 
@@ -312,7 +324,7 @@
   height: 16px;
   cursor: nwse-resize;
   touch-action: none;
-  color: rgba(255, 255, 255, .25);
+  color: var(--ink-4);
   font-size: 9px;
   display: flex;
   align-items: flex-end;
@@ -335,27 +347,28 @@
   align-items: center;
   gap: 7px;
   padding: 9px 13px;
-  border: 1px solid rgba(255, 255, 255, .14);
+  border: 1px solid var(--hair-2);
   border-radius: 999px;
   background: rgba(2, 8, 23, .92);
+  background: color-mix(in srgb, var(--canvas, var(--canvas)) 92%, transparent);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
   box-shadow: 0 12px 30px -10px rgba(0, 0, 0, .7);
-  color: #e2e8f0;
+  color: var(--ink);
   font: inherit;
   font-size: 11.5px;
   font-weight: 600;
   cursor: pointer;
 }
-.cs-launcher:hover { background: rgba(255, 255, 255, .1); }
+.cs-launcher:hover { background: var(--fill-3); }
 .cs-launcher:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .cs-launcher kbd {
   padding: 1px 5px;
-  border: 1px solid rgba(255, 255, 255, .16);
+  border: 1px solid var(--hair-2);
   border-radius: 5px;
-  background: rgba(255, 255, 255, .06);
+  background: var(--fill-2);
   font-size: 9.5px;
-  color: #94a3b8;
+  color: var(--ink-2);
 }
 
 /* ── Mobile: a bottom sheet, not a floating box ──────────────────────────── */
@@ -399,7 +412,7 @@
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  background: #020817;
+  background: var(--canvas, var(--canvas));
 }
 .cs-dock.is-full .cs-head { cursor: default; }
 
@@ -410,4 +423,18 @@
 
 @media (prefers-reduced-motion: reduce) {
   .cs-dock, .cs-icon-btn, .cs-btn { transition: none; }
+}
+
+/* Theme tokens this sheet reads, stated here as well.
+   The dock renders in two shells: the portal, where theme.css loads after this
+   file and wins, and its own pop-out window, which has no theme.css at all. These
+   are the Midnight values — the default — so the pop-out is correct rather than
+   transparent wherever the theme file is absent. */
+:root {
+  --fill-2: rgba(255,255,255,.07);
+  --fill-3: rgba(255,255,255,.12);
+  --fill-4: rgba(255,255,255,.18);
+  --hair:   rgba(255,255,255,.10);
+  --hair-2: rgba(255,255,255,.16);
+  --ink-4:  rgba(233,237,245,.30);
 }

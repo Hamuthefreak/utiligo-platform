@@ -218,6 +218,29 @@ raw product constant, which fails two assertions.
 Attachment limits are also exercised through the real multipart path, using
 `t_http(..., ['multipart' => [...]])`.
 
+The same file also guards the panel's *presentation* decisions, which are the
+easiest things in this feature to undo by accident. They are text-level checks —
+they cannot see the panel — and they are written as such: what they catch is a
+later edit that quietly restores a full-screen mobile sheet, drops the webfont
+link, or makes the chime ignore the mute preference. Each of the three was
+mutation-tested by putting the old behaviour back, and each fails.
+
+- The panel is a **floating card at every width**, inset from the viewport edge,
+  with `dvh` so a mobile URL bar cannot cover the composer. It used to become a
+  full-screen sheet under 768px, which threw away the page the customer was
+  reading — the opposite of what a bubble is for.
+- It **animates in and out** of the corner it lives in, and only goes `[hidden]`
+  after the closing transition's window, so it leaves the tab order at the right
+  moment rather than vanishing mid-fade. A `prefers-reduced-motion` user gets the
+  panel without the movement, and without the reply pulse.
+- It has **its own typeface** (Space Grotesk, this project's display face, loaded
+  only where the channel appears) and a `.sp-channel` class the admin inbox shares,
+  so both halves of one conversation look like one product.
+- A reply is announced by a **synthesised two-note chime** plus a pulse on the
+  launcher, only on a *rise* in the unread count, never on the first reading of a
+  page, never while the tab is hidden, and never when muted — and no browser
+  notification permission is ever requested behind the customer's back.
+
 ### Sessions
 
 `test_session.php` covers `require_login()`'s two refusals. Both were 500s in

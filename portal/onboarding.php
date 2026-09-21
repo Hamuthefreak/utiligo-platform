@@ -53,7 +53,7 @@ $firstName = htmlspecialchars(explode(' ', trim($user['full_name']))[0]);
   body{
     font-family:'Inter',sans-serif;
     background:#080D18;
-    color:#E2E8F0;
+    color:var(--ink);
     overflow-x:hidden;
     min-height:100vh;
   }
@@ -61,23 +61,27 @@ $firstName = htmlspecialchars(explode(' ', trim($user['full_name']))[0]);
   /* ── Animated background ── */
   .bg-anim{
     position:fixed;inset:0;z-index:0;
-    background:radial-gradient(ellipse 80% 60% at 50% 0%, rgba(16,185,129,.15) 0%, transparent 70%),
+    background:radial-gradient(ellipse 80% 60% at 50% 0%, var(--accent-a12, rgba(127,227,168,.15)) 0%, transparent 70%),
                radial-gradient(ellipse 60% 50% at 80% 80%, rgba(99,102,241,.1) 0%, transparent 60%),
                #080D18;
   }
   .bg-anim::after{
     content:'';position:absolute;inset:0;
-    background:url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='1' cy='1' r='1' fill='rgba(255,255,255,.03)'/%3E%3C/svg%3E");
+    /* A data-URI SVG is a document of its own: it is fetched and rendered outside
+       this page, so a var(--token) inside it resolves to nothing and the dots
+       disappear. The literal stays here deliberately — it is a texture, and it is
+       already faint enough that it reads on white as well as on near-black. */
+    background:url("data:image/svg+xml,%3Csvg width='60' height='60' xmlns='http://www.w3.org/2000/svg'%3E%3Ccircle cx='1' cy='1' r='1' fill='rgba(128,128,128,.14)'/%3E%3C/svg%3E");
   }
 
   /* ── Card ── */
   .onb-card{
     position:relative;z-index:1;
-    background:rgba(15,23,42,.85);
-    border:1px solid rgba(255,255,255,.09);
+    background:rgb(var(--panel-rgb) / 85%);
+    border:1px solid var(--hair);
     border-radius:24px;
     backdrop-filter:blur(20px);
-    box-shadow:0 32px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(16,185,129,.07) inset;
+    box-shadow:0 32px 80px rgba(0,0,0,.6), 0 0 0 1px var(--accent-a08, rgba(127,227,168,.07)) inset;
     max-width:520px;
     width:100%;
     padding:0;
@@ -85,12 +89,14 @@ $firstName = htmlspecialchars(explode(' ', trim($user['full_name']))[0]);
   }
 
   /* ── Progress bar ── */
-  .progress-rail{height:3px;background:rgba(255,255,255,.06);}
+  .progress-rail{height:3px;background:var(--fill-2);}
   .progress-fill{
     height:3px;
-    background:linear-gradient(90deg,#059669,#10B981);
-    transition:width .6s cubic-bezier(.4,0,.2,1);
-    border-radius:0 3px 3px 0;
+    /* The accent, flat. A two-stop gradient on a 3px rail is not a gradient you
+       can see anyway — it just adds a second green to the palette. */
+    background:var(--accent, #7fe3a8);
+    transition:width .6s var(--ease, cubic-bezier(.22,.61,.36,1));
+    border-radius:0;
   }
 
   /* ── Step indicator dots ── */
@@ -100,67 +106,72 @@ $firstName = htmlspecialchars(explode(' ', trim($user['full_name']))[0]);
     font-size:.7rem;font-weight:700;
     transition:all .35s cubic-bezier(.4,0,.2,1);
   }
-  .step-dot.done{background:#10B981;color:#0F172A;}
-  .step-dot.active{background:rgba(16,185,129,.2);color:#10B981;border:2px solid #10B981;}
-  .step-dot.todo{background:rgba(255,255,255,.06);color:#475569;}
-  .step-connector{height:1px;flex:1;background:rgba(255,255,255,.08);transition:background .4s;}
-  .step-connector.done{background:#10B981;}
+  /* The wizard's own chrome, bound to the accent rather than to a second green.
+     (The swatch picker further down keeps its palette — a brand colour a customer
+     chooses is theirs, not ours.) */
+  .step-dot.done{background:var(--accent, #7fe3a8);color:var(--accent-ink, #04150c);}
+  .step-dot.active{background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12)));color:var(--accent, #7fe3a8);border:1px solid var(--accent-line, var(--accent-a34, rgba(127,227,168,.34)));}
+  .step-dot.todo{background:var(--fill-2);color:var(--ink-4, rgba(233,237,245,.30));}
+  .step-connector{height:1px;flex:1;background:var(--hair, var(--fill-3));transition:background .4s;}
+  .step-connector.done{background:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34)));}
 
   /* ── Input / form ── */
   .inp{
-    background:rgba(30,41,59,.8);
-    border:1px solid rgba(255,255,255,.1);
+    background:rgb(var(--panel-rgb) / 80%);
+    border:1px solid var(--hair);
     border-radius:14px;
     padding:13px 16px;
-    color:#E2E8F0;
+    color:var(--ink);
     font-family:'Inter',sans-serif;
     font-size:.9rem;
     width:100%;
     transition:border-color .2s,box-shadow .2s;
   }
-  .inp:focus{outline:none;border-color:#10B981;box-shadow:0 0 0 3px rgba(16,185,129,.15);}
-  .inp::placeholder{color:#475569;}
+  .inp:focus{outline:none;border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34)));box-shadow:none;}
+  .inp::placeholder{color:var(--ink-4);}
 
   /* ── Buttons ── */
   .btn-primary{
     display:inline-flex;align-items:center;justify-content:center;gap:8px;
-    background:#10B981;
-    color:#0A0F1E;
+    background:var(--accent, #7fe3a8);
+    color:var(--accent-ink, #04150c);
     font-weight:700;
     font-size:.9rem;
     padding:14px 32px;
-    border-radius:999px;
+    /* Square-ish, like every other control in the product. A pill button is the
+       one shape the theme pass retired wholesale. */
+    border-radius:10px;
     border:none;
     cursor:pointer;
     transition:background .2s,transform .15s,box-shadow .2s;
-    box-shadow:0 4px 20px rgba(16,185,129,.35);
+    box-shadow:0 12px 30px -16px var(--accent-glow, var(--accent-a28, rgba(127,227,168,.28)));
     text-decoration:none;
   }
-  .btn-primary:hover{background:#0ea271;transform:translateY(-1px);box-shadow:0 8px 30px rgba(16,185,129,.45);}
+  .btn-primary:hover{background:var(--accent-hi, #a2f3c4);transform:translateY(-1px);box-shadow:0 16px 34px -16px var(--accent-glow, var(--accent-a28, rgba(127,227,168,.28)));}
   .btn-primary:active{transform:translateY(0);}
   .btn-ghost{
     display:inline-flex;align-items:center;justify-content:center;
     background:transparent;
-    color:#64748B;
+    color:var(--ink-3, rgba(233,237,245,.46));
     font-size:.8rem;
     padding:8px 20px;
-    border-radius:999px;
-    border:1px solid rgba(255,255,255,.08);
+    border-radius:10px;
+    border:1px solid var(--hair, var(--hair));
     cursor:pointer;
     transition:color .2s,border-color .2s;
     text-decoration:none;
   }
-  .btn-ghost:hover{color:#CBD5E1;border-color:rgba(255,255,255,.2);}
+  .btn-ghost:hover{color:var(--ink-2);border-color:var(--hair-2);}
 
   /* ── Feature checklist ── */
   .feature-row{
     display:flex;align-items:center;gap:12px;
     padding:12px 0;
-    border-bottom:1px solid rgba(255,255,255,.05);
+    border-bottom:1px solid var(--hair);
     animation:fadeSlideIn .4s ease both;
   }
   .feature-row:last-child{border-bottom:none;}
-  .feature-icon{width:36px;height:36px;border-radius:10px;background:rgba(16,185,129,.12);display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;}
+  .feature-icon{width:36px;height:36px;border-radius:10px;background:var(--accent-a12, rgba(127,227,168,.12));display:flex;align-items:center;justify-content:center;font-size:1rem;flex-shrink:0;}
 
   /* ── Confetti canvas ── */
   #confetti{position:fixed;inset:0;pointer-events:none;z-index:99;}
@@ -186,13 +197,13 @@ $firstName = htmlspecialchars(explode(' ', trim($user['full_name']))[0]);
 
   .pulse-ring::before{
     content:'';position:absolute;inset:-8px;border-radius:50%;
-    border:2px solid rgba(16,185,129,.4);
+    border:2px solid var(--accent-a45, rgba(127,227,168,.4));
     animation:pulse-ring 2s ease-out infinite;
   }
 
   /* Color preview swatch */
   .color-swatch{
-    width:44px;height:44px;border-radius:12px;border:2px solid rgba(255,255,255,.1);
+    width:44px;height:44px;border-radius:12px;border:2px solid var(--hair);
     cursor:pointer;transition:transform .15s;
     flex-shrink:0;
   }

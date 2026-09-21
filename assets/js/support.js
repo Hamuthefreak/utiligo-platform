@@ -22,6 +22,12 @@
  *   bug report to a network blip is how someone decides not to report the next one.
  * • A ticket that is closed offers Reopen rather than a disabled box, because a
  *   customer who writes again has something to say.
+ * • A REPLY ANNOUNCES ITSELF. The customer is usually not looking at the bubble,
+ *   so the panel polls and a rise in the unread count plays a short synthesised
+ *   chime and pulses the launcher. It is silent by default after the first use
+ *   unless the customer asked for it — see the mute button — and it never fires
+ *   on the first reading of the page, because a count you have not seen yet is
+ *   not news.
  */
 (function () {
   'use strict';
@@ -40,6 +46,11 @@
     subject: '',
     busy: false,
     error: '',
+    // The last unread count we were told about. null means "we have not looked
+    // yet", which is what stops the first poll of a page load from chiming at
+    // whatever was already waiting — the badge is enough there.
+    lastUnread: null,
+    muted: readMuted(),
     // Placeholders only, replaced by the real numbers from the server on every
     // loadList(). They deliberately OVER-state the limit: the effective ceiling
     // depends on the host's upload_max_filesize, and a fallback that guessed low
@@ -48,7 +59,57 @@
     limits: { max_attachments: 3, max_attachment_bytes: 5 * 1024 * 1024, max_attachment_label: '' }
   };
 
+  /** The customer's chime preference, remembered across pages. */
+  function readMuted() {
+    try { return window.localStorage.getItem('utiligo_support_muted') === '1'; }
+    catch (e) { return false; }   // private mode, or storage disabled
+  }
+
+  function writeMuted(muted) {
+    try { window.localStorage.setItem('utiligo_support_muted', muted ? '1' : '0'); }
+    catch (e) { /* remembering is a nicety, not a requirement */ }
+  }
+
+  var audioCtx = null;
+
   function csrf() { return document.body.dataset.csrf || ''; }
+
+  /**
+   * A soft two-note chime, SYNTHESISED rather than fetched.
+   *
+   * No asset to ship, no extra request on a page that is already loading, and
+   * nothing that can 404 on a host that serves static files through a different
+   * path. Two sines a fifth apart with a fast exponential decay sound like a small
+   * bell; anything richer is a ringtone.
+   *
+   * The AudioContext is created lazily, and only ever from a call that follows a
+   * user gesture, because a context created before any interaction starts
+   * suspended and browsers then refuse to resume it. If it is still suspended the
+   * chime is skipped silently: a missed sound is not worth an error in the console.
+   */
+  function chime() {
+    if (state.muted) return;
+    var Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    try {
+      if (!audioCtx) audioCtx = new Ctx();
+      if (audioCtx.state === 'suspended') audioCtx.resume();
+
+      var t0 = audioCtx.currentTime;
+      [[1046.5, 0], [1568, 0.075]].forEach(function (note) {
+        var osc  = audioCtx.createOscillator();
+        var gain = audioCtx.createGain();
+        osc.type = 'sine';
+        osc.frequency.value = note[0];
+        gain.gain.setValueAtTime(0.0001, t0 + note[1]);
+        gain.gain.exponentialRampToValueAtTime(0.07, t0 + note[1] + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + note[1] + 0.42);
+        osc.connect(gain).connect(audioCtx.destination);
+        osc.start(t0 + note[1]);
+        osc.stop(t0 + note[1] + 0.45);
+      });
+    } catch (e) { /* never let a nicety break the panel */ }
+  }
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -124,6 +185,7 @@
     +     '<div class="sp-sub" id="sp-sub">Usually a reply within a day</div>'
     +   '</div>'
     +   '<div class="sp-actions">'
+    +     '<button type="button" class="sp-icon-btn" id="sp-mute" aria-label="Reply sound" aria-pressed="true" title="Mute the reply sound"><i class="fa-solid fa-volume-high"></i></button>'
     +     '<button type="button" class="sp-icon-btn" id="sp-new" title="New request"><i class="fa-solid fa-plus"></i></button>'
     +     '<button type="button" class="sp-icon-btn" id="sp-back" title="Back to list" hidden><i class="fa-solid fa-arrow-left"></i></button>'
     +     '<button type="button" class="sp-icon-btn" id="sp-close" title="Close"><i class="fa-solid fa-xmark"></i></button>'
@@ -140,7 +202,9 @@
   var $sub  = panel.querySelector('#sp-sub');
   var $new  = panel.querySelector('#sp-new');
   var $back = panel.querySelector('#sp-back');
+  var $mute = panel.querySelector('#sp-mute');
   var $badge = launcher.querySelector('.sp-unread');
+  var closeTimer = 0;
 
   /* ── Badge ───────────────────────────────────────────────────────────────── */
 
@@ -154,9 +218,44 @@
     }
   }
 
+  /**
+   * The unread count went up while the page was open — someone answered.
+   *
+   * Fires at most twice per animation, and only on a RISE: reading a ticket drops
+   * the count and must stay silent, and the first count of a page load is not
+   * news, it is context.
+   */
+  function ping() {
+    chime();
+    launcher.classList.remove('is-pinged');
+    void launcher.offsetWidth;          // restart the animation if it just ran
+    launcher.classList.add('is-pinged');
+    launcher.addEventListener('animationend', function done() {
+      launcher.classList.remove('is-pinged');
+      launcher.removeEventListener('animationend', done);
+    });
+  }
+
+  /** Record an unread count: badge always, sound only on a rise. */
+  function noteUnread(n) {
+    n = Number(n) || 0;
+    var grew = state.lastUnread !== null && n > state.lastUnread;
+    state.lastUnread = n;
+    setBadge(n);
+    if (grew) ping();
+    return grew;
+  }
+
+  /**
+   * Poll for a reply. Runs on a timer and after every action that could change the
+   * count, which is why it is the single place the badge is updated from.
+   */
   function refreshUnread() {
     call('unread').then(function (r) {
-      if (r && r.success) setBadge(r.unread);
+      if (!r || !r.success) return;
+      // If something arrived and the customer is looking at the list, redraw it:
+      // otherwise the row keeps saying "1 message" while the badge says 2.
+      if (noteUnread(r.unread) && state.open && state.view === 'list') loadList();
     }).catch(function () { /* a badge is not worth surfacing a failure for */ });
   }
 
@@ -495,7 +594,7 @@
       if (r.max_attachments) state.limits.max_attachments = r.max_attachments;
       if (r.max_attachment_bytes) state.limits.max_attachment_bytes = r.max_attachment_bytes;
       if (r.max_attachment_label) state.limits.max_attachment_label = r.max_attachment_label;
-      setBadge(r.unread);
+      noteUnread(r.unread);
       render();
     }).catch(function () {
       state.busy = false;
@@ -523,7 +622,11 @@
 
   function open() {
     state.open = true;
+    window.clearTimeout(closeTimer);
     panel.hidden = false;
+    // One frame between unhiding and adding the class, or the browser coalesces
+    // both into a single style pass and the panel simply appears — no transition.
+    requestAnimationFrame(function () { panel.classList.add('is-open'); });
     launcher.setAttribute('aria-expanded', 'true');
     if (state.view === 'list') loadList();
     else render();
@@ -533,10 +636,42 @@
 
   function close() {
     state.open = false;
-    panel.hidden = true;
+    panel.classList.remove('is-open');
     launcher.setAttribute('aria-expanded', 'false');
     launcher.focus();
+    // The panel stays in the DOM until the closing transition has run, then goes
+    // [hidden] so it leaves the tab order and the accessibility tree. A timer
+    // rather than transitionend, because a reduced-motion user gets no transition
+    // at all and transitionend would then never fire. The guard means a reopen
+    // during the 180ms wins the race.
+    window.clearTimeout(closeTimer);
+    closeTimer = window.setTimeout(function () {
+      if (!state.open) panel.hidden = true;
+    }, 200);
   }
+
+  /* ── Mute ────────────────────────────────────────────────────────────────── */
+
+  // A toggle button, so the label stays fixed ("Reply sound") and aria-pressed
+  // carries the state: pressed means the sound is ON. The title names the action
+  // instead, because "Mute" is what a mouse user is looking for.
+  function paintMute() {
+    $mute.classList.toggle('is-on', !state.muted);
+    $mute.setAttribute('aria-pressed', String(!state.muted));
+    $mute.title = state.muted ? 'Unmute the reply sound' : 'Mute the reply sound';
+    $mute.innerHTML = '<i class="fa-solid ' + (state.muted ? 'fa-volume-xmark' : 'fa-volume-high') + '"></i>';
+  }
+  paintMute();
+
+  $mute.addEventListener('click', function () {
+    state.muted = !state.muted;
+    writeMuted(state.muted);
+    paintMute();
+    // Turning it back ON should demonstrate itself rather than leave the customer
+    // wondering whether the setting took, and this click is the gesture the
+    // AudioContext needs anyway.
+    if (!state.muted) chime();
+  });
 
   launcher.addEventListener('click', function () { state.open ? close() : open(); });
   panel.querySelector('#sp-close').addEventListener('click', close);
@@ -559,5 +694,19 @@
   });
 
   refreshUnread();
-  setInterval(refreshUnread, 60000);
+
+  /*
+   * How a reply arrives without a reload. Two rules keep it cheap: nothing is
+   * asked while the tab is hidden — there is nobody to chime at, and a dashboard
+   * left open in a background tab has no business holding a timer against the API
+   * for every visitor — and coming back to the tab checks immediately, so the
+   * common case (switch away, come back) does not wait out the interval.
+   */
+  var POLL_MS = 45000;
+  setInterval(function () {
+    if (document.visibilityState === 'visible') refreshUnread();
+  }, POLL_MS);
+  document.addEventListener('visibilitychange', function () {
+    if (document.visibilityState === 'visible') refreshUnread();
+  });
 }());

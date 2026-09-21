@@ -1,17 +1,19 @@
-<?php http_response_code(404); ?>
-<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="icon" type="image/svg+xml" href="/assets/images/icon.svg">
-<link rel="apple-touch-icon" href="/assets/images/apple-touch-icon.png">
-<link rel="mask-icon" href="/assets/images/logo-mark.svg" color="#020817">
-<title>Page Not Found — Utiligo</title>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
-<style><?php include __DIR__ . '/error_styles.css.php'; ?></style>
-</head><body>
-<div class="wrap">
-  <div class="code">404</div>
-  <h1>Page Not Found</h1>
-  <p>The page you’re looking for doesn’t exist or has been moved.</p>
-  <a href="/" class="btn">Go Home</a>
-  <a href="javascript:history.back()" class="btn ghost">Go Back</a>
-</div>
-</body></html>
+<?php
+/**
+ * errors/404.php — the errors/ directory's 404.
+ *
+ * Kept as a thin shell over errors/error_page.php so there is exactly one place
+ * the treatment lives. It used to pull in errors/error_styles.css.php, a second
+ * stylesheet whose palette had already drifted from the rest of the product.
+ */
+require_once __DIR__ . '/../config.php';
+require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/functions.php';
+
+http_response_code(404);
+$pageTitle  = '404 — Page Not Found — Utiligo';
+$_err_code  = '404';
+$_err_title = 'This page doesn’t exist';
+$_err_desc  = 'The page you’re looking for may have been moved, deleted, or you might have typed the URL wrong.';
+
+require_once __DIR__ . '/error_page.php';

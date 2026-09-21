@@ -25,9 +25,12 @@ $_initials = strtoupper(substr($_name, 0, 1));
 $_path     = parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH);
 $_is_admin = !empty($_user['is_admin']);
 
-$_logo_path = __DIR__ . '/../assets/images/logo.svg';
-$_logo_url  = '/assets/images/logo.svg';
-$_has_logo  = file_exists($_logo_path);
+// Inline wordmark: see includes/brand.php — a logo file cannot follow the theme.
+require_once __DIR__ . '/brand.php';
+// The design layer, before the <html> tag below — glass_attr() is written there
+// and a require that ran after it would be a fatal on every portal page.
+require_once __DIR__ . '/appearance.php';
+$_has_logo = brand_logo_exists();
 
 $_plan_label = $_is_ent ? 'Entrepreneur' : ($_is_pro ? 'Pro' : 'Free');
 
@@ -40,7 +43,8 @@ if (!function_exists('_nav_active')) {
 }
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<?php /* The refraction filters for this page: see includes/glass.php. */ ?>
+<html lang="en" <?= glass_attr() ?>>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -69,23 +73,27 @@ if (can_use_call_scripts($_plan)): ?>
 <link rel="stylesheet" href="<?= asset_url('/assets/css/onboarding.css') ?>">
 <?php endif; ?>
 <style>
-  /* ── Nav ── */
-  .nav-link { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; font-size:.875rem; font-weight:500; color:#94a3b8; transition:all .15s; white-space:nowrap; }
-  .nav-link:hover  { background:rgba(255,255,255,.06); color:#fff; }
-  .nav-link.active { background:rgba(255,255,255,.1); color:#ffffff; }
-  .nav-link.active i { color:#ffffff; }
-  .nav-link i { width:16px; text-align:center; font-size:.85rem; color:#64748b; transition:color .15s; }
-  .nav-link:hover i { color:#e2e8f0; }
-  .nav-link.admin-link { color:#a78bfa; }
-  .nav-link.admin-link i { color:#a78bfa; }
-  .nav-link.admin-link:hover { background:rgba(139,92,246,.12); color:#c4b5fd; }
+  /* ── Nav ──
+     Bound to the theme tokens rather than to literals: the active row is the
+     accent, and everything else is ink. The admin entry used to be violet, on
+     the theory that a different section needs a different colour — it does
+     not, it needs a different icon, which it already has. */
+  .nav-link { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--r-ctl,10px); font-size:.875rem; font-weight:500; color:var(--ink-3); transition:background-color .2s var(--ease), color .2s var(--ease); white-space:nowrap; }
+  .nav-link:hover  { background:var(--fill-2); color:var(--ink); }
+  .nav-link.active { background:var(--accent-soft); color:var(--accent); }
+  .nav-link.active i { color:var(--accent); }
+  .nav-link i { width:16px; text-align:center; font-size:.85rem; color:var(--ink-4); transition:color .2s var(--ease); }
+  .nav-link:hover i { color:var(--ink-2); }
+  .nav-link.admin-link { color:var(--ink-3); }
+  .nav-link.admin-link i { color:var(--ink-4); }
+  .nav-link.admin-link:hover { background:var(--fill-2); color:var(--ink); }
   #sidebar { transition: transform .25s cubic-bezier(.4,0,.2,1); }
   @media (max-width: 1023px) {
     #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); }
     #sidebar.open { transform:translateX(0); }
   }
-  #sidebar::before { content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%); width:200px; height:200px; background:radial-gradient(circle,rgba(255,255,255,.03) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
-  ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+  #sidebar::before { content:''; position:absolute; top:30%; left:50%; transform:translate(-50%,-50%); width:200px; height:200px; background:radial-gradient(circle,var(--accent-a05, rgba(127,227,168,.05)) 0%,transparent 70%); border-radius:50%; pointer-events:none; }
+  ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--fill-3); border-radius:2px; }
 
   /* ── Portal Page Transition Loader ── */
   #utl-loader {
@@ -97,7 +105,7 @@ if (can_use_call_scripts($_plan)): ?>
     align-items: center;
     justify-content: center;
     gap: 18px;
-    background: #020817;
+    background: var(--canvas, var(--canvas));
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.18s ease;
@@ -110,22 +118,24 @@ if (can_use_call_scripts($_plan)): ?>
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 2px;
-    background: rgba(255,255,255,0.05);
+    background: var(--fill-2);
   }
-  #utl-progress-bar {
+  /* The loading bar and spinner are a hairline and a ring, not a coloured
+     gradient with a glow. They appear on every navigation, so they are the last
+     place to spend colour — a green comet on every page load is decoration, and
+     it competes with whatever the page is actually saying. */  #utl-progress-bar {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #10b981, #34d399);
-    border-radius: 0 2px 2px 0;
-    box-shadow: 0 0 12px #10b98166;
-    transition: width 0.38s cubic-bezier(0.4,0,0.2,1);
+    background: var(--accent, #7fe3a8);
+    border-radius: 0;
+    transition: width 0.38s cubic-bezier(0.4, 0, 0.2, 1);
   }
   .utl-ring {
     width: 34px;
     height: 34px;
     border-radius: 50%;
-    border: 2.5px solid rgba(255,255,255,0.07);
-    border-top-color: #10b981;
+    border: 2.5px solid var(--hair);
+    border-top-color: var(--accent, #7fe3a8);
     animation: utl-spin 0.65s linear infinite;
   }
   @keyframes utl-spin { to { transform: rotate(360deg); } }
@@ -134,7 +144,7 @@ if (can_use_call_scripts($_plan)): ?>
     font-weight: 700;
     letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: rgba(255,255,255,0.2);
+    color: var(--ink-4);
   }
   /* Removed the utl-fadein animation that started at opacity:0 —
      it caused the entire page content to be invisible if page-ready
@@ -160,18 +170,36 @@ if (can_use_call_scripts($_plan)): ?>
          report what is broken is a customer who leaves, and the least we can do
          for them is listen. Loaded from this one layout for the same reason the
          dock is — it has to be on the page you are already on.
-         The script is `defer`red so it never blocks the page. */ ?>
+         The script is `defer`red so it never blocks the page.
+         Space Grotesk is the bubble's own face (see support.css): it is already
+         this project's display font for the public site's headings, so the panel
+         reads as a distinct surface instead of more of the dashboard's Inter.
+         Two weights, display=swap: the panel is secondary, and a webfont must
+         never be the reason a page's text is invisible. */ ?>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="<?= asset_url('/assets/css/support.css') ?>">
 <script>
   window.UTILIGO_SUPPORT = { api: '/api/support.php' };
 </script>
 <script defer src="<?= asset_url('/assets/js/support.js') ?>"></script>
+<?php /* The design layer, last in <head> for the same reason as on the public
+         site: it has to outrank style.css, Tailwind's CDN output and this
+         page's own <style>. See includes/header.php for the full note, and
+         theme.css for why the palette lives in one file. */ ?>
+<?php require_once __DIR__ . '/appearance.php'; ?>
+<?= appearance_bootstrap() ?>
+<link rel="stylesheet" href="<?= asset_url('/assets/css/theme.css') ?>">
+<script defer src="<?= asset_url('/assets/js/ui-theme.js') ?>"></script>
 </head>
 <body class="antialiased bg-slate-950 text-white"
       data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>"
       <?= function_exists('plan_info_data_attr') ? plan_info_data_attr() : '' ?>
       data-ob-plan="<?= htmlspecialchars((string)($_SESSION['purchase_animation_plan'] ?? ''), ENT_QUOTES, 'UTF-8') ?>"
       data-ob-name="<?= htmlspecialchars(trim((string)($_user['full_name'] ?? '')), ENT_QUOTES, 'UTF-8') ?>">
+
+<?= glass_defs() ?>
 
 <!-- Transition Loader Overlay -->
 <div id="utl-loader" role="status" aria-label="Loading">
@@ -188,7 +216,7 @@ if (can_use_call_scripts($_plan)): ?>
   <div class="px-5 py-5 border-b border-white/5 shrink-0">
     <a href="/" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-8 w-auto">
+        <?= brand_logo('h-8 w-auto') ?>
       <?php else: ?>
         <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0">
           <i class="fa-solid fa-bolt text-black text-sm"></i>
@@ -228,22 +256,23 @@ if (can_use_call_scripts($_plan)): ?>
     </div>
   </nav>
 
-  <!-- Plan badge -->
+  <!-- Plan badge. Told apart by weight and border, not by hue: this card used to
+       carry a coloured pill, and a sidebar is no place for a second palette. -->
   <?php if (!$_is_paid): ?>
-  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8 shrink-0">
+  <div class="mx-3 mb-3 p-3.5 rounded-xl bg-white/[.03] border border-white/10 shrink-0">
     <p class="text-xs font-bold text-white mb-0.5">Free Plan</p>
-    <p class="text-xs text-slate-400 mb-3">Unlock more leads &amp; sites</p>
+    <p class="text-[11px] text-slate-500 mb-3">Unlock more leads &amp; sites</p>
     <a href="/portal/billing?upgrade=1"
-       class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
+       class="utl-btn utl-btn--primary utl-btn--sm w-full">
       <i class="fa-solid fa-crown mr-1"></i> Upgrade Plan
     </a>
   </div>
   <?php elseif ($_is_pro): ?>
-  <div class="mx-3 mb-3 p-3 rounded-2xl bg-white/5 border border-white/8 shrink-0">
+  <div class="mx-3 mb-3 p-3.5 rounded-xl bg-white/[.03] border border-white/10 shrink-0">
     <p class="text-xs font-bold text-white mb-0.5">Pro Plan</p>
-    <p class="text-xs text-slate-400 mb-3">Unlock unlimited leads &amp; <?= (int)(defined('ENT_SITE_LIMIT') ? ENT_SITE_LIMIT : 500) ?> sites</p>
+    <p class="text-[11px] text-slate-500 mb-3">Unlock unlimited leads &amp; <?= (int)(defined('ENT_SITE_LIMIT') ? ENT_SITE_LIMIT : 500) ?> sites</p>
     <a href="/portal/billing?plan=entrepreneur"
-       class="block w-full text-center bg-white hover:bg-slate-200 text-black py-2 rounded-xl text-xs font-bold transition">
+       class="utl-btn utl-btn--ghost utl-btn--sm w-full">
       <i class="fa-solid fa-rocket mr-1"></i> Go Entrepreneur
     </a>
   </div>
@@ -251,7 +280,7 @@ if (can_use_call_scripts($_plan)): ?>
 
   <!-- User footer (always visible at bottom; never compressed) -->
   <div class="px-4 py-4 border-t border-white/5 flex items-center gap-3 shrink-0">
-    <div class="w-8 h-8 rounded-full bg-white/10 border border-white/20 flex items-center justify-center shrink-0 text-sm font-bold text-white">
+    <div class="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center shrink-0 text-sm font-bold text-white">
       <?= $_initials ?>
     </div>
     <div class="flex-1 min-w-0">
@@ -272,7 +301,7 @@ if (can_use_call_scripts($_plan)): ?>
   </button>
   <a href="/" class="flex items-center gap-2">
     <?php if ($_has_logo): ?>
-      <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-7 w-auto">
+      <?= brand_logo('h-7 w-auto') ?>
     <?php else: ?>
       <div class="w-6 h-6 rounded-md bg-white flex items-center justify-center">
         <i class="fa-solid fa-bolt text-black text-xs"></i>

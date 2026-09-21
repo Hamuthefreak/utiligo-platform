@@ -1,0 +1,1490 @@
+/* =====================================================================
+   theme.css — the one design layer.
+
+   Loaded LAST in every <head> (after style.css, after each page's own
+   <style>, after Tailwind's CDN tag) so it can settle arguments between
+   them instead of adding a fourth opinion. Delete this file and the two
+   <link> lines that load it and the site falls back to exactly what it
+   was before — which is the point of keeping the whole overhaul in here
+   rather than sprinkled through 12,000 lines of markup.
+
+   What it is not: a reset, a framework, or a place for page-specific
+   rules. It sets the canvas, the ink, the one accent, the radius scale,
+   the motion, and then neutralises the palette classes the markup is
+   already wearing (emerald, purple, indigo, blue…) so that a page written
+   last year sits on the same palette as one written today.
+
+   WHY SO MANY !important
+   ---------------------
+   Tailwind's play CDN injects its stylesheet at runtime, into <head>, as
+   the last thing there — so it lands *after* this file in document order
+   and wins every specificity tie. Overriding a Tailwind utility from a
+   stylesheet is therefore not a matter of taste; without !important the
+   rule silently does nothing. This is the same reason style.css already
+   uses !important for its overrides, and it is why the accents live in one
+   file instead of being chased through the markup.
+   ===================================================================== */
+
+:root {
+  /* ── Surfaces ─────────────────────────────────────────────────────
+     A near-black with a blue cast rather than pure #000 or Tailwind's
+     slate-950 (#020617): at this size a true black crushes the shadows
+     that make a card feel lifted, and a neutral grey reads as unlit.
+     Panels step up from the canvas rather than gaining a border. */
+  --canvas:      #0a0f1e;
+  --panel:       #0f1526;
+  --panel-2:     #141c31;
+
+  /* ── Ink ──────────────────────────────────────────────────────────
+     Off-white, never #fff, for body copy: pure white on a dark canvas
+     vibrates at this weight. The pure white is kept for the few places
+     it is the point — the logo, a headline, the number you are reading. */
+  /* The steps are set by the CONTRAST they land on, not by eye: each one clears
+     4.5:1 against the canvas, because the last step is what an 11px meta label is
+     drawn in and 11px at 2.4:1 is decoration, not text. (Measured, and asserted in
+     tests/cases/test_theme.php.) */
+  --ink:         #e9edf5;
+  --ink-2:       rgba(233,237,245,.72);
+  --ink-3:       rgba(233,237,245,.55);
+  --ink-4:       rgba(233,237,245,.42);
+  --pure:        #ffffff;
+
+  /* ── Edges & fill ─────────────────────────────────────────────────
+     Hairlines, not outlines. A card is defined by being a slightly
+     lighter rectangle with a soft shadow under it; the hairline only
+     catches the light along its top edge. */
+  --hair:        rgba(255,255,255,.10);
+  --hair-2:      rgba(255,255,255,.16);
+
+  /* The fill scale: one primitive — "how much lighter than the surface is this
+     thing" — in four steps. It exists because the stylesheets used to spell it as
+     `rgba(255,255,255,.0X)` literals, which has nothing to invert when the canvas
+     turns white; all four peripheral sheets were rewritten onto these. A hover is
+     now one step above a rest state in every theme. */
+  --fill-1:      rgba(255,255,255,.035);
+  --fill-2:      rgba(255,255,255,.07);
+  --fill-3:      rgba(255,255,255,.12);
+  --fill-4:      rgba(255,255,255,.18);
+  --glass:       var(--fill-2);
+  --glass-2:     var(--fill-3);
+
+  /* Surfaces as RGB triplets for the places that need a *transparent* version of
+     one: the sticky nav (glass over scrolling content), a hover row. Written with
+     a literal on the line above wherever it is used, for engines that predate the
+     `rgb(… / …)` slash form. */
+  --canvas-rgb:  10 15 30;
+  --panel-rgb:   15 21 38;
+
+  /* The card face and the hairline of light along its top edge. Both are tokens
+     because a white card needs neither a white fill nor a white sheen. */
+  --card-top:    rgba(255,255,255,.055);
+  --card-bot:    rgba(255,255,255,.028);
+  --sheen:       rgba(255,255,255,.16);
+
+  /* The two drifting colour fields behind everything. Kept as tokens so the light
+     theme can make them faint enough to sit under black text. */
+  --aurora-a:    var(--accent-a08, rgba(127,227,168,.07));
+  --aurora-b:    rgba(96,142,255,.07);
+  --aurora-c:    var(--accent-a05, rgba(127,227,168,.05));
+
+  /* How much glass. Graphite is the one theme that leans on it, so it is a token. */
+  --blur-card:   16px;
+  --blur-nav:    18px;
+  --saturate:    120%;
+
+  /* ── The material ─────────────────────────────────────────────────
+     Liquid glass, expressed as numbers rather than as a class, because the
+     same material has to be quieter on one of the three themes and louder on
+     another — and because every value here is also what a person is choosing
+     when they pick a theme.
+
+     The recipe is four layers and all four matter (see .utl-glass below for
+     where each one is painted):
+
+       BODY       a strong backdrop blur — 20px or more — that is LIT rather
+                  than merely smeared. `saturate` and `brightness` are the
+                  difference between glass and a grey sheet: real glass passes
+                  colour through slightly richer than it found it, and a blur
+                  with no brightness boost renders as flat grey at exactly the
+                  moment it sits over something dark. This is also the cheap
+                  half of "adaptive clarity" — a material that brightens what
+                  it finds keeps its own text legible over dark content and
+                  white content alike, without a per-element measurement.
+
+       RIM        a 1px luminous edge, brighter toward the light source and
+                  fading to nothing at the far side. Never a flat stroke: a
+                  uniform 1px border is what makes an element read as a
+                  rectangle with a line around it.
+
+       SPECULAR   a wide, soft band of light that travels across the surface.
+                  This is the single cue that separates liquid glass from plain
+                  glassmorphism — it is why the material reads as a *surface*
+                  and not as a translucent colour, and it is the one thing an
+                  eye that has seen the real thing looks for.
+
+       REFRACTION the warp. Painted by an SVG filter (includes/glass.php),
+                  switched on per page with data-glass="refract".
+
+     Everything is a token, so a theme changes the material by restating six
+     lines rather than by re-declaring the whole surface. */
+  --glass-fill:    rgba(255,255,255,.075);
+  --glass-rim:     rgba(255,255,255,.20);
+  --glass-rim-dim: rgba(255,255,255,.045);
+  --glass-blur:    22px;
+  --glass-sat:     160%;
+  --glass-bright:  1.05;
+  --spec-op:       .12;
+  --spec-dur:      13s;
+  --glass-radius:  var(--r-card);
+
+  --lift:        0 1px 0 rgba(255,255,255,.04) inset,
+                 0 24px 60px -32px rgba(0,0,0,.85),
+                 0 2px 8px -4px rgba(0,0,0,.5);
+
+  /* ── The one accent ───────────────────────────────────────────────
+     Light green, used for exactly three things: a primary action, the
+     state that is currently active, and the thing the pointer is over.
+     Anywhere else it would stop meaning "do this" and start meaning
+     "this was coloured in". */
+  --accent:      #7fe3a8;
+  --accent-hi:   #a2f3c4;
+  --accent-ink:  #04150c;
+
+  /* The accent as a triplet, which is what lets the accent tint something other
+     than a flat fill — a shadow, a range track, the drifting background. This is
+     the line that makes "choose your accent" mean the whole UI moves and not just
+     the buttons: every one of the alphas below is computed from this triplet, and
+     the stylesheets were rewritten to use them instead of a green literal.
+
+     The stops are the alphas the product actually needs, named after themselves,
+     so nothing has to be invented at the point of use. */
+  --accent-rgb:  127 227 168;
+  --accent-a05:  rgb(var(--accent-rgb) / 5%);
+  --accent-a08:  rgb(var(--accent-rgb) / 8%);
+  --accent-a12:  rgb(var(--accent-rgb) / 12%);
+  --accent-a22:  rgb(var(--accent-rgb) / 22%);
+  --accent-a28:  rgb(var(--accent-rgb) / 28%);
+  --accent-a34:  rgb(var(--accent-rgb) / 34%);
+  --accent-a45:  rgb(var(--accent-rgb) / 45%);
+  --accent-soft: var(--accent-a12);
+  --accent-line: var(--accent-a34);
+  --accent-glow: var(--accent-a28);
+
+  /* Semantics that must survive: an error is still red, a warning still
+     amber. Both are desaturated toward the canvas so they read as part
+     of the palette rather than as stickers on top of it. */
+  --danger:      #e88f8f;
+  --danger-soft: rgba(232,143,143,.13);
+  --warn:        #d9b98a;
+  --warn-soft:   rgba(217,185,138,.12);
+
+  /* ── Radius ───────────────────────────────────────────────────────
+     Two scales, on purpose. Anything a person clicks or reads sits at
+     10-14px; anything that is a row of data tightens to 5-7px, because
+     a rounded data cell is the fastest way to look like a mockup. */
+  --r-ctl:       10px;
+  --r-card:      14px;
+  --r-data:      6px;
+
+  /* ── Motion ───────────────────────────────────────────────────────
+     One curve. Out-of-the-box `ease` decelerates slowly enough to feel
+     laggy; this one leaves quickly and settles gently, which is what
+     "responsive" actually means to a hand. */
+  --ease:        cubic-bezier(.22,.61,.36,1);
+  --ease-out:    cubic-bezier(.16,1,.3,1);
+  --dur:         200ms;
+  --shadow-lift: 0 18px 40px -22px rgba(0,0,0,.9);
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEMES
+
+   Three, and the block above is the first of them. They are not three
+   skins: each one re-states the SAME token names, which is why the whole
+   product — portal, admin, marketing pages, error pages, the support
+   panel, the call-script dock — follows a single `data-theme` attribute
+   on <html> without one line of page markup knowing about it.
+
+   What is deliberately NOT themeable: the semantic colours. An error is
+   red in all three, because a warning that changes meaning with the
+   wallpaper is not a warning. Their tints are per theme (a red that
+   reads on near-black is a smear on white) but their identity is not.
+
+   Applied from <head>, before first paint — see the inline bootstrap in
+   each layout and assets/js/ui-theme.js.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Midnight (the default; declared on :root above) ─────────────────────
+   Near-black with a blue cast and one light-green accent. Nothing to
+   restate: `:root` IS Midnight, so a browser with no stored preference and
+   no data-theme attribute gets it for free. */
+
+/* ── Graphite — black, white and grey, in glass ──────────────────────────
+   The neutral one. No hue anywhere: pure greys, a brighter hairline, and a lot
+   more blur, so the surfaces read as smoked glass over a lit backdrop rather
+   than as blue-black panels. Its accent is white — a primary button is a white
+   plate with black type, which is the one thing a modern dark interface does
+   with "primary". */
+:root[data-theme="graphite"] {
+  --canvas:      #0b0b0c;
+  --panel:       #151517;
+  --panel-2:     #1e1e21;
+  --canvas-rgb:  11 11 12;
+  --panel-rgb:   21 21 23;
+
+  --ink:         #f2f2f3;
+  --ink-2:       rgba(242,242,243,.76);
+  --ink-3:       rgba(242,242,243,.58);
+  --ink-4:       rgba(242,242,243,.45);
+  --pure:        #ffffff;
+
+  --hair:        rgba(255,255,255,.12);
+  --hair-2:      rgba(255,255,255,.22);
+  --fill-1:      rgba(255,255,255,.04);
+  --fill-2:      rgba(255,255,255,.075);
+  --fill-3:      rgba(255,255,255,.13);
+  --fill-4:      rgba(255,255,255,.20);
+
+  --card-top:    rgba(255,255,255,.07);
+  --card-bot:    rgba(255,255,255,.022);
+  --sheen:       rgba(255,255,255,.24);
+
+  /* The one theme that is about the material rather than the palette. */
+  /* The one theme that is about the material rather than the palette: the most
+     blur in the product, the strongest rim, and the brightest specular, because
+     here the glass is the design. Monochrome means the material cannot lean on
+     a coloured fill to show depth, so depth has to come from light instead. */
+  /* .085 rather than .10: at 30px of blur this fill is the difference between a
+     panel that reads as lit glass and one that reads as a grey rectangle on a
+     black page, and the rim above is doing the definition either way. */
+  --glass-fill:    rgba(255,255,255,.085);
+  --glass-rim:     rgba(255,255,255,.30);
+  --glass-rim-dim: rgba(255,255,255,.06);
+  --glass-blur:    30px;
+  --glass-sat:     190%;
+  --glass-bright:  1.08;
+  --spec-op:       .22;
+  --spec-dur:      9s;
+  --glass-radius:  18px;
+
+  --blur-card:   26px;
+  --blur-nav:    30px;
+  --saturate:    100%;
+
+  --lift:        0 1px 0 rgba(255,255,255,.05) inset,
+                 0 30px 70px -34px rgba(0,0,0,.95),
+                 0 2px 10px -4px rgba(0,0,0,.6);
+
+  --accent:      #ffffff;
+  --accent-hi:   #e8e8ea;
+  --accent-ink:  #0b0b0c;
+  --accent-rgb:  255 255 255;
+
+  /* Grey light rather than coloured light. Two white pools at 2-3% over a neutral
+     canvas read as a lit surface; anything stronger is a gradient. */
+  --aurora-a:    rgba(255,255,255,.035);
+  --aurora-b:    rgba(255,255,255,.018);
+  --aurora-c:    rgba(255,255,255,.025);
+}
+
+/* ── Paper — black on white ──────────────────────────────────────────────
+   Not a dark theme with the values flipped: the surfaces are genuinely white,
+   separation comes from a hairline and a soft shadow instead of a lighter fill,
+   and the "pure" ink is BLACK. That last line is the trick — the markup says
+   `text-white` on every headline and figure in the product, and on this canvas
+   every one of them has to be black or it disappears. */
+:root[data-theme="paper"] {
+  --canvas:      #ffffff;
+  --panel:       #ffffff;
+  --panel-2:     #f5f5f6;
+  --canvas-rgb:  255 255 255;
+  --panel-rgb:   255 255 255;
+
+  /* Inverted AND re-tuned. A translucent black on white loses contrast faster than
+     a translucent white on near-black, so the same four alphas are darker here than
+     they are on Midnight — .36 black on white is 2.2:1, which is where the light
+     theme's 11px labels were before this pass. */
+  --ink:         #0b0b0c;
+  --ink-2:       rgba(11,11,12,.78);
+  --ink-3:       rgba(11,11,12,.66);
+  --ink-4:       rgba(11,11,12,.56);
+  --pure:        #0b0b0c;
+
+  --hair:        rgba(0,0,0,.10);
+  --hair-2:      rgba(0,0,0,.18);
+  --fill-1:      rgba(0,0,0,.028);
+  --fill-2:      rgba(0,0,0,.055);
+  --fill-3:      rgba(0,0,0,.09);
+  --fill-4:      rgba(0,0,0,.14);
+
+  --card-top:    #ffffff;
+  --card-bot:    #fbfbfc;
+  --sheen:       rgba(255,255,255,.95);
+  --lift:        0 1px 2px rgba(0,0,0,.05),
+                 0 20px 44px -28px rgba(0,0,0,.24),
+                 0 1px 3px -1px rgba(0,0,0,.06);
+
+  /* Paper gets the *shape* of the material and almost none of the blur. A
+     translucent white panel over white paper reads as a smudge, so the body is
+     nearly opaque, the rim is a real highlight rather than a hint, and the
+     specular sweep — invisible as white light on white — is left switched off by
+     the theme's own rule further down. This is the one theme where the "glass"
+     is a lit sheet of paper, which is the honest answer for a light theme. */
+  --glass-fill:    rgba(255,255,255,.72);
+  --glass-rim:     rgba(255,255,255,.95);
+  --glass-rim-dim: rgba(0,0,0,.06);
+  --glass-blur:    16px;
+  --glass-sat:     100%;
+  --glass-bright:  1.05;
+  --spec-op:       0;
+  --spec-dur:      16s;
+  --glass-radius:  16px;
+
+  --blur-card:   14px;
+  --blur-nav:    16px;
+  --saturate:    100%;
+
+  /* Barely there. A colour wash that reads as depth on near-black is a stain on
+     white, so the aurora drops to 3-5%. */
+  --aurora-a:    rgb(var(--accent-rgb) / 5%);
+  --aurora-b:    rgba(0,0,0,.02);
+  --aurora-c:    rgb(var(--accent-rgb) / 3%);
+
+  /* Deep enough to read as text on white, which the dark reds are not. */
+  --danger:      #b3261e;
+  --danger-soft: rgba(179,38,30,.08);
+  --warn:        #8a5a00;
+  --warn-soft:   rgba(138,90,0,.09);
+
+  /* The default accent, darkened. The light green that works on near-black is
+     illegible as text and invisible as a hairline here; this is the same hue at
+     the lightness white paper needs. An explicit choice overrides it below. */
+  --accent:      #0f7a45;
+  --accent-hi:   #0b6237;
+  --accent-ink:  #ffffff;
+  --accent-rgb:  15 122 69;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   ACCENTS
+
+   One hue, chosen by the visitor, that reaches everything: the button fill,
+   the active row, the focus ring, the range track, and — through the alpha
+   scale on :root — the shadows and the drifting background. That is why the
+   scale exists at all: "choose an accent" has to mean the UI moves, not just
+   the buttons.
+
+   Each accent is stated twice, because a hue that reads on near-black does not
+   read on white: the dark blocks use a light tint with dark ink, the Paper
+   blocks a deep one with white ink. The `[data-theme="paper"][data-accent=…]`
+   pairs are more specific than either block alone, so order does not matter.
+   ═══════════════════════════════════════════════════════════════════ */
+
+:root[data-accent="green"]  { --accent: #7fe3a8; --accent-hi: #a2f3c4; --accent-ink: #04150c; --accent-rgb: 127 227 168; }
+:root[data-accent="blue"]   { --accent: #6aa6ff; --accent-hi: #93bdff; --accent-ink: #05122b; --accent-rgb: 106 166 255; }
+:root[data-accent="violet"] { --accent: #b39cff; --accent-hi: #c9b8ff; --accent-ink: #140a2e; --accent-rgb: 179 156 255; }
+:root[data-accent="amber"]  { --accent: #f0c674; --accent-hi: #f7d795; --accent-ink: #241804; --accent-rgb: 240 198 116; }
+
+:root[data-theme="paper"][data-accent="green"]  { --accent: #0f7a45; --accent-hi: #0b6237; --accent-ink: #ffffff; --accent-rgb: 15 122 69; }
+:root[data-theme="paper"][data-accent="blue"]   { --accent: #1d5fd6; --accent-hi: #1749a8; --accent-ink: #ffffff; --accent-rgb: 29 95 214; }
+:root[data-theme="paper"][data-accent="violet"] { --accent: #5b3fd0; --accent-hi: #4a33ab; --accent-ink: #ffffff; --accent-rgb: 91 63 208; }
+:root[data-theme="paper"][data-accent="amber"]  { --accent: #8a5a00; --accent-hi: #6f4800; --accent-ink: #ffffff; --accent-rgb: 138 90 0; }
+
+/* Graphite ignores the accent choice, and this is the rule that says so.
+   It is stated last and carries three specificities, so it beats any accent
+   block above. The picker in Settings is hidden when Graphite is selected rather
+   than left there doing nothing — but if a stored accent survives a theme switch,
+   the interface still has to be monochrome, and this is what guarantees it. */
+:root[data-theme="graphite"][data-accent] {
+  --accent:      #ffffff;
+  --accent-hi:   #e8e8ea;
+  --accent-ink:  #0b0b0c;
+  --accent-rgb:  255 255 255;
+}
+
+/* ── Paper: the white-alpha utilities, inverted ─────────────────────────
+   The markup is written for a dark canvas in one specific way: hundreds of
+   `bg-white/5`, `border-white/5` and `hover:bg-white/10` — a white wash at low
+   opacity to lift something off the background. On white paper every one of them
+   is invisible, and the page flattens into a single unbroken sheet.
+
+   Only the LIGHT theme needs this, and it is written here rather than tokenised
+   in the utilities above because the dark values are already correct: adding a
+   token indirection to sixty utilities to serve one theme is how a stylesheet
+   becomes unreadable. The base fills are listed (there are nine brackets forms in
+   the product and they are all below); the hovers are matched by substring,
+   because a `:hover` rule cannot leak into a resting element. */
+:root[data-theme="paper"] .bg-white\/5,
+:root[data-theme="paper"] .bg-white\/8,
+:root[data-theme="paper"] .bg-white\/10,
+:root[data-theme="paper"] .bg-white\/15,
+:root[data-theme="paper"] .bg-white\/20,
+:root[data-theme="paper"] .bg-white\/\[0\.02\],
+:root[data-theme="paper"] .bg-white\/\[\.02\],
+:root[data-theme="paper"] .bg-white\/\[0\.025\],
+:root[data-theme="paper"] .bg-white\/\[\.025\],
+:root[data-theme="paper"] .bg-white\/\[0\.03\],
+:root[data-theme="paper"] .bg-white\/\[\.03\],
+:root[data-theme="paper"] .bg-white\/\[0\.04\],
+:root[data-theme="paper"] .bg-white\/\[\.04\] { background-color: rgba(0,0,0,.035) !important; }
+
+:root[data-theme="paper"] [class*="hover:bg-white/"]:hover { background-color: rgba(0,0,0,.06) !important; }
+
+:root[data-theme="paper"] [class*="border-white/"] { border-color: var(--hair) !important; }
+:root[data-theme="paper"] .border-white        { border-color: var(--pure) !important; }
+:root[data-theme="paper"] [class*="divide-white"] { border-color: var(--hair) !important; }
+:root[data-theme="paper"] [class*="focus:border-white"]:focus { border-color: var(--hair-2) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CANVAS
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* The canvas lives on <html> and <body> is made transparent so the
+   aurora layer (a ::before on body) can paint between the two. A
+   negative z-index child paints behind its own parent's background, so
+   leaving the fill on body would hide the aurora entirely. */
+html {
+  background-color: var(--canvas);
+  scroll-behavior: smooth;
+  scrollbar-gutter: stable;
+}
+/* Two selectors, and the second one is load-bearing: every layout in the
+   product ships <body class="bg-slate-950">, and a class outranks a bare
+   element selector — so `body { background: transparent }` alone still lost
+   to Tailwind's own rule and the canvas was painted *over* the aurora. */
+body, body.bg-slate-950, body.bg-slate-900 {
+  background-color: transparent !important;
+  color: var(--ink);
+  font-feature-settings: "kern" 1, "liga" 1, "cv11" 1;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Two slow-drifting colour fields. Kept at 4-7% so they read as the room
+   being lit from somewhere rather than as a coloured shape on the page:
+   at this opacity you notice the depth and not the colour. `fixed` so
+   they hold still while the page scrolls under them — a background that
+   scrolls with the content immediately looks like a wallpaper. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(46rem 32rem at 18% -6%,  var(--aurora-a), transparent 62%),
+    radial-gradient(40rem 30rem at 88% 8%,   var(--aurora-b), transparent 60%),
+    radial-gradient(52rem 34rem at 62% 104%, var(--aurora-c), transparent 64%);
+  animation: utl-drift 34s var(--ease) infinite alternate;
+}
+@keyframes utl-drift {
+  0%   { transform: translate3d(0,0,0)        scale(1);    }
+  50%  { transform: translate3d(-1.6%,1.4%,0) scale(1.05); }
+  100% { transform: translate3d(1.8%,-1.2%,0) scale(1.02); }
+}
+
+/* ── The wordmark ─────────────────────────────────────────────────────
+   Inline SVG (see includes/brand.php), which is what makes it themeable at all:
+   the ink is `currentColor`, so this one declaration is the difference between
+   the white logo the dark themes want and the black one Paper needs, and its
+   full stop is `var(--accent)`. The alternative — a white PNG/SVG in an <img> —
+   is invisible on the light theme, because a stylesheet cannot reach inside a
+   file. `display:block` also drops the inline-baseline gap under the mark. */
+.brand-logo {
+  display: block;
+  color: var(--pure);
+  flex-shrink: 0;
+}
+
+::selection { background: var(--accent-line); color: var(--ink); }
+
+:focus-visible {
+  outline: 2px solid var(--accent-line);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--fill-3);
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background-clip: content-box;
+}
+::-webkit-scrollbar-thumb:hover { background: var(--fill-4); background-clip: content-box; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   INK — Tailwind's text scale, settled onto the tokens
+   ═══════════════════════════════════════════════════════════════════ */
+
+.text-white           { color: var(--pure) !important; }
+.text-slate-100       { color: var(--ink)  !important; }
+.text-slate-200       { color: var(--ink)  !important; }
+.text-slate-300       { color: var(--ink-2) !important; }
+.text-slate-400       { color: var(--ink-2) !important; }
+.text-slate-500       { color: var(--ink-3) !important; }
+.text-slate-600       { color: var(--ink-4) !important; }
+.text-slate-700       { color: var(--ink-4) !important; }
+.placeholder\:text-slate-500::placeholder { color: var(--ink-3) !important; }
+
+/* Surfaces. slate-900/950 are the two "panel behind the canvas" steps. */
+.bg-slate-950          { background-color: var(--canvas) !important; }
+.bg-slate-950\/80      { background-color: rgba(10,15,30,.78) !important; background-color: rgb(var(--canvas-rgb) / 78%) !important; }
+.bg-slate-950\/90      { background-color: rgba(10,15,30,.90) !important; background-color: rgb(var(--canvas-rgb) / 90%) !important; }
+.bg-slate-900          { background-color: var(--panel) !important; }
+.bg-slate-900\/60      { background-color: rgba(15,21,38,.60) !important; background-color: rgb(var(--panel-rgb) / 60%) !important; }
+.bg-slate-900\/95      { background-color: rgba(15,21,38,.92) !important; background-color: rgb(var(--panel-rgb) / 92%) !important; }
+.bg-slate-800          { background-color: var(--panel-2) !important; }
+.bg-slate-700          { background-color: rgba(255,255,255,.14) !important; color: var(--ink) !important; }
+
+.border-slate-700      { border-color: var(--hair) !important; }
+.border-slate-800      { border-color: var(--hair) !important; }
+.divide-slate-700\/50 > :not([hidden]) ~ :not([hidden]) { border-color: var(--hair) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   THE ACCENT, and the retirement of the rest of the wheel
+
+   Every coloured utility class in the codebase is answered here, in one
+   place, so no page can quietly reintroduce a second palette. Ordered by
+   what the colour was trying to say:
+
+     emerald / green / teal   "positive, or the primary action"  → accent
+     purple / indigo / blue   decoration, and the single loudest
+                              "a generator made this" tell       → neutral
+     amber / yellow           a real warning, kept but muted    → warn
+     red / rose / orange      an error or a destructive action   → danger
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── emerald / green / teal → the accent ─────────────────────────── */
+.bg-emerald-500, .bg-emerald-400, .bg-green-500, .bg-green-400, .bg-teal-500 {
+  background-color: var(--accent) !important; color: var(--accent-ink) !important;
+}
+.hover\:bg-emerald-500:hover, .hover\:bg-emerald-400:hover,
+.hover\:bg-green-500:hover,   .hover\:bg-green-400:hover {
+  background-color: var(--accent-hi) !important; color: var(--accent-ink) !important;
+}
+.bg-emerald-500\/8,  .bg-emerald-500\/10, .bg-emerald-500\/15, .bg-emerald-500\/20,
+.bg-emerald-500\/25, .bg-emerald-400\/10, .bg-green-500\/10,   .bg-green-500\/15,
+.bg-teal-500\/10 {
+  background-color: var(--accent-soft) !important;
+}
+.text-emerald-400, .text-emerald-300, .text-emerald-500,
+.text-green-400,   .text-green-300,   .text-teal-400 {
+  color: var(--accent) !important;
+}
+.hover\:text-emerald-400:hover, .hover\:text-emerald-300:hover,
+.hover\:text-green-400:hover   { color: var(--accent-hi) !important; }
+.border-emerald-500\/20, .border-emerald-500\/25, .border-emerald-500\/30,
+.border-emerald-400,     .border-emerald-400\/30, .border-green-500\/15,
+.border-green-500\/20,   .border-emerald-500 {
+  border-color: var(--accent-line) !important;
+}
+.focus\:border-emerald-500:focus { border-color: var(--accent-line) !important; }
+.shadow-emerald-500\/20          { --tw-shadow-color: var(--accent-glow) !important; }
+
+/* The shades this family is actually written with that a grep turns up and the
+   list above missed. Kept apart from the group so the group stays the readable
+   summary and these stay an appendix you can verify against the markup. */
+.bg-green-500\/5, .bg-green-500\/25, .bg-emerald-500\/30, .bg-emerald-400\/15,
+.bg-teal-500\/15, .bg-teal-500\/20                { background-color: var(--accent-soft) !important; }
+.hover\:bg-emerald-500\/25:hover, .hover\:bg-green-500\/25:hover,
+.hover\:bg-teal-500\/25:hover,    .hover\:bg-emerald-400\/20:hover
+                                                  { background-color: var(--accent-a22, rgba(127,227,168,.22)) !important; }
+.border-emerald-500\/15, .border-emerald-400\/60, .border-green-500\/30,
+.border-teal-500\/30                              { border-color: var(--accent-line) !important; }
+.hover\:border-emerald-500\/40:hover, .hover\:border-emerald-400:hover
+                                                  { border-color: var(--accent-line) !important; }
+
+/* ── purple / indigo / blue / violet → neutral ───────────────────── */
+.bg-purple-600, .bg-purple-500, .bg-indigo-600, .bg-indigo-500,
+.bg-blue-600,   .bg-blue-500,   .bg-violet-600, .bg-violet-500 {
+  background-color: var(--glass-2) !important; color: var(--ink) !important;
+}
+.hover\:bg-purple-600:hover, .hover\:bg-purple-500:hover,
+.hover\:bg-indigo-600:hover, .hover\:bg-blue-600:hover {
+  background-color: rgba(255,255,255,.16) !important; color: var(--pure) !important;
+}
+.bg-purple-500\/10, .bg-purple-500\/15, .bg-purple-500\/20,
+.bg-indigo-500\/10, .bg-indigo-500\/15, .bg-blue-500\/10,
+.bg-blue-500\/15,   .bg-violet-500\/10, .bg-violet-500\/15 {
+  background-color: var(--glass) !important;
+}
+.text-purple-400, .text-purple-300, .text-purple-500,
+.text-indigo-300, .text-indigo-400, .text-blue-400,
+.text-violet-400, .text-cyan-400 {
+  color: var(--ink-2) !important;
+}
+.hover\:text-purple-300:hover, .hover\:text-indigo-300:hover,
+.hover\:text-blue-400:hover    { color: var(--ink) !important; }
+.border-purple-500\/20, .border-purple-500\/30, .border-purple-500,
+.border-indigo-400\/15, .border-blue-500\/20,   .border-blue-500\/30,
+.border-indigo-500\/20  { border-color: var(--hair) !important; }
+.focus\:border-indigo-500:focus, .focus\:border-blue-500:focus { border-color: var(--accent-line) !important; }
+.from-indigo-500\/15 { --tw-gradient-from: rgba(255,255,255,.05) !important; }
+.via-indigo-500\/15  { --tw-gradient-via:  rgba(255,255,255,.03) !important; }
+.to-indigo-500\/15   { --tw-gradient-to:   rgba(255,255,255,0)   !important; }
+
+/* ── …and the catch-all that stops the list growing ────────────────────
+   The enumeration above names the shades the markup uses today, and it will
+   always be one shade behind: `bg-purple-500/25` and `text-blue-300` are both
+   in the product right now and neither was in the list. Rather than play
+   whack-a-mole with a hundred Tailwind shades, these three substring selectors
+   retire the whole family at once — violet, purple, indigo, blue, cyan, sky,
+   pink and fuchsia have no informational meaning anywhere in this product.
+
+   Restricted to those hues ON PURPOSE. amber and red are semantics (a warning,
+   a destructive action) and emerald is the accent, so all three stay explicitly
+   listed above rather than swept up here — a machine that silently recolours
+   an error message is worse than a stray purple badge.
+
+   Direction matters, so it is three rules and not one: an element can wear a
+   background and a text colour from the family at the same time, and map to a
+   different token on each. */
+[class*="text-purple-"],   [class*="text-indigo-"],  [class*="text-violet-"],
+[class*="text-blue-"],     [class*="text-cyan-"],    [class*="text-sky-"],
+[class*="text-pink-"],     [class*="text-fuchsia-"] { color: var(--ink-2) !important; }
+
+[class*="bg-purple-"],     [class*="bg-indigo-"],    [class*="bg-violet-"],
+[class*="bg-blue-"],       [class*="bg-cyan-"],      [class*="bg-sky-"],
+[class*="bg-pink-"],       [class*="bg-fuchsia-"]   { background-color: var(--glass) !important; }
+
+[class*="border-purple-"], [class*="border-indigo-"], [class*="border-violet-"],
+[class*="border-blue-"],   [class*="border-cyan-"],   [class*="border-sky-"],
+[class*="border-pink-"],   [class*="border-fuchsia-"] { border-color: var(--hair) !important; }
+
+/* …and their hover states, which would otherwise be dead. A `hover:bg-purple-500/25`
+   button is caught by the background rule above and gets the same fill whether or
+   not the pointer is over it, because Tailwind's `:hover` utility only wins on
+   specificity and these caught it first. These three rules put the hover back: a
+   hairline that firms up, and a fill that lifts one step. */
+[class*="hover:bg-purple-"]:hover,  [class*="hover:bg-indigo-"]:hover,
+[class*="hover:bg-violet-"]:hover,  [class*="hover:bg-blue-"]:hover,
+[class*="hover:bg-cyan-"]:hover,    [class*="hover:bg-sky-"]:hover,
+[class*="hover:bg-pink-"]:hover,    [class*="hover:bg-fuchsia-"]:hover
+  { background-color: rgba(255,255,255,.14) !important; }
+
+[class*="hover:text-purple-"]:hover, [class*="hover:text-indigo-"]:hover,
+[class*="hover:text-violet-"]:hover, [class*="hover:text-blue-"]:hover,
+[class*="hover:text-cyan-"]:hover,   [class*="hover:text-sky-"]:hover
+  { color: var(--pure) !important; }
+
+[class*="hover:border-purple-"]:hover, [class*="hover:border-indigo-"]:hover,
+[class*="hover:border-blue-"]:hover,   [class*="hover:border-violet-"]:hover
+  { border-color: var(--hair-2) !important; }
+
+/* ── amber / yellow → a muted warning ────────────────────────────── */
+.bg-amber-500\/8, .bg-amber-500\/10, .bg-amber-500\/15, .bg-amber-500\/18,
+.bg-amber-500\/20, .bg-amber-500\/25, .bg-yellow-500\/10 {
+  background-color: var(--warn-soft) !important;
+}
+.bg-amber-500, .bg-amber-400 {
+  background-color: var(--warn) !important; color: #1b1408 !important;
+}
+.text-amber-400, .text-amber-300, .text-amber-400\/80,
+.text-amber-500\/70, .text-yellow-400 { color: var(--warn) !important; }
+.hover\:text-amber-300:hover { color: var(--warn) !important; }
+.text-amber-300\/80, .text-amber-200 { color: var(--warn) !important; }
+.bg-yellow-400, .bg-yellow-500          { background-color: var(--warn) !important; color: #1b1408 !important; }
+.hover\:bg-amber-500\/25:hover, .hover\:bg-yellow-500\/25:hover
+  { background-color: rgba(217,185,138,.22) !important; }
+.border-yellow-500\/20, .border-yellow-500\/25 { border-color: rgba(217,185,138,.28) !important; }
+.border-amber-500\/18, .border-amber-500\/20, .border-amber-500\/25,
+.border-amber-400\/30, .border-amber-500\/30 { border-color: rgba(217,185,138,.28) !important; }
+
+/* ── red / rose / orange → a muted danger ────────────────────────── */
+.bg-red-500, .bg-red-600, .bg-red-400, .bg-rose-500, .bg-orange-500 {
+  background-color: var(--danger) !important; color: #1c0d0d !important;
+}
+.hover\:bg-red-500:hover, .hover\:bg-red-600:hover, .hover\:bg-rose-500:hover {
+  background-color: #f0a5a5 !important; color: #1c0d0d !important;
+}
+.bg-red-500\/10, .bg-red-500\/15, .bg-red-500\/20, .bg-red-500\/25,
+.bg-red-400\/10, .bg-rose-500\/10, .bg-red-500\/30 {
+  background-color: var(--danger-soft) !important;
+}
+.text-red-400, .text-red-300, .text-red-500, .text-red-400\/80, .text-rose-400 {
+  color: var(--danger) !important;
+}
+.hover\:text-red-400:hover, .hover\:text-red-300:hover { color: #f2acac !important; }
+.border-red-500\/20, .border-red-500\/30, .border-red-400\/20,
+.border-red-400\/30, .border-red-500\/40 { border-color: rgba(232,143,143,.28) !important; }
+.focus\:border-red-500:focus { border-color: rgba(232,143,143,.5) !important; }
+.bg-red-500\/8, .bg-red-500\/3, .bg-red-600\/15, .bg-red-900\/30,
+.bg-rose-500\/15, .bg-red-400\/15            { background-color: var(--danger-soft) !important; }
+.hover\:bg-red-500\/10:hover, .hover\:bg-red-500\/15:hover,
+.hover\:bg-red-500\/20:hover,  .hover\:bg-red-500\/25:hover,
+.hover\:bg-red-600\/40:hover                 { background-color: rgba(232,143,143,.20) !important; }
+.border-red-500\/15, .border-red-400\/60, .border-red-500\/50
+                                             { border-color: rgba(232,143,143,.28) !important; }
+.text-red-400\/70, .text-red-400\/60, .text-red-500\/80
+                                             { color: var(--danger) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RADIUS — the scale, and the pill that had to go
+   ═══════════════════════════════════════════════════════════════════ */
+
+.rounded-xl  { border-radius: 12px !important; }
+.rounded-2xl { border-radius: var(--r-card) !important; }
+.rounded-3xl { border-radius: 16px !important; }
+.rounded-lg  { border-radius: var(--r-ctl) !important; }
+
+/* A pill-shaped CONTROL is a rounded rectangle pretending to be a
+   lozenge, and it is one of the loudest "template" signals on a dark UI.
+   Squares to the control radius. Decorations keep their circle — an
+   avatar or a status dot really is round. */
+button.rounded-full, a.rounded-full, input.rounded-full,
+select.rounded-full, textarea.rounded-full,
+.rounded-full.bg-emerald-500, .rounded-full.bg-emerald-400,
+.rounded-full.bg-white, .rounded-full.bg-red-500, .rounded-full.bg-red-600 {
+  border-radius: var(--r-ctl) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   GLASS, ELEVATION, AND THE THINGS THAT ARE CARDS
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── THE MATERIAL ───────────────────────────────────────────────────────
+   One surface, painted in four layers, so that anything in the product can
+   become glass by wearing one class:
+
+     .glass / .utl-card   a panel, a card, a sheet          (refracted)
+     .utl-glass--sm       a chip, a launcher, a small control (light warp)
+     .utl-glass--float    something that sits ABOVE content — the nav, an
+                          open sheet, a popover. Depth is expressed by z-order
+                          and shadow, never by a heavier border.
+
+   Paint order, and why:
+
+     1. background  the fill — a vertical gradient, so the top of the surface
+                    catches a little more light than the bottom. Real glass is
+                    never evenly lit.
+     2. ::before    the SPECULAR band. Travels across the surface on a slow
+                    ambient loop and accelerates under the pointer.
+     3. ::after     the RIM — a 1px gradient ring, bright toward whatever the
+                    surface is reflecting and fading to nothing at the far side.
+     4. backdrop    the BODY — blur, saturation, brightness, and the SVG
+        -filter    displacement when the page opted in (includes/glass.php).
+
+   WHY THERE IS NO BORDER. A 1px stroke of one uniform colour is the single
+   clearest tell of a flat mockup: it says "rectangle" at every point around the
+   shape. The rim is a gradient instead, so the edge is brightest where a real
+   pane would catch the light and disappears where it would not — which is also
+   what lets a panel be defined by elevation rather than by an outline. Border
+   *width* is kept at 1px (and the colour made transparent) so that a panel's
+   box does not move by a pixel when this stylesheet loads.
+
+   WHY ::before AND ::after RATHER THAN A WRAPPER. These classes are worn by 79
+   elements in the product and every one of them is markup this file does not
+   own; adding a wrapper div to each would be a rewrite of the whole product to
+   change a surface. The two pseudo-elements were already in use on .utl-card —
+   this repurposes them rather than competing with them. */
+
+.utl-card,
+.glass,
+.utl-glass {
+  position: relative;
+  isolation: isolate;
+  /* The rim replaces the stroke. Width (not border) is kept, so the box is
+     unchanged and the utility classes that set a border still control spacing. */
+  /* The shape: one continuous radius, from the scale, and it is part of the
+     material rather than a utility — a glass droplet that is a rectangle with
+     rounded corners is a rounded rectangle, and the difference between the two
+     is doing it in one place for every surface at once. Markup that asks for a
+     tighter radius (a data card, a chip) still wins with its own utility. */
+  border-radius: var(--glass-radius);
+  border-color: transparent !important;
+  background-color: var(--glass-fill) !important;
+  background-image: linear-gradient(180deg, var(--card-top), var(--card-bot)) !important;
+  box-shadow: var(--lift), inset 0 1px 0 var(--sheen);
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  transition: transform 240ms var(--ease),
+              border-radius 340ms var(--ease-out),
+              box-shadow 240ms var(--ease),
+              background-color 240ms var(--ease);
+}
+
+/* The rim. `padding: 1px` with a content-box mask leaves exactly the ring, which
+   is how a gradient border is painted without a second element, and
+   `mask-composite: exclude` is what makes the ring hollow. The radial layer is
+   the pointer's own highlight: --mx/--my are written by ui-theme.js as the
+   pointer crosses the surface, so the edge lights up under your hand and the
+   panel genuinely "leans into the light" instead of merely changing colour. */
+.utl-card::after,
+.glass::after,
+.utl-glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background:
+    radial-gradient(circle 220px at var(--mx, 50%) var(--my, 0%), var(--glass-rim), transparent 72%),
+    linear-gradient(152deg, var(--glass-rim), transparent 42%, transparent 60%, var(--glass-rim-dim));
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  opacity: 1;
+  transition: opacity 300ms var(--ease);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* The specular band. A wide diagonal smear of light that spends most of its
+   cycle off the surface: the pause is what makes it read as a reflection
+   crossing at intervals rather than as a shimmer that never stops — a highlight
+   that is always on is not a highlight, it is a gradient. */
+.utl-card::before,
+.glass::before,
+.utl-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(112deg,
+    transparent 30%,
+    rgba(255,255,255,var(--spec-op)) 45%,
+    rgba(255,255,255,calc(var(--spec-op) * .55)) 53%,
+    transparent 68%);
+  background-size: 240% 100%;
+  background-position: 135% 0;
+  opacity: 0;
+  animation: utl-spec var(--spec-dur) var(--ease-in-out, ease) infinite;
+  z-index: 2;
+}
+@keyframes utl-spec {
+  0%   { background-position: 135% 0; opacity: 0; }
+  9%   { opacity: 1; }
+  40%  { background-position: -35% 0; opacity: 1; }
+  54%  { opacity: 0; }
+  100% { background-position: 135% 0; opacity: 0; }
+}
+
+/* Pointed at, the material gets thicker and the light crosses faster — the two
+   cues together are what makes it feel like a surface responding rather than a
+   style toggling. The shape also stretches: the radius opens a couple of pixels,
+   which reads as the drop relaxing under your hand. */
+.utl-card:hover,
+.glass:hover,
+.utl-glass:hover { --spec-dur: 3.2s; }
+.utl-glass--float:hover,
+.utl-glass.is-pressable:hover {
+  transform: translateY(-2px) scale(1.002);
+  border-radius: calc(var(--glass-radius) + 3px);
+  box-shadow: var(--lift), 0 26px 60px -34px var(--accent-glow), inset 0 1px 0 var(--sheen);
+}
+
+/* A sheet or a bar sits in its own order of depth; nothing else in the product
+   is allowed to sit on top of it. */
+.utl-glass--float { z-index: 40; }
+.utl-glass--sm {
+  --glass-blur: 14px;
+  --glass-radius: var(--r-ctl);
+  --spec-op: .10;
+}
+
+/* The displacement filter is a full-surface resample, and it is the one part of
+   the material a phone GPU notices, so the warp is desktop-only. Everything that
+   makes it glass — the blur, the fill, the rim, the travelling light — is still
+   there on a phone; only the bend is not. */
+/* ── THE WARP ─────────────────────────────────────────────────────────────
+   The refraction layer: the backdrop is displaced by the SVG noise field, which
+   is what bends what is behind the panel instead of merely blurring it. It is
+   hung off the `data-glass` attribute rather than an @supports() test, and that
+   is not laziness — it is the only version that works.
+
+   WHAT WAS TRIED FIRST, AND WHY IT IS NOT HERE. The obvious gate is
+   `@supports (backdrop-filter: url(#utl-refract))`. Chromium reports that as
+   SUPPORTED from CSS.supports() and SKIPS THE BLOCK ANYWAY: the JS check and the
+   at-rule disagree, so the rule was in the stylesheet, parsed, and never applied —
+   the warp silently did nothing in the one engine most customers use. Verified in
+   the browser, not in the spec.
+
+   The attribute is the honest gate, and it is the one includes/glass.php already
+   guarantees: a page that emitted the filters says so on <html>, and a page that
+   did not (a generated customer site, a mail template, a shell that has not been
+   updated yet) never references a filter that is not there. An engine that cannot
+   parse url() in a backdrop-filter drops this declaration on its own and keeps the
+   glass from the base rule above, because a dropped declaration never enters the
+   cascade — no @supports needed, and no flat grey rectangle if it is dropped.
+
+   The prefixed line is declared too and is simply dropped on engines that do not
+   take url() there; it is kept because Safari's grammar differs and costs one
+   line. */
+:root[data-glass="refract"] :is(.glass, .utl-card, .utl-glass, .sp-panel) {
+  backdrop-filter: url(#utl-refract) blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  -webkit-backdrop-filter: url(#utl-refract) blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+}
+/* A small surface gets the small field: half the displacement, because an 18px
+   bend across a 26px chip is a rendering bug rather than thick glass. */
+:root[data-glass="refract"] :is(.utl-glass--sm, .sp-launcher) {
+  backdrop-filter: url(#utl-refract-sm) blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+}
+/* Phones skip the warp: a full-surface resample per glass element is the one part
+   of this the hardware notices, and a phone already pays for the blur.
+
+   The test is the POINTER, not the width. `max-width: 780px` was the first
+   version and it was wrong in both directions: a desktop window dragged narrow
+   lost the material that its GPU renders for free, and a 1024px tablet kept a
+   filter it should not have been asked to run. A coarse pointer is a touch
+   device, which is what the guard was actually about; the width is kept beside it
+   only for the small window on a device that reports a stylus as its primary
+   pointer. */
+@media (pointer: coarse), (max-width: 640px) {
+  :root[data-glass="refract"] :is(.glass, .utl-card, .utl-glass, .sp-launcher) {
+    backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+    -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  }
+}
+
+/* Glass inside glass is a blur of a blur: it doubles the cost of the most
+   expensive thing on the page and adds nothing visible, because a blur under
+   another blur is a smear. An inner surface is a lighter fill instead. */
+:is(.glass, .utl-card, .utl-glass) :is(.glass, .utl-card, .utl-glass) {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background-color: var(--fill-1) !important;
+  box-shadow: none;
+}
+
+/* Some people cannot read through translucency, and every platform has a switch
+   for it. Declining to honour it is not a design decision. */
+@media (prefers-reduced-transparency: reduce) {
+  :is(.glass, .utl-card, .utl-glass) {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+    background-color: var(--panel) !important;
+    background-image: none !important;
+  }
+}
+
+/* The recommended pricing card. Its rim is warm and its shadow reaches further,
+   which is the entire difference between it and the two beside it — no second
+   fill, no badge in another colour, no scale bump. */
+.utl-card.is-recommended {
+  box-shadow: var(--lift), 0 30px 70px -40px var(--accent-glow);
+}
+.utl-card.is-recommended::after {
+  background:
+    radial-gradient(circle 240px at var(--mx, 50%) var(--my, 0%), var(--accent-line), transparent 72%),
+    linear-gradient(152deg, var(--accent-line), transparent 44%, transparent 62%, var(--glass-rim-dim));
+}
+
+/* Markup that used a stronger border to say "this one is emphasised" — an admin
+   reply against a customer message, a selected row — keeps the emphasis, moved
+   from the stroke to the rim. The substring match is on the two-step-up border
+   utilities only (border-white/20 and up), so a plain panel is unaffected. */
+:is(.glass, .utl-card)[class*="border-white/2"]::after,
+:is(.glass, .utl-card)[class*="border-emerald-"]::after {
+  background:
+    radial-gradient(circle 240px at var(--mx, 50%) var(--my, 0%), var(--accent-line), transparent 74%),
+    linear-gradient(152deg, var(--glass-rim), transparent 42%, transparent 58%, var(--glass-rim-dim));
+}
+
+/* Hover on anything that is a link-card: it lifts, its shape relaxes and its
+   rim warms toward the accent. Both channels move together, which is what makes
+   a hover feel deliberate rather than flickery — and the rim is warm rather than
+   the whole panel, because the accent is for "the thing the pointer is over"
+   and lighting the entire surface for that would make it the loudest element in
+   the viewport instead of the most specific one. */
+.utl-lift {
+  transition: transform var(--dur) var(--ease),
+              border-radius 320ms var(--ease-out),
+              box-shadow var(--dur) var(--ease),
+              background-color var(--dur) var(--ease);
+  will-change: transform;
+}
+.utl-lift:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--lift), 0 22px 50px -30px var(--accent-glow);
+}
+/* `[class]` counts it too, so a card that is a bare div is lit the same way as
+   one that is an <a>. */
+.utl-lift:hover::after,
+.utl-lift[class]:hover::after {
+  background:
+    radial-gradient(circle 240px at var(--mx, 50%) var(--my, 0%), var(--accent-line), transparent 74%),
+    linear-gradient(152deg, var(--accent-line), transparent 44%, transparent 62%, var(--glass-rim-dim));
+}
+
+/* Data cards: tighter corners, no lift, no glow. A row of numbers is
+   read at a glance and reward a crisp rectangle, not a bouncy one. */
+.utl-data,
+.dash-card,
+.qa-btn,
+.stat-card,
+.kpi {
+  border-radius: var(--r-data) !important;
+  /* A data card tightens its own corners on the material too, so a card that
+     wears both classes does not end up with a droplet radius on a table. */
+  --glass-radius: var(--r-data);
+}
+.dash-card, .stat-card {
+  background: var(--fill-1) !important;
+  border: 1px solid var(--hair) !important;
+  box-shadow: none;
+}
+.utl-data-grid :is(th, td) { border-radius: 0; }
+
+/* Plan tags and small status chips: ink and a hairline, never a hue —
+   there are three plans and none of them is "the green one". */
+.utl-tag {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: .6rem; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
+  padding: 3px 8px; border-radius: 5px;
+  border: 1px solid var(--hair-2); color: var(--ink-2);
+  background: rgba(255,255,255,.03);
+}
+.utl-tag.is-accent { border-color: var(--accent-line); color: var(--accent); background: var(--accent-soft); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   THE THEME SWITCHER (the compact one; see appearance_switcher_html)
+
+   A small piece of glass in the footer that changes the material it is made
+   of, which is the one control in the product where the thing being changed is
+   also the thing you are touching. It is deliberately shown to visitors: the
+   choice lives in localStorage, it needs no account, and someone deciding
+   whether to sign up is exactly who benefits from seeing all three.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.utl-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  font-size: .72rem;
+  color: var(--ink-2);
+}
+.utl-switch__label {
+  font-size: .6rem; font-weight: 700; letter-spacing: .16em; text-transform: uppercase;
+  color: var(--ink-4);
+}
+.utl-switch__row { display: inline-flex; align-items: center; gap: 3px; }
+.utl-switch__opt {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 8px 4px 6px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink-3);
+  font: inherit; font-size: .72rem; font-weight: 600;
+  cursor: pointer;
+  transition: color 160ms var(--ease), background-color 160ms var(--ease), border-color 160ms var(--ease);
+}
+.utl-switch__opt:hover { color: var(--ink); background: var(--fill-2); }
+.utl-switch__opt[aria-checked="true"] { color: var(--ink); border-color: var(--hair-2); background: var(--fill-2); }
+.utl-switch__opt[aria-checked="true"] .utl-switch__chip { box-shadow: 0 0 0 2px var(--canvas), 0 0 0 3px var(--accent); }
+.utl-switch__opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Three colours in a 14px square, cut on the diagonal. The only honest preview of
+   a theme that fits in this box. */
+.utl-switch__chip {
+  width: 14px; height: 14px; border-radius: 4px; flex: none;
+  box-shadow: inset 0 0 0 1px var(--hair-2);
+  transition: box-shadow 160ms var(--ease);
+}
+.utl-switch__name { white-space: nowrap; }
+.utl-switch__row--accent { gap: 5px; padding-left: 8px; border-left: 1px solid var(--hair); margin-left: 2px; }
+.utl-switch__dot {
+  width: 16px; height: 16px; padding: 0; border-radius: 50%;
+  border: 0; cursor: pointer;
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.3);
+  transition: transform 160ms var(--ease), box-shadow 160ms var(--ease);
+}
+.utl-switch__dot:hover { transform: scale(1.15); }
+.utl-switch__dot[aria-checked="true"] { box-shadow: inset 0 0 0 1px rgba(0,0,0,.3), 0 0 0 2px var(--canvas), 0 0 0 3px var(--accent); }
+.utl-switch__dot:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Under Graphite the accent is not a setting — the theme is monochrome by
+   construction (theme.css enforces it with its own rule). Switched off rather
+   than hidden, so the row does not reflow when it comes back, and marked
+   aria-disabled by ui-theme.js so a screen reader hears why. */
+.utl-switch__dot[aria-disabled="true"] { opacity: .35; pointer-events: none; }
+.utl-switch__reset {
+  margin-left: 2px; padding: 4px 5px;
+  border: 0; background: transparent; color: var(--ink-4);
+  font-size: .68rem; cursor: pointer; border-radius: 6px;
+  transition: color 160ms var(--ease), background-color 160ms var(--ease);
+}
+.utl-switch__reset:hover { color: var(--ink); background: var(--fill-2); }
+.utl-switch__reset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  /* The names go, the colours stay: three words in this row is the difference
+     between a footer that fits a phone and one that wraps to four lines. */
+  .utl-switch__name { display: none; }
+  .utl-switch__opt { padding: 4px 6px; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   TYPE
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Two families, and that is the budget: Space Grotesk for anything
+   oversized or structural, Inter for everything you read. Headlines are
+   tight and heavy; body is lighter with room to breathe. The contrast
+   between the two is what carries the page, not more decoration. */
+h1, h2, h3, .utl-display { font-family: 'Space Grotesk', 'Inter', system-ui, sans-serif; }
+h1, h2 { letter-spacing: -.025em; }
+h3 { letter-spacing: -.012em; }
+
+.utl-display {
+  font-weight: 800;
+  line-height: 1.02;
+  letter-spacing: -.035em;
+  font-size: clamp(2.4rem, 6.2vw, 4.6rem);
+}
+.utl-h2 {
+  font-weight: 700;
+  line-height: 1.1;
+  letter-spacing: -.03em;
+  font-size: clamp(1.85rem, 3.6vw, 2.9rem);
+}
+.utl-lede { color: var(--ink-2); line-height: 1.65; font-size: 1.0625rem; }
+.utl-body { color: var(--ink-2); line-height: 1.7; }
+
+/* The eyebrow: small caps with a rule in front of it. It gives a section
+   a spine, and unlike a coloured badge it costs no colour at all. */
+.utl-eyebrow {
+  display: inline-flex; align-items: center; gap: 10px;
+  font-size: .68rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase;
+  color: var(--ink-3);
+}
+.utl-eyebrow::before {
+  content: ''; width: 26px; height: 1px; background: var(--hair-2); flex: none;
+}
+.utl-eyebrow.is-accent { color: var(--accent); }
+.utl-eyebrow.is-accent::before { background: var(--accent-line); }
+
+/* Numbers: tabular so a counting figure does not jitter as digits change
+   width, which is the whole point of animating one. */
+.utl-num, .utl-figure, .kpi-value { font-variant-numeric: tabular-nums; }
+.utl-figure {
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-weight: 800;
+  letter-spacing: -.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.utl-figure.is-accent { color: var(--accent); }
+
+/* A small icon plate. Neutral by default and it warms to the accent only
+   when the card it is in is hovered — the icon is a label, the card is the
+   thing you are pointing at, so the card is what should light up. */
+.utl-icon-tile {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 42px; height: 42px;
+  border-radius: 9px;
+  border: 1px solid var(--hair);
+  background: var(--fill-1);
+  color: var(--ink-2);
+  transition: color var(--dur) var(--ease), border-color var(--dur) var(--ease),
+              background-color var(--dur) var(--ease), transform var(--dur) var(--ease);
+}
+:is(.utl-card, .utl-lift):hover .utl-icon-tile {
+  color: var(--accent);
+  border-color: var(--accent-line);
+  background: var(--accent-soft);
+}
+
+/* The numbered step. A hairline ring with the digit in the display face —
+   a filled bubble would be the loudest thing in a section whose point is the
+   sentence underneath it. */
+.utl-step {
+  display: flex; align-items: center; justify-content: center;
+  width: 46px; height: 46px;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 1px solid var(--hair-2);
+  background: var(--fill-1);
+  font-family: 'Space Grotesk', 'Inter', sans-serif;
+  font-size: 1.05rem; font-weight: 700;
+  color: var(--ink);
+  transition: border-color var(--dur) var(--ease), color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease);
+}
+.utl-step:hover { border-color: var(--accent-line); color: var(--accent); box-shadow: 0 0 0 6px var(--accent-soft); }
+
+/* The hero sits in its own glass panel, over the aurora, with a soft pool of
+   light behind the headline. It is the one place in the product where the
+   background is allowed to be a piece of the design rather than a backdrop. */
+.utl-hero {
+  position: relative;
+  overflow: hidden;
+}
+.utl-hero::before {
+  content: '';
+  position: absolute;
+  top: -18rem; left: 50%;
+  width: 46rem; height: 46rem;
+  transform: translateX(-50%);
+  background: radial-gradient(circle, var(--accent-a08, rgba(127,227,168,.10)) 0%, var(--accent-a05, rgba(127,227,168,.03)) 42%, transparent 70%);
+  pointer-events: none;
+}
+.utl-hero > * { position: relative; }
+
+.utl-rule { height: 1px; background: var(--hair); border: 0; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   CONTROLS
+   ═══════════════════════════════════════════════════════════════════ */
+
+.utl-btn,
+a.utl-btn,
+button.utl-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  padding: 12px 22px;
+  border-radius: var(--r-ctl);
+  font-weight: 600; font-size: .9375rem; line-height: 1;
+  border: 1px solid transparent;
+  text-decoration: none; cursor: pointer;
+  transition: transform var(--dur) var(--ease),
+              background-color var(--dur) var(--ease),
+              border-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease),
+              color var(--dur) var(--ease);
+}
+.utl-btn--primary {
+  background: var(--accent) !important;
+  color: var(--accent-ink) !important;
+  box-shadow: 0 10px 30px -14px var(--accent-glow);
+}
+.utl-btn--primary:hover {
+  background: var(--accent-hi) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 16px 38px -14px var(--accent-glow);
+}
+.utl-btn--primary:active { transform: translateY(0); }
+.utl-btn--ghost {
+  background: var(--glass) !important;
+  border-color: var(--hair-2) !important;
+  color: var(--ink) !important;
+}
+.utl-btn--ghost:hover { background: var(--glass-2) !important; border-color: var(--accent-line) !important; }
+.utl-btn--lg { padding: 16px 30px; font-size: 1rem; }
+.utl-btn--sm { padding: 8px 14px; font-size: .8125rem; }
+
+/* A solid-white button on a dark page is a glare — every one of them lights
+   up at the same intensity as a headline — so the accent takes the job.
+
+   `bg-white hover:bg-slate-200 text-black` is this project's own convention
+   for "this is the primary button": it appears about sixty times and there is
+   not one place where a solid white fill means something else (the other
+   white fills in the markup are logo tiles and switch knobs, which are divs,
+   not controls). So one rule settles all of them, and the next button anyone
+   writes inherits it for free. This is also why the primary button is a
+   *fill* and not an outline: on a near-black canvas, a filled accent is the
+   only element in the viewport that looks pressable from across the room. */
+a.bg-white, button.bg-white, input.bg-white, .bg-white.text-black {
+  background-color: var(--accent) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent) !important;
+  border-radius: var(--r-ctl);
+  transition: background-color var(--dur) var(--ease),
+              box-shadow var(--dur) var(--ease),
+              transform var(--dur) var(--ease);
+}
+a.bg-white:hover, button.bg-white:hover, input.bg-white:hover, .bg-white.text-black:hover {
+  background-color: var(--accent-hi) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent-hi) !important;
+  box-shadow: 0 14px 34px -16px var(--accent-glow);
+  transform: translateY(-1px);
+}
+/* The white-glow shadow Tailwind was asked for on those buttons reads as a
+   smear on this canvas; the accent's own glow is used instead. */
+.shadow-white\/5, .shadow-white\/10 { --tw-shadow-color: transparent !important; }
+
+/* Secondary actions: a hairline and a light fill. `bg-white/10` is the
+   project's convention for those, and it should read as a surface, not as a
+   greyed-out primary. */
+a.bg-white\/10, button.bg-white\/10 {
+  border: 1px solid var(--hair);
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+a.bg-white\/10:hover, button.bg-white\/10:hover { border-color: var(--accent-line); }
+
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]),
+textarea, select {
+  background-color: var(--fill-1) !important;
+  border-color: var(--hair) !important;
+  border-radius: var(--r-ctl);
+  color: var(--ink) !important;
+  transition: border-color var(--dur) var(--ease), background-color var(--dur) var(--ease);
+}
+input:not([type="range"]):focus, textarea:focus, select:focus {
+  border-color: var(--accent-line) !important;
+  background-color: var(--fill-2) !important;
+  outline: none;
+}
+input::placeholder, textarea::placeholder { color: var(--ink-4) !important; }
+select option { background: var(--panel); color: var(--ink); }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   RANGE SLIDERS — the revenue slider is the home page's centrepiece, so
+   the native control is replaced rather than tinted: a hairline track
+   with the accent as the filled portion, and a thumb that grows a ring
+   when you grab it.
+   ═══════════════════════════════════════════════════════════════════ */
+
+.utl-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  background: transparent;
+  cursor: grab;
+}
+.utl-range:active { cursor: grabbing; }
+.utl-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent) var(--pct, 50%), rgba(255,255,255,.10) var(--pct, 50%));
+}
+.utl-range::-moz-range-track { height: 4px; border-radius: 999px; background: rgba(255,255,255,.10); }
+.utl-range::-moz-range-progress { height: 4px; border-radius: 999px; background: var(--accent); }
+.utl-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px; height: 18px; margin-top: -7px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--canvas);
+  box-shadow: 0 0 0 1px var(--accent-line), 0 6px 16px -6px var(--accent-glow);
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+.utl-range:hover::-webkit-slider-thumb,
+.utl-range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 6px var(--accent-soft), 0 8px 20px -6px var(--accent-glow);
+}
+.utl-range::-moz-range-thumb {
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 3px solid var(--canvas);
+  box-shadow: 0 0 0 1px var(--accent-line);
+}
+
+/* The figure pulses when its value changes. One short beat, not a loop:
+   a number that breathes forever is a number you stop believing. */
+.utl-pulse { animation: utl-pulse 620ms var(--ease-out); }
+@keyframes utl-pulse {
+  0%   { transform: scale(1);    text-shadow: 0 0 0 transparent; }
+  32%  { transform: scale(1.035); text-shadow: 0 0 34px var(--accent-glow); }
+  100% { transform: scale(1);    text-shadow: 0 0 0 transparent; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   NAVIGATION
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* The bar is the material in its thinnest form: mostly its own colour, with
+   enough blur that the page scrolling under it clearly passes behind it. Glass
+   is a z-order as much as a texture, so the nav is the one surface that is
+   always at the top of the page's stack. */
+.utl-nav {
+  isolation: isolate;
+  background: rgba(10,15,30,.62) !important;
+  background: rgb(var(--canvas-rgb) / 62%) !important;
+  backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright)) !important;
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright)) !important;
+  border-bottom: 1px solid var(--hair) !important;
+  box-shadow: inset 0 1px 0 var(--sheen);
+  transition: background-color 260ms var(--ease), border-color 260ms var(--ease),
+              box-shadow 260ms var(--ease), padding 260ms var(--ease);
+}
+/* The same travelling highlight as a panel, on the one surface the visitor looks
+   at on every page. Behind the links by paint order (z-index: -1 inside the
+   bar's own stacking context) rather than across them — light on a surface
+   passes under what is printed on it, not over. */
+.utl-nav::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: linear-gradient(104deg,
+    transparent 34%,
+    rgba(255,255,255,calc(var(--spec-op) * .7)) 48%,
+    transparent 62%);
+  background-size: 220% 100%;
+  background-position: 135% 0;
+  opacity: 0;
+  animation: utl-spec var(--spec-dur) var(--ease-in-out, ease) infinite;
+}
+/* Once the page has moved, the bar darkens and grows a shadow so the
+   content sliding under it reads as *under* it. */
+.utl-nav.is-scrolled {
+  background: rgba(10,15,30,.86) !important;
+  background: rgb(var(--canvas-rgb) / 86%) !important;
+  box-shadow: 0 12px 32px -24px rgba(0,0,0,.95);
+}
+.utl-nav-link {
+  position: relative;
+  color: var(--ink-2);
+  transition: color var(--dur) var(--ease);
+}
+.utl-nav-link::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: -7px;
+  height: 1px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 260ms var(--ease-out);
+}
+.utl-nav-link:hover { color: var(--pure); }
+.utl-nav-link:hover::after { transform: scaleX(1); }
+.utl-nav-link.is-current { color: var(--pure); }
+.utl-nav-link.is-current::after { transform: scaleX(1); }
+
+/* ═══════════════════════════════════════════════════════════════════
+   MOTION
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Reveal-on-scroll. The `js-reveal` gate is set by a one-line inline
+   script in <head>, before first paint: without it an element that never
+   gets its observer would stay invisible forever, which is a bug that
+   only shows up on the one visitor whose JS failed. */
+.js-reveal .utl-reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 640ms var(--ease-out), transform 640ms var(--ease-out);
+  transition-delay: var(--d, 0ms);
+}
+.js-reveal .utl-reveal.is-in { opacity: 1; transform: none; }
+/* Children of a staggered group come up in sequence rather than together;
+   ui-theme.js writes the per-child delay into --d when it wires the group. */
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .js-reveal .utl-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+  body::before { animation: none; }
+  .utl-lift:hover, .utl-btn:hover { transform: none; }
+  .utl-pulse { animation: none; }
+  /* The specular stops *off the surface*, not mid-sweep: a band frozen halfway
+     across a panel is a permanent bright smear, which is worse than no motion
+     at all. */
+  .utl-card::before, .glass::before, .utl-glass::before, .utl-nav::after {
+    animation: none !important;
+    opacity: 0 !important;
+  }
+  * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   THEME-BOUND PARTS OF THE PRODUCT
+   Two surfaces that own their own stylesheet are re-bound to the tokens
+   here rather than in their own file, so the canvas is defined once.
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* Page-transition loader (markup + inline style live in the layouts). */
+#utl-loader { background: var(--canvas) !important; }
+#utl-progress-bar { background: var(--accent) !important; box-shadow: 0 0 12px var(--accent-glow) !important; }
+.utl-ring { border-top-color: var(--accent) !important; }
+
+/* Footer social chips and the "Powered by" pill are the last place a
+   stray gravity toward pill shapes creeps back in. */
+footer a.rounded-full, footer .rounded-full { border-radius: var(--r-ctl) !important; }

@@ -48,20 +48,25 @@ require_once __DIR__ . '/../includes/admin_layout.php';
 <!-- Stat cards -->
 <div class="grid grid-cols-2 xl:grid-cols-4 gap-4 mb-8">
   <?php
+  /* Eight counts used to wear five different hues — emerald for Pro, indigo for
+     Entrepreneur, blue for Verified, yellow for New Today, purple for Total Sites
+     — none of which meant anything. A number's colour implied a judgement the
+     page does not make. Every count is ink now; the accent is kept for the one
+     button on the page that does something. */
   $stats = [
     ['Total Users',   $totalUsers,    'fa-users',          'text-white'],
-    ['Pro',           $proUsers,      'fa-star',           'text-emerald-400'],
-    ['Entrepreneur',  $entUsers,      'fa-rocket',         'text-indigo-400'],
-    ['Free',          $freeUsers,     'fa-lock',           'text-slate-400'],
-    ['Verified',      $verifiedUsers, 'fa-circle-check',   'text-blue-400'],
-    ['New Today',     $newToday,      'fa-user-plus',      'text-yellow-400'],
-    ['Total Sites',   $totalSites,    'fa-globe',          'text-purple-400'],
-    ['Active Sites',  $activeSites,   'fa-link',           'text-emerald-300'],
+    ['Pro',           $proUsers,      'fa-star',           'text-white'],
+    ['Entrepreneur',  $entUsers,      'fa-rocket',         'text-white'],
+    ['Free',          $freeUsers,     'fa-lock',           'text-white'],
+    ['Verified',      $verifiedUsers, 'fa-circle-check',   'text-white'],
+    ['New Today',     $newToday,      'fa-user-plus',      'text-white'],
+    ['Total Sites',   $totalSites,    'fa-globe',          'text-white'],
+    ['Active Sites',  $activeSites,   'fa-link',           'text-white'],
   ];
   foreach ($stats as [$label, $val, $icon, $cls]):
   ?>
   <div class="group relative glass rounded-2xl p-5 border border-white/5 overflow-hidden hover:border-white/20 transition-all hover:-translate-y-0.5">
-    <div class="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-white/5 group-hover:bg-white/10 transition-all"></div>
+    <div class="absolute -right-4 -top-4 w-20 h-20 rounded-full bg-white/[.03] transition-all"></div>
     <div class="w-9 h-9 rounded-xl bg-white/10 flex items-center justify-center mb-4">
       <i class="fa-solid <?= $icon ?> text-white text-sm"></i>
     </div>

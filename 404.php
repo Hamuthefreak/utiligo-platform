@@ -1,77 +1,24 @@
 <?php
+/**
+ * 404.php — root-level 404.
+ *
+ * Apache serves this path for many not-found requests, and /notfound/404.php for
+ * the ones that fall through to ErrorDocument. Both render the same page from
+ * errors/error_page.php, so the two can never disagree.
+ */
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
+
 http_response_code(404);
-$pageTitle  = '404 \u2014 Page Not Found \u2014 Utiligo';
+$pageTitle  = '404 — Page Not Found — Utiligo';
 $_err_code  = '404';
-$_err_title = 'This page doesn\u2019t exist';
-$_err_desc  = 'The page you\u2019re looking for may have been moved, deleted, or you might have typed the URL wrong.';
-require_once __DIR__ . '/includes/header.php';
-?>
+$_err_title = 'This page doesn’t exist';
+$_err_desc  = 'The page you’re looking for may have been moved, deleted, or you might have typed the URL wrong.';
 
-<section class="min-h-[80vh] flex items-center justify-center px-6 py-20">
-  <div class="text-center max-w-lg mx-auto">
+$bad = htmlspecialchars(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '');
+if ($bad && $bad !== '/404.php' && $bad !== '/404') {
+    $_err_extra = $bad;
+}
 
-    <!-- Glowing 404 -->
-    <div class="relative inline-block mb-8 select-none">
-      <div class="absolute inset-0 blur-3xl opacity-25 bg-emerald-500 rounded-full scale-150 pointer-events-none"></div>
-      <p class="relative text-[9rem] font-black leading-none tracking-tighter text-transparent bg-clip-text"
-         style="background-image:linear-gradient(135deg,#10b981 0%,#34d399 50%,#6ee7b7 100%);">
-        404
-      </p>
-    </div>
-
-    <h1 class="text-2xl font-bold mb-3">This page doesn&rsquo;t exist</h1>
-    <p class="text-slate-400 mb-2 leading-relaxed">
-      The page you&rsquo;re looking for may have been moved, deleted,
-      or you might have typed the URL wrong.
-    </p>
-    <?php
-      $bad = htmlspecialchars(parse_url($_SERVER['REQUEST_URI'] ?? '', PHP_URL_PATH) ?? '');
-      if ($bad && $bad !== '/404.php' && $bad !== '/404'):
-    ?>
-    <p class="text-xs text-slate-600 font-mono mb-8 break-all"><?= $bad ?></p>
-    <?php else: ?>
-    <p class="mb-8"></p>
-    <?php endif; ?>
-
-    <div class="flex flex-col sm:flex-row gap-3 justify-center">
-      <?php if (function_exists('is_logged_in') && is_logged_in()): ?>
-        <a href="/portal/index.php"
-           class="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-6 py-3 rounded-xl font-bold transition-all hover:scale-105 shadow-lg shadow-emerald-500/20">
-          <i class="fa-solid fa-house"></i> Go to Dashboard
-        </a>
-      <?php else: ?>
-        <a href="/"
-           class="inline-flex items-center justify-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-slate-950 px-6 py-3 rounded-xl font-bold transition-all hover:scale-105 shadow-lg shadow-emerald-500/20">
-          <i class="fa-solid fa-house"></i> Go Home
-        </a>
-      <?php endif; ?>
-      <button onclick="history.back()"
-              class="inline-flex items-center justify-center gap-2 bg-white/8 hover:bg-white/15 text-white px-6 py-3 rounded-xl font-semibold transition">
-        <i class="fa-solid fa-arrow-left"></i> Go Back
-      </button>
-    </div>
-
-    <!-- Suggestion links -->
-    <div class="mt-10 pt-8 border-t border-white/5">
-      <p class="text-xs text-slate-500 uppercase tracking-widest mb-4">Maybe you were looking for</p>
-      <div class="flex flex-wrap gap-2 justify-center">
-        <a href="/" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Home</a>
-        <a href="/login.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Login</a>
-        <a href="/register.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Register</a>
-        <?php if (function_exists('is_logged_in') && is_logged_in()): ?>
-        <a href="/portal/leads.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Find Leads</a>
-        <a href="/portal/generate.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Generate Site</a>
-        <a href="/portal/my_sites.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">My Sites</a>
-        <a href="/portal/settings.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Settings</a>
-        <?php endif; ?>
-        <a href="/contact.php" class="text-xs bg-white/5 hover:bg-white/10 px-3 py-1.5 rounded-full text-slate-400 hover:text-white transition">Contact</a>
-      </div>
-    </div>
-
-  </div>
-</section>
-
-<?php require_once __DIR__ . '/includes/footer.php'; ?>
+require_once __DIR__ . '/errors/error_page.php';

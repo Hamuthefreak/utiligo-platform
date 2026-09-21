@@ -18,9 +18,9 @@ $_plan_labels = [
     'entrepreneur' => 'Entrepreneur — ' . $_ent_price_fmt . '/mo',
 ];
 
-$_logo_path = __DIR__ . '/assets/images/logo.svg';
-$_logo_url  = '/assets/images/logo.svg';
-$_has_logo  = file_exists($_logo_path);
+// Inline wordmark: see includes/brand.php — a logo file cannot follow the theme.
+require_once __DIR__ . '/includes/brand.php';
+$_has_logo = brand_logo_exists();
 
 $error   = '';
 $success = false;
@@ -113,7 +113,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="text-center mb-8">
     <a href="/" class="inline-flex items-center gap-2">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-9 w-auto">
+        <?= brand_logo('h-9 w-auto') ?>
       <?php else: ?>
         <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
           <i class="fa-solid fa-bolt text-black text-base"></i>
@@ -123,13 +123,15 @@ require_once __DIR__ . '/includes/header.php';
     </a>
   </div>
 
+  <?php /* No slate gradient, no blurred white blob behind a circular medal. The
+           panel is a card and the envelope is an icon plate, which is the same
+           treatment every other surface in the product uses. */ ?>
   <div class="glass rounded-2xl border border-white/10 overflow-hidden">
-    <div class="relative h-36 flex items-center justify-center" style="background:linear-gradient(135deg,#0f172a 0%,#1e293b 100%);">
-      <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <div class="w-40 h-40 rounded-full bg-white/5 blur-2xl"></div>
-      </div>
-      <div class="relative z-10 w-20 h-20 rounded-full bg-white/10 border-2 border-white/20 flex items-center justify-center shadow-xl">
-        <i class="fa-solid fa-envelope-open-text text-white text-3xl"></i>
+    <div class="relative h-32 flex items-center justify-center border-b border-white/10"
+         style="background:rgba(255,255,255,.03)">
+      <div class="relative z-10 w-16 h-16 rounded-xl border border-white/15 flex items-center justify-center"
+           style="background:rgba(255,255,255,.05)">
+        <i class="fa-solid fa-envelope-open-text text-white text-2xl"></i>
       </div>
     </div>
 
@@ -191,7 +193,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="text-center mb-8">
     <a href="/" class="inline-flex items-center gap-2 mb-6">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-9 w-auto">
+        <?= brand_logo('h-9 w-auto') ?>
       <?php else: ?>
         <div class="w-9 h-9 rounded-xl bg-white flex items-center justify-center">
           <i class="fa-solid fa-bolt text-black text-base"></i>

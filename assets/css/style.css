@@ -1,24 +1,63 @@
+/* =====================================================================
+   style.css — the shared component layer.
+
+   Everything that used to be decided here is now decided in theme.css
+   (loaded after this file from every layout): the canvas, the ink, the one
+   accent, the radius scale, elevation and motion. What is left here is the
+   handful of components that live in more than one page — the dropzone, the
+   generation progress bar, the template card — plus the browser-level fixes
+   (autofill, native form colours) that have nothing to do with the palette.
+
+   Colours below are read from theme.css's tokens with a literal fallback, so
+   this file still renders correctly on the one surface that loads it without
+   the theme (see the notes on each block). There is exactly ONE accent in the
+   product now — the light green — and it is defined once, in theme.css.
+   ===================================================================== */
+
 body { font-family: 'Inter', system-ui, sans-serif; }
 
-/* ── Black & white accent overrides ── */
-:root {
-  --accent:       #FFFFFF;
-  --accent-dim:   rgba(255,255,255,0.12);
-  --accent-hover: rgba(255,255,255,0.18);
-  --accent-text:  #000000;
-}
+/* ─────────────────────────────────────────────────────────────────────────
+   Radius scale — editorial, not rounded.
 
+   Tailwind's defaults are generous: 12px for a button, 16-24px for a card.
+   Across a dark dashboard, a page of 12/16/24px corners reads as a bubble,
+   which is the single strongest "generated UI" tell there is. theme.css
+   re-declares the scale (and tightens the control radius further, to 10px);
+   these three aliases stay so the older pages that lean on Tailwind's names
+   keep working, and so the scale can still be tuned in one file.
+
+   `rounded-full` is deliberately left alone on decorations (avatars, status
+   dots, progress rings) and squared only where it is a CONTROL — a pill-shaped
+   button is a rounded rectangle pretending to be a lozenge, which is the
+   specific thing to stop doing. !important is required because the Tailwind
+   CDN injects its own stylesheet at runtime, so cascade order against it
+   cannot be relied on.
+   ───────────────────────────────────────────────────────────────────────── */
+.rounded-xl  { border-radius: var(--r-ctl) !important; }
+.rounded-2xl { border-radius: var(--r-card) !important; }
+.rounded-3xl { border-radius: 16px !important; }
+button.rounded-full,
+a.rounded-full,
+input.rounded-full,
+select.rounded-full,
+textarea.rounded-full { border-radius: var(--r-ctl) !important; }
+
+/* ── Glass ──
+   The real definition (fill, blur, hairline, the top highlight) is in
+   theme.css; this keeps the class meaningful for any page that loads style.css
+   without the theme. */
 .glass {
   backdrop-filter: blur(16px);
-  background: rgba(255,255,255,0.04);
-  border: 1px solid rgba(255,255,255,0.08);
+  background: var(--fill-1);
+  border: 1px solid var(--hair-2);
+  border-radius: var(--r-card, 14px);
 }
 
 /* Template cards must NOT blur/tint — their gradient thumbnail needs to show true colour */
 .template-card {
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
-  background: rgba(255,255,255,0.03) !important;
+  background: var(--fill-1) !important;
 }
 .template-card .template-thumb {
   /* ensure gradient shows at full opacity */
@@ -27,54 +66,54 @@ body { font-family: 'Inter', system-ui, sans-serif; }
 }
 
 .dropzone {
-  border: 2px dashed rgba(255,255,255,0.18);
-  border-radius: 12px;
+  border: 2px dashed var(--hair-2);
+  border-radius: var(--r-card, 14px);
   transition: border-color 0.2s;
 }
 .dropzone.dragover {
-  border-color: #ffffff;
-  background: rgba(255,255,255,0.04);
+  border-color: var(--accent, #7fe3a8);
+  background: var(--accent-soft, var(--accent-a08, rgba(127,227,168,0.08)));
 }
-.gen-progress-bar  { height:8px; background:rgba(255,255,255,0.1); border-radius:999px; overflow:hidden; }
-.gen-progress-fill { height:100%; background:#ffffff; transition:width 0.3s ease; }
+.gen-progress-bar  { height:8px; background: var(--fill-3); border-radius:999px; overflow:hidden; }
+.gen-progress-fill { height:100%; background:var(--accent, #7fe3a8); transition:width 0.3s ease; }
 a { transition: color 0.15s; }
 
-input, textarea, select { color:#ffffff; color-scheme:dark; }
-input::placeholder, textarea::placeholder { color:rgba(148,163,184,0.7); }
+input, textarea, select { color: var(--ink, #e9edf5); color-scheme:dark; }
+input::placeholder, textarea::placeholder { color: var(--ink-4, rgba(233,237,245,0.34)); }
 input[type="color"] { padding:2px; background:transparent; }
-select option { background:#0f172a; color:#ffffff; }
+select option { background: var(--panel, #0f1526); color: var(--ink, #e9edf5); }
 input:-webkit-autofill,
 input:-webkit-autofill:hover,
 input:-webkit-autofill:focus,
 textarea:-webkit-autofill,
 select:-webkit-autofill {
-  -webkit-text-fill-color:#ffffff;
-  -webkit-box-shadow:0 0 0px 1000px rgba(30,41,59,0.9) inset;
+  -webkit-text-fill-color: var(--ink, #e9edf5);
+  -webkit-box-shadow: 0 0 0px 1000px rgba(20,28,49,0.9) inset;
   transition:background-color 5000s ease-in-out 0s;
 }
 
-/* ══ Global emerald → white/grey overrides ══ */
-.bg-emerald-500 { background-color:#ffffff !important; color:#000000 !important; }
-.bg-emerald-400 { background-color:#e2e8f0 !important; color:#000000 !important; }
-.hover\:bg-emerald-500:hover { background-color:#ffffff !important; color:#000000 !important; }
-.hover\:bg-emerald-400:hover { background-color:#e2e8f0 !important; color:#000000 !important; }
+/* ══ The accent, and the retirement of a second palette ══════════════════
+   These were written when the product was monochrome and the job was to
+   neutralise emerald to white. The accent is green again, so the job is now
+   to *become* the accent — and theme.css finishes the rest of the wheel
+   (purple, indigo, blue, amber, red) in one place. Kept here as well because
+   a couple of standalone pages load style.css on its own. */
+.bg-emerald-500, .bg-emerald-400 { background-color:var(--accent, #7fe3a8) !important; color:var(--accent-ink, #04150c) !important; }
+.hover\:bg-emerald-500:hover, .hover\:bg-emerald-400:hover { background-color:var(--accent-hi, #a2f3c4) !important; color:var(--accent-ink, #04150c) !important; }
 .bg-emerald-500\/10, .bg-emerald-500\/15,
-.bg-emerald-500\/20, .bg-emerald-500\/25 { background-color:rgba(255,255,255,.07) !important; }
-.text-emerald-400 { color:#e2e8f0 !important; }
-.text-emerald-300 { color:#cbd5e1 !important; }
-.text-emerald-500 { color:#f1f5f9 !important; }
-.border-emerald-500\/20 { border-color:rgba(255,255,255,.15) !important; }
-.border-emerald-500\/25 { border-color:rgba(255,255,255,.18) !important; }
-.border-emerald-500\/30 { border-color:rgba(255,255,255,.22) !important; }
-.focus\:border-emerald-500:focus { border-color:rgba(255,255,255,.5) !important; }
-.shadow-emerald-500\/20 { --tw-shadow-color:rgba(255,255,255,.1) !important; }
-.nav-link.active   { background:rgba(255,255,255,.1) !important; color:#ffffff !important; }
-.nav-link.active i { color:#ffffff !important; }
+.bg-emerald-500\/20, .bg-emerald-500\/25 { background-color:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12))) !important; }
+.text-emerald-400, .text-emerald-300, .text-emerald-500 { color:var(--accent, #7fe3a8) !important; }
+.border-emerald-500\/20 { border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34))) !important; }
+.border-emerald-500\/25,
+.border-emerald-500\/30 { border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34))) !important; }
+.focus\:border-emerald-500:focus { border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34))) !important; }
+.shadow-emerald-500\/20 { --tw-shadow-color: var(--accent-a22, rgba(127,227,168,.24)) !important; }
+
+.nav-link.active   { background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12))) !important; color:var(--accent, #7fe3a8) !important; }
+.nav-link.active i { color:var(--accent, #7fe3a8) !important; }
 #sidebar::before {
-  background: radial-gradient(circle,rgba(255,255,255,.03) 0%,transparent 70%) !important;
+  background: radial-gradient(circle, var(--accent-a05, rgba(127,227,168,.05)) 0%, transparent 70%) !important;
 }
-.bg-emerald-500\/20  { background-color:rgba(255,255,255,.07) !important; }
-.border-emerald-500\/30 { border-color:rgba(255,255,255,.15) !important; }
-.page-tab.active { background:#ffffff !important; color:#000000 !important; }
-.tb-btn:hover  { background:rgba(255,255,255,.15) !important; color:#ffffff !important; }
-.tb-btn.active { background:rgba(255,255,255,.2)  !important; color:#ffffff !important; }
+.page-tab.active { background:var(--accent, #7fe3a8) !important; color:var(--accent-ink, #04150c) !important; }
+.tb-btn:hover  { background: var(--fill-4) !important; color:var(--ink, #e9edf5) !important; }
+.tb-btn.active { background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12))) !important; color:var(--accent, #7fe3a8) !important; }

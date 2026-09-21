@@ -12,12 +12,22 @@ if (!function_exists('asset_url')) {
 
 if (!isset($pageTitle)) { $pageTitle = 'Utiligo — Find Clients. Build Websites. Get Paid.'; }
 $loggedIn = function_exists('is_logged_in') && is_logged_in();
-$_logo_path = __DIR__ . '/../assets/images/logo.svg';
-$_logo_url  = '/assets/images/logo.svg';
-$_has_logo  = file_exists($_logo_path);
+// The wordmark is drawn INTO the page rather than loaded from a file, because a
+// file with its colours baked in cannot follow the theme — a white logo on the
+// light theme is a logo that is not there. See includes/brand.php.
+require_once __DIR__ . '/brand.php';
+// The design layer, loaded here rather than in <head> with the tags it feeds:
+// glass_attr() is called on the <html> line below, and a require that ran after
+// that output would be a fatal on every page in the product.
+require_once __DIR__ . '/appearance.php';
+$_has_logo = brand_logo_exists();
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<?php /* glass_attr() switches the refraction filters on for this page. It is the
+         attribute the stylesheet looks for before it reaches for url(#utl-refract)
+         — see includes/glass.php for why a page that never emitted the filters
+         must not reference them. */ ?>
+<html lang="en" <?= glass_attr() ?>>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -79,7 +89,7 @@ $_seo_ld = array_filter(array_merge([
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700;800&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="<?= asset_url('/assets/css/style.css') ?>">
 <style>
   .logo-wordmark {
@@ -100,7 +110,10 @@ $_seo_ld = array_filter(array_merge([
     align-items: center;
     justify-content: center;
     gap: 20px;
-    background: #020817;
+    /* var() rather than a literal, so the canvas is declared in exactly one
+       place (theme.css) even though this style block loads first — a custom
+       property resolves at computed-value time, not in file order. */
+    background: var(--canvas, var(--canvas));
     opacity: 0;
     pointer-events: none;
     transition: opacity 0.18s ease;
@@ -114,14 +127,13 @@ $_seo_ld = array_filter(array_merge([
     position: absolute;
     top: 0; left: 0;
     width: 100%; height: 2px;
-    background: rgba(255,255,255,0.06);
+    background: var(--fill-2);
   }
   #utl-progress-bar {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, #10b981, #34d399);
+    background: var(--accent, #7fe3a8);
     border-radius: 0 2px 2px 0;
-    box-shadow: 0 0 10px #10b98166;
     transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
   }
 
@@ -129,8 +141,8 @@ $_seo_ld = array_filter(array_merge([
     width: 36px;
     height: 36px;
     border-radius: 50%;
-    border: 2.5px solid rgba(255,255,255,0.08);
-    border-top-color: #10b981;
+    border: 2.5px solid var(--hair);
+    border-top-color: var(--accent, #7fe3a8);
     animation: utl-spin 0.7s linear infinite;
   }
   @keyframes utl-spin {
@@ -142,7 +154,7 @@ $_seo_ld = array_filter(array_merge([
     font-weight: 800;
     font-size: 1.1rem;
     letter-spacing: -0.03em;
-    color: rgba(255,255,255,0.35);
+    color: var(--ink-3);
   }
 
   body.page-ready > *:not(#utl-loader) {
@@ -153,8 +165,30 @@ $_seo_ld = array_filter(array_merge([
     to   { opacity: 1; transform: translateY(0);   }
   }
 </style>
+<?php /* ── The design layer ───────────────────────────────────────────────────
+         theme.css must be the LAST stylesheet in <head>: it settles the
+         palette, radius and motion arguments between style.css, Tailwind's
+         CDN output and each page's own <style>, and it can only do that from
+         the end of the queue. It is also the only thing this overhaul added
+         to the product — remove these three tags and the site is exactly what
+         it was.
+
+         The inline line before it sets the `js-reveal` gate on <html>. It has
+         to run here, during parsing and before the first paint, because the
+         stylesheet uses that class to keep [data-reveal] elements hidden. If
+         it were set by the deferred script instead, a slow connection would
+         paint the hero fully, then blink it out to animating it back in. And
+         if JS never runs at all, the class is simply absent and every section
+         renders in its final state — the failure mode is "no animation",
+         never "no content". */ ?>
+<?php /* Already loaded above, before the <html> tag that glass_attr() writes. */ ?>
+<?= appearance_bootstrap() ?>
+<link rel="stylesheet" href="<?= asset_url('/assets/css/theme.css') ?>">
+<script defer src="<?= asset_url('/assets/js/ui-theme.js') ?>"></script>
 </head>
 <body class="antialiased bg-slate-950 text-white" data-csrf="<?= function_exists('csrf_token') ? csrf_token() : '' ?>" <?= function_exists('plan_info_data_attr') ? plan_info_data_attr() : '' ?>>
+
+<?= glass_defs() ?>
 
 <!-- ─── Transition Loader Overlay ───────────────────────────── -->
 <div id="utl-loader" role="status" aria-label="Loading" aria-live="polite">
@@ -163,29 +197,29 @@ $_seo_ld = array_filter(array_merge([
   <span class="utl-brand">Utiligo</span>
 </div>
 
-<nav class="sticky top-0 z-50 backdrop-blur-lg bg-slate-950/80 border-b border-white/10">
+<nav class="sticky top-0 z-50 utl-nav">
   <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
     <a href="/" class="flex items-center gap-2">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-8 w-auto">
+        <?= brand_logo('h-8 w-auto') ?>
       <?php else: ?>
         <i class="fa-solid fa-bolt text-white text-xl"></i>
       <?php endif; ?>
       <?php if (!$_has_logo): ?><span class="logo-wordmark text-white">Utiligo</span><?php endif; ?>
     </a>
-    <div class="hidden md:flex gap-8 text-sm font-medium text-slate-300">
-      <a href="/#how-it-works" class="hover:text-white">How It Works</a>
-      <a href="/#features"     class="hover:text-white">Features</a>
-      <a href="/#pricing"      class="hover:text-white">Pricing</a>
-      <a href="/#faq"          class="hover:text-white">FAQ</a>
+    <div class="hidden md:flex gap-8 text-sm font-medium">
+      <a href="/#how-it-works" class="utl-nav-link">How It Works</a>
+      <a href="/#features"     class="utl-nav-link">Features</a>
+      <a href="/#pricing"      class="utl-nav-link">Pricing</a>
+      <a href="/#faq"          class="utl-nav-link">FAQ</a>
     </div>
     <div class="flex items-center gap-3">
       <?php if ($loggedIn): ?>
-        <a href="/portal/index.php" class="text-sm font-semibold px-5 py-2 rounded-full bg-white/10 hover:bg-white/20 transition">Dashboard</a>
-        <a href="/logout.php" class="text-sm text-slate-400 hover:text-white">Logout</a>
+        <a href="/portal/index.php" class="utl-btn utl-btn--ghost utl-btn--sm">Dashboard</a>
+        <a href="/logout.php" class="utl-nav-link text-sm">Logout</a>
       <?php else: ?>
-        <a href="/login.php"    class="text-sm text-slate-300 hover:text-white">Log In</a>
-        <a href="/register.php" class="text-sm font-semibold px-5 py-2 rounded-full bg-white hover:bg-slate-200 text-black transition">Start Free</a>
+        <a href="/login.php"    class="utl-nav-link text-sm">Log In</a>
+        <a href="/register.php" class="utl-btn utl-btn--primary utl-btn--sm">Start Free</a>
       <?php endif; ?>
     </div>
   </div>

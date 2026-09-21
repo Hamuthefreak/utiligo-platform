@@ -103,23 +103,27 @@ if (isset($_GET['stripe_error']) && $error === '') {
     $error = 'We could not start that purchase: ' . (string)$_GET['stripe_error'];
 }
 
+/* The plan pill is told apart by WEIGHT and BORDER, not by hue — the same rule the
+ * dashboard tag follows, so the plan looks the same wherever the customer meets it.
+ * Entrepreneur used to be violet and Pro white, which made the higher tier look
+ * like a different product rather than the same one with more in it. */
 if ($is_ent && $is_active) {
-    $_plan_icon_bg   = 'bg-violet-500/15 border border-violet-500/30';
-    $_plan_icon_col  = 'text-violet-400';
-    $_plan_icon_name = 'bolt';
-    $_plan_badge_cls = 'bg-violet-500/15 text-violet-300 border border-violet-500/25';
-    $_plan_badge_txt = 'Entrepreneur';
-} elseif ($is_pro && $is_active) {
     $_plan_icon_bg   = 'bg-white/10 border border-white/10';
     $_plan_icon_col  = 'text-white';
+    $_plan_icon_name = 'bolt';
+    $_plan_badge_cls = 'border border-white/40 text-white';
+    $_plan_badge_txt = 'Entrepreneur';
+} elseif ($is_pro && $is_active) {
+    $_plan_icon_bg   = 'bg-white/5 border border-white/10';
+    $_plan_icon_col  = 'text-slate-200';
     $_plan_icon_name = 'crown';
-    $_plan_badge_cls = 'bg-white/10 text-white border border-white/10';
+    $_plan_badge_cls = 'border border-white/20 text-slate-200';
     $_plan_badge_txt = 'Pro';
 } elseif ($is_cancelled) {
     $_plan_icon_bg   = 'bg-white/5';
     $_plan_icon_col  = 'text-slate-500';
     $_plan_icon_name = 'user';
-    $_plan_badge_cls = 'bg-slate-500/15 text-slate-400';
+    $_plan_badge_cls = 'border border-white/10 text-slate-500';
     $_plan_badge_txt = 'Cancelled';
 } else {
     $_plan_icon_bg   = 'bg-white/5';
@@ -136,55 +140,59 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
-/* ── Entrepreneur violet theme ────────────────────────────────────────────── */
-@keyframes ent-shimmer{0%{background-position:-200% center}100%{background-position:200% center}}
-.ent-badge{
-  background:linear-gradient(90deg,#a78bfa,#c4b5fd,#818cf8,#a78bfa);
-  background-size:200% auto;
-  animation:ent-shimmer 3s linear infinite;
-  -webkit-background-clip:text;
-  -webkit-text-fill-color:transparent;
-  background-clip:text;
+/* ── One plan theme, told apart by weight ────────────────────────────────────
+   This was an Entrepreneur "violet theme": a shimmering gradient on the word, a
+   violet glow-filled button that lifted on hover, a violet gradient card border,
+   violet feature pills, a violet plan tab, a violet table column and a violet
+   radial glow behind the header. Seven effects, all on one page, all saying "this
+   tier is special" — and none of them carrying information. A customer choosing a
+   plan needs the limits, which the comparison table already gives in plain text.
+   Entrepreneur is now drawn the way the rest of the product draws it: the Pro card
+   with a brighter hairline and a white button. */
+.ent-badge{font-weight:800}
+/* Every primary action on this page is the accent, and every card is the house
+   card. The two "premium frames" that used to sit here were a gradient border
+   painted with a padding-box/border-box trick over a flat #0d0d0d fill — a black
+   card on a near-black canvas, which is why the page read as a different product
+   from the dashboard one click away. */
+.ent-btn{
+  background:var(--accent, #7fe3a8);color:var(--accent-ink, #04150c);
+  transition:background .18s var(--ease, cubic-bezier(.22,.61,.36,1));
 }
-.ent-glow-btn{
-  background:linear-gradient(135deg,#7c3aed 0%,#6366f1 60%,#4f46e5 100%);
-  box-shadow:0 4px 24px rgba(124,58,237,.35);
-  transition:all .2s;
-  color:#fff;
-}
-.ent-glow-btn:hover{box-shadow:0 8px 40px rgba(124,58,237,.55);transform:translateY(-2px)}
-.ent-glow-btn:active{transform:scale(.97)}
-.ent-glow-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
-.ent-card-wrap{
-  background:linear-gradient(#0d0d14,#0d0d14) padding-box,
-             linear-gradient(135deg,rgba(124,58,237,.5),rgba(99,102,241,.2),transparent) border-box;
-  border:1.5px solid transparent;
-}
+.ent-btn:hover{background:var(--accent-hi, #a2f3c4)}
+.ent-btn:active{background:var(--accent, #7fe3a8)}
+.ent-btn:disabled{opacity:.6;cursor:not-allowed}
+.ent-card-wrap,
 .pro-card-wrap{
-  background:linear-gradient(#0d0d0d,#0d0d0d) padding-box,
-             linear-gradient(135deg,rgba(255,255,255,.13),rgba(255,255,255,.05),transparent) border-box;
-  border:1.5px solid transparent;
+  background:var(--fill-1);
+  border:1px solid var(--hair, var(--hair));
+  box-shadow:0 24px 60px -40px rgba(0,0,0,.85);
 }
+/* Feature chips: a chip is a label, not a highlight. Six violet lozenges stacked
+   under a price is the single loudest thing on this page, and every one of them is
+   also in the table below in plain text. */
 .pill-feature{
   display:inline-flex;align-items:center;gap:.35rem;
-  background:rgba(124,58,237,.12);
-  border:1px solid rgba(124,58,237,.25);
-  color:#c4b5fd;
-  border-radius:9999px;padding:.3rem .75rem;font-size:.7rem;font-weight:700;
+  background:var(--fill-2);
+  border:1px solid var(--hair);
+  color:var(--ink-2);
+  border-radius:5px;padding:.3rem .6rem;font-size:.7rem;font-weight:600;
 }
-.card-input{width:100%;background:rgba(15,23,42,.7);border:1.5px solid rgba(255,255,255,.1);color:#fff;border-radius:.875rem;padding:.875rem 1rem;font-size:.95rem;outline:none;transition:border-color .2s,box-shadow .2s}
+.card-input{width:100%;background:var(--fill-1);border:1px solid var(--hair, var(--hair));color:var(--ink, #e9edf5);border-radius:10px;padding:.875rem 1rem;font-size:.95rem;outline:none;transition:border-color .2s var(--ease, cubic-bezier(.22,.61,.36,1))}
 .card-input::placeholder{color:rgba(148,163,184,.5)}
-.card-input:focus{border-color:rgba(255,255,255,.35);box-shadow:0 0 0 3px rgba(255,255,255,.06)}
-.card-input-ent:focus{border-color:rgba(124,58,237,.5);box-shadow:0 0 0 3px rgba(124,58,237,.1)}
+.card-input:focus{border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34)));box-shadow:none}
+.card-input-ent:focus{border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34)));box-shadow:none}
 .input-label{display:block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.45rem;color:rgba(148,163,184,.8)}
 .trust-row{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem;font-size:.7rem;color:rgba(100,116,139,.8)}
-.plan-tab{padding:.5rem 1.25rem;border-radius:9999px;font-size:.8rem;font-weight:700;transition:all .2s;cursor:pointer;text-decoration:none}
-.plan-tab-active{background:#fff;color:#000}
-.plan-tab-inactive{background:rgba(255,255,255,.07);color:rgba(148,163,184,.9)}
-.plan-tab-inactive:hover{background:rgba(255,255,255,.12)}
-.plan-tab-ent-active{background:linear-gradient(135deg,#7c3aed,#6366f1);color:#fff;box-shadow:0 2px 12px rgba(124,58,237,.3)}
-.compare-check{color:#22c55e}.compare-cross{color:#334155}.compare-ent{color:#a78bfa}
-.ent-col{background:rgba(124,58,237,.10)}
+.plan-tab{padding:.5rem 1.25rem;border-radius:8px;font-size:.8rem;font-weight:700;transition:background .18s,color .18s;cursor:pointer;text-decoration:none}
+.plan-tab-active{background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12)));color:var(--accent, #7fe3a8)}
+.plan-tab-inactive{background:var(--fill-2);color:rgba(148,163,184,.9)}
+.plan-tab-inactive:hover{background:var(--fill-3)}
+.plan-tab-ent-active{background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12)));color:var(--accent, #7fe3a8)}
+/* Tick and cross are a yes/no pair; a green tick next to a violet tick in the next
+   column made two different answers look like two different kinds of thing. */
+.compare-check{color:var(--ink)}.compare-cross{color:var(--ink-4)}.compare-ent{color:var(--ink)}
+.ent-col{background:var(--fill-1)}
 </style>
 
 <div class="mb-8">
@@ -193,7 +201,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 </div>
 
 <?php if ($message): ?>
-<div class="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl px-5 py-4 mb-6 text-sm">
+<div class="flex items-center gap-3 bg-white/5 border border-white/15 text-slate-200 rounded-2xl px-5 py-4 mb-6 text-sm">
   <i class="fa-solid fa-circle-check shrink-0"></i><?= htmlspecialchars($message) ?>
 </div>
 <?php endif; ?>
@@ -212,7 +220,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       </div>
       <div>
         <p class="font-bold"><?php
-          if ($is_ent)     echo '<span class="ent-badge text-base">Utiligo Entrepreneur</span>';
+          if ($is_ent)     echo '<span class="text-base">Utiligo Entrepreneur</span>';
           elseif ($is_pro) echo 'Utiligo Pro';
           else             echo 'Free Plan';
         ?></p>
@@ -225,7 +233,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         ?></p>
       </div>
     </div>
-    <span class="text-xs px-3 py-1 rounded-full font-bold <?= $_plan_badge_cls ?>">
+    <span class="text-[10px] px-2.5 py-1 rounded-[5px] font-bold uppercase tracking-[.12em] <?= $_plan_badge_cls ?>">
       <?= $_plan_badge_txt ?>
     </span>
   </div>
@@ -244,14 +252,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <!-- PRO -> ENT UPSELL BAR -->
 <?php if ($is_pro && $is_active && !$_pro_upgrading_to_ent): ?>
-<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(135deg,#0d0d18,#0f0d1a)">
+<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6">
   <div class="px-6 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
     <div>
-      <p class="text-xs font-bold uppercase tracking-widest text-violet-400 mb-1"><i class="fa-solid fa-bolt mr-1"></i>Upgrade to Entrepreneur</p>
+      <p class="text-xs font-bold uppercase tracking-widest text-slate-400 mb-1"><i class="fa-solid fa-bolt mr-1"></i>Upgrade to Entrepreneur</p>
       <p class="text-white font-semibold text-sm">Unlimited leads, team seats &amp; every Pro feature</p>
     </div>
     <a href="/portal/billing?plan=entrepreneur"
-       class="shrink-0 ent-glow-btn text-white text-sm font-black px-7 py-3 rounded-xl whitespace-nowrap inline-block text-center">
+       class="shrink-0 ent-btn text-sm font-black px-7 py-3 rounded-xl whitespace-nowrap inline-block text-center">
       Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
     </a>
   </div>
@@ -278,26 +286,24 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <!-- ENTREPRENEUR PAYMENT CARD -->
 <?php if ($_pro_upgrading_to_ent): ?>
-<div class="flex items-center gap-3 bg-violet-500/10 border border-violet-500/20 text-violet-300 rounded-2xl px-5 py-3 mb-5 text-sm">
+<div class="flex items-center gap-3 bg-white/5 border border-white/15 text-slate-300 rounded-2xl px-5 py-3 mb-5 text-sm">
   <i class="fa-solid fa-bolt shrink-0"></i>
   <span>You're upgrading from <strong>Pro</strong> to <strong>Entrepreneur</strong>. Enter your card to activate instantly.</span>
   <a href="/portal/billing" class="ml-auto text-xs text-slate-500 hover:text-slate-300 transition shrink-0">Cancel</a>
 </div>
 <?php endif; ?>
 
-<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#09090f 0%,#0e0d18 60%,#0d0c1a 100%)">
+<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6">
 
   <div class="relative px-7 pt-8 pb-7 border-b border-white/5 overflow-hidden">
-    <div class="absolute inset-0 pointer-events-none"
-         style="background:radial-gradient(ellipse 70% 90% at 85% 10%,rgba(124,58,237,.12) 0%,transparent 65%)"></div>
     <div class="relative flex flex-wrap gap-6 items-start justify-between">
       <div>
         <div class="flex flex-wrap items-center gap-2 mb-4">
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-violet-500/15 border border-violet-500/25">
-            <i class="fa-solid fa-bolt text-violet-400 text-[10px]"></i>
-            <span style="color:#c4b5fd;font-weight:900;letter-spacing:.05em">BEST VALUE</span>
+          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border border-white/25 text-white">
+            <i class="fa-solid fa-bolt text-slate-300 text-[10px]"></i>
+            <span style="font-weight:900;letter-spacing:.05em">BEST VALUE</span>
           </span>
-          <span class="text-[11px] px-2.5 py-1 rounded-full bg-emerald-500/15 border border-emerald-500/25 text-emerald-400 font-bold">Most Popular</span>
+          <span class="text-[11px] px-2.5 py-1 rounded-full border border-white/12 text-slate-400 font-bold">Most Popular</span>
         </div>
         <div class="flex items-end gap-2 mb-2">
           <span class="text-5xl font-black tracking-tight">$<?= $_ent_price_fmt ?></span>
@@ -308,7 +314,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <div class="text-xs text-slate-500 space-y-1.5">
         <p><i class="fa-solid fa-rotate text-slate-600 mr-1.5"></i>Billed monthly</p>
         <p><i class="fa-solid fa-ban text-slate-600 mr-1.5"></i>Cancel any time</p>
-        <p><i class="fa-solid fa-shield-halved text-violet-500/50 mr-1.5"></i>No lock-in</p>
+        <p><i class="fa-solid fa-shield-halved text-slate-600 mr-1.5"></i>No lock-in</p>
       </div>
     </div>
     <div class="mt-5 flex flex-wrap gap-1.5">
@@ -328,7 +334,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <thead><tr>
         <th class="text-left text-slate-500 font-semibold pb-2.5 pr-4">Feature</th>
         <th class="text-center text-slate-500 font-semibold pb-2.5 px-3">Pro</th>
-        <th class="text-center pb-2.5 px-3 ent-col rounded-t-lg"><span class="font-black text-violet-300">Entrepreneur</span></th>
+        <th class="text-center pb-2.5 px-3 ent-col rounded-t-lg"><span class="font-black text-slate-100">Entrepreneur</span></th>
       </tr></thead>
       <tbody>
       <?php $rows=[
@@ -337,22 +343,22 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           '<i class="fa-solid fa-infinity compare-ent"></i>'],
         ['Active sites',
           '<span class="text-slate-500">'.$_pro_sites.'</span>',
-          '<span class="text-violet-300 font-bold">'.$_ent_sites.'</span>'],
+          '<span class="text-slate-100 font-bold">'.$_ent_sites.'</span>'],
         ['Custom domains <span class="text-slate-600">(soon)</span>',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
-          '<span class="text-amber-400/80 font-semibold">Soon</span>'],
+          '<span class="text-slate-500 font-semibold">Soon</span>'],
         ['Client reports <span class="text-slate-600">(soon)</span>',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
-          '<span class="text-amber-400/80 font-semibold">Soon</span>'],
+          '<span class="text-slate-500 font-semibold">Soon</span>'],
         ['Team seats',
           '<i class="fa-solid fa-xmark compare-cross"></i>',
-          '<span class="text-violet-300 font-bold">'.$_ent_seats.' seats</span>'],
+          '<span class="text-slate-100 font-bold">'.$_ent_seats.' seats</span>'],
         ['Revenue dash',
           '<i class="fa-solid fa-check compare-check"></i>',
           '<i class="fa-solid fa-check compare-ent"></i>'],
         ['Price/mo',
           '<span class="text-slate-400">$'.$_pro_price_fmt.'</span>',
-          '<span class="font-black text-violet-300">$'.$_ent_price_fmt.'</span>'],
+          '<span class="font-black text-slate-100">$'.$_ent_price_fmt.'</span>'],
       ];
       foreach ($rows as $i => [$f, $p, $e]): ?>
       <tr class="<?= $i % 2 ? 'bg-white/[.02]' : '' ?>">
@@ -366,16 +372,16 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 
   <div class="px-7 py-3 border-b border-white/5 trust-row">
-    <span><i class="fa-solid fa-star text-violet-500/60 mr-1"></i>200+ agencies</span>
-    <span><i class="fa-solid fa-bolt text-violet-500/60 mr-1"></i>Instant activation</span>
-    <span><i class="fa-solid fa-shield-halved text-violet-500/60 mr-1"></i>Cancel any time</span>
-    <span><i class="fa-solid fa-headset text-violet-500/60 mr-1"></i>Priority support</span>
+    <span><i class="fa-solid fa-star text-slate-600 mr-1"></i>200+ agencies</span>
+    <span><i class="fa-solid fa-bolt text-slate-600 mr-1"></i>Instant activation</span>
+    <span><i class="fa-solid fa-shield-halved text-slate-600 mr-1"></i>Cancel any time</span>
+    <span><i class="fa-solid fa-headset text-slate-600 mr-1"></i>Priority support</span>
   </div>
 
   <div class="px-7 py-7">
-    <div class="flex items-center gap-2 bg-violet-500/8 border border-violet-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-violet-400/80">
-      <i class="fa-solid fa-flask text-violet-500/70"></i>
-      <span><strong class="text-violet-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
+    <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
+      <i class="fa-solid fa-flask text-amber-500/70"></i>
+      <span><strong class="text-amber-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
     </div>
     <form method="POST" action="/portal/billing?plan=entrepreneur" class="space-y-4" id="entForm"
           onsubmit="this.querySelector('#entSubmitBtn').disabled=true;this.querySelector('#entSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
@@ -411,7 +417,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         </div>
       </div>
       <button type="submit" id="entSubmitBtn"
-        class="w-full ent-glow-btn text-white py-4 rounded-xl font-black text-base mt-1">
+        class="w-full ent-btn py-4 rounded-xl font-black text-base mt-1">
         <i class="fa-solid fa-bolt mr-2"></i><?= $_pro_upgrading_to_ent ? 'Upgrade to Entrepreneur' : 'Unlock Entrepreneur' ?> &mdash; $<?= $_ent_price_fmt ?>/mo
       </button>
       <div class="trust-row justify-center pt-1">
@@ -429,7 +435,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php else: ?>
 
 <!-- PRO PAYMENT CARD -->
-<div class="rounded-2xl pro-card-wrap overflow-hidden mb-6" style="background:linear-gradient(155deg,#0a0a0a 0%,#111 100%)">
+<div class="rounded-2xl pro-card-wrap overflow-hidden mb-6">
   <div class="px-7 pt-8 pb-7 border-b border-white/5">
     <div class="flex flex-wrap gap-6 items-start justify-between">
       <div>
@@ -444,12 +450,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <p class="text-slate-400 text-sm">Everything you need to run a full client-getting operation.</p>
       </div>
       <ul class="space-y-2 text-sm">
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i><?= number_format($_pro_leads) ?> leads / period</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i><?= $_pro_sites ?> active websites</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>Full phone numbers</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>Call scripts on every page</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>All templates + ZIP export</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-emerald-400 w-3.5 shrink-0"></i>Revenue dashboard</li>
+        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i><?= number_format($_pro_leads) ?> leads / period</li>
+        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i><?= $_pro_sites ?> active websites</li>
+        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>Full phone numbers</li>
+        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>Call scripts on every page</li>
+        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>All templates + ZIP export</li>
+        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>Revenue dashboard</li>
       </ul>
     </div>
   </div>
@@ -509,7 +515,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <div class="text-center text-xs text-slate-500 mb-6">
   Want unlimited leads &amp; team seats?
-  <a href="/portal/billing?plan=entrepreneur" class="text-violet-400 hover:text-violet-300 font-semibold ml-1 transition">
+  <a href="/portal/billing?plan=entrepreneur" class="text-slate-200 hover:text-white font-semibold ml-1 transition">
     See Entrepreneur plan <i class="fa-solid fa-arrow-right text-[10px]"></i>
   </a>
 </div>

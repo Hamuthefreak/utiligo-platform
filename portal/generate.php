@@ -128,7 +128,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 }
 .skeleton {
   border-radius: 12px;
-  background: linear-gradient(90deg,rgba(255,255,255,.04) 25%,rgba(255,255,255,.09) 50%,rgba(255,255,255,.04) 75%);
+  background: linear-gradient(90deg,var(--fill-1) 25%,var(--fill-2) 50%,var(--fill-1) 75%);
   background-size: 600px 100%;
   animation: shimmer 1.4s infinite linear;
 }
@@ -162,8 +162,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   align-items: center;
   gap: 10px;
   padding: 12px 16px;
-  background: #0F172A;
-  border-bottom: 1px solid rgba(255,255,255,.08);
+  background: var(--panel);
+  border-bottom: 1px solid var(--hair);
   flex-wrap: wrap;
 }
 #previewPageTabs {
@@ -177,18 +177,18 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   border-radius: 8px;
   font-size: 12px;
   font-weight: 600;
-  color: rgba(255,255,255,.5);
+  color: var(--ink-2);
   cursor: pointer;
   background: transparent;
   border: none;
   transition: background .15s, color .15s;
 }
-.preview-tab:hover  { background: rgba(255,255,255,.08); color: #fff; }
-.preview-tab.active { background: rgba(255,255,255,.15); color: #fff; }
+.preview-tab:hover  { background: var(--fill-2); color: var(--pure); }
+.preview-tab.active { background: var(--fill-3); color: var(--pure); }
 #previewModalLabel {
   font-size: 13px;
   font-weight: 700;
-  color: #fff;
+  color: var(--pure);
   white-space: nowrap;
 }
 #previewCloseBtn, #previewSelectBtn {
@@ -200,16 +200,16 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   cursor: pointer;
   white-space: nowrap;
 }
-#previewCloseBtn  { background: rgba(255,255,255,.1); color: #fff; }
-#previewCloseBtn:hover { background: rgba(255,255,255,.18); }
-#previewSelectBtn { background: #fff; color: #000; }
+#previewCloseBtn  { background: var(--fill-3); color: var(--pure); }
+#previewCloseBtn:hover { background: var(--fill-4); }
+#previewSelectBtn { background: var(--pure); color: #000; }
 #previewSelectBtn:hover { background: #e2e8f0; }
 #previewFrame {
   width: 100%;
   height: 75vh;
   border: none;
   display: block;
-  background: #fff;
+  background: var(--pure);
 }
 </style>
 
@@ -457,10 +457,10 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <div class="template-thumb h-20 flex flex-col justify-center px-4"
              style="background:linear-gradient(135deg,<?= $tpl['secondary'] ?> 0%,<?= $tpl['primary'] ?> 100%);">
           <div class="w-10 h-2 rounded-full mb-2" style="background:<?= $tpl['primary'] ?>;opacity:0.6;"></div>
-          <div class="w-full h-1.5 rounded-full mb-1" style="background:rgba(255,255,255,0.25);"></div>
-          <div class="w-2/3 h-1.5 rounded-full" style="background:rgba(255,255,255,0.18);"></div>
+          <div class="w-full h-1.5 rounded-full mb-1" style="background:var(--fill-4);"></div>
+          <div class="w-2/3 h-1.5 rounded-full" style="background:var(--fill-4);"></div>
         </div>
-        <div class="p-3" style="background:#0f172a;">
+        <div class="p-3" style="background:var(--panel);">
           <p class="font-semibold text-xs flex items-center gap-1.5">
             <?= htmlspecialchars($tpl['label']) ?>
             <?php if (!$locked && $is_free_tpl): ?>
@@ -722,12 +722,12 @@ document.addEventListener('DOMContentLoaded', function () {
       `<div style="text-align:center;"><div style="font-size:32px;font-weight:900;color:${primary};">${num}</div><div style="font-size:12px;font-weight:600;color:${mutedFg};text-transform:uppercase;letter-spacing:.06em;margin-top:4px;">${lbl}</div></div>`;
     const testimonial = (quote, author) =>
       `<div style="background:${cardBg};border:1px solid ${borderC};border-radius:${radius};padding:24px;"><p style="color:${fg};font-size:14px;font-style:italic;margin:0 0 12px;line-height:1.7;">&ldquo;${quote}&rdquo;</p><div style="font-size:13px;font-weight:700;color:${primary};">&mdash; ${author}</div></div>`;
-    const heroSection = `<section id="home" style="background:${heroGrad};padding:100px 40px 80px;text-align:center;position:relative;"><nav style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 40px;background:rgba(0,0,0,0.15);"><span style="font-weight:900;font-size:18px;color:#fff;">${bizName}</span><div style="display:flex;gap:20px;">${['Home','About','Services','Gallery','Contact'].map(pg=>`<a href="#${pg.toLowerCase()}" style="color:rgba(255,255,255,0.85);text-decoration:none;font-size:13px;font-weight:600;">${pg}</a>`).join('')}</div>${btn('Get Quote')}</nav><div style="max-width:680px;margin:60px auto 0;">${pill(bizCat)}<h1 style="font-size:clamp(32px,6vw,60px);font-weight:900;color:#fff;margin:20px 0;line-height:1.1;">We Build Things<br>That Last</h1><p style="color:rgba(255,255,255,0.75);font-size:17px;line-height:1.7;margin:0 auto 32px;max-width:520px;">${bizName} — ${bizCat} services tailored to your needs.</p><div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">${btn('Get Started')}${btn('See Our Work',true)}</div></div></section>`;
+    const heroSection = `<section id="home" style="background:${heroGrad};padding:100px 40px 80px;text-align:center;position:relative;"><nav style="position:absolute;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px 40px;background:rgba(0,0,0,0.15);"><span style="font-weight:900;font-size:18px;color:var(--pure);">${bizName}</span><div style="display:flex;gap:20px;">${['Home','About','Services','Gallery','Contact'].map(pg=>`<a href="#${pg.toLowerCase()}" style="color:var(--ink);text-decoration:none;font-size:13px;font-weight:600;">${pg}</a>`).join('')}</div>${btn('Get Quote')}</nav><div style="max-width:680px;margin:60px auto 0;">${pill(bizCat)}<h1 style="font-size:clamp(32px,6vw,60px);font-weight:900;color:var(--pure);margin:20px 0;line-height:1.1;">We Build Things<br>That Last</h1><p style="color:var(--ink);font-size:17px;line-height:1.7;margin:0 auto 32px;max-width:520px;">${bizName} — ${bizCat} services tailored to your needs.</p><div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap;">${btn('Get Started')}${btn('See Our Work',true)}</div></div></section>`;
     const whyUsSection = sec('why-us', bg, `<div style="max-width:900px;margin:0 auto;text-align:center;">${pill('Why Us')}<div style="margin-top:12px;">${h2('Why Clients Choose Us')}</div>${p('We deliver quality, reliability, and results every single time.')}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:24px;margin-top:40px;">${[['&#9889;','Fast Turnaround','On time, every time.'],['&#127941;','Quality First','No shortcuts.'],['&#128179;','Clear Pricing','Zero hidden fees.'],['&#127775;','5-Star Rated','Hundreds of happy clients.']].map(([i,t2,d])=>svcCard(i,t2,d)).join('')}</div><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:24px;margin-top:48px;padding:32px;background:${cardBg};border-radius:${radius};border:1px solid ${borderC};">${stat('500+','Projects')}${stat('12+','Years')}${stat('98%','Satisfaction')}${stat('24/7','Support')}</div></div>`);
     const aboutSection = sec('about', isDark?'rgba(255,255,255,0.03)':'rgba(0,0,0,0.02)', `<div style="max-width:900px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:56px;align-items:center;"><div>${pill('Our Story')}<div style="margin-top:12px;">${h2('About Our Business')}</div>${p('Founded with a passion for quality, serving our community for over a decade.')}${p('We build long-term relationships — every client is treated like family.')}<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:24px;">${['Licensed & Insured','Free Estimates','Locally Owned','Award Winning'].map(f=>`<div style="display:flex;align-items:center;gap:8px;font-size:14px;font-weight:600;color:${fg};"><span style="color:${primary};font-size:18px;">&#10003;</span>${f}</div>`).join('')}</div><div style="margin-top:32px;">${btn('Meet the Team')}</div></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;"><div style="grid-column:1/-1;aspect-ratio:16/9;border-radius:${radius};background:linear-gradient(135deg,${primary}88,${secondary}cc);display:flex;align-items:center;justify-content:center;font-size:48px;">&#127968;</div><div style="aspect-ratio:1;border-radius:${radius};background:${cardBg};border:1px solid ${borderC};display:flex;align-items:center;justify-content:center;font-size:32px;">&#127775;</div><div style="aspect-ratio:1;border-radius:${radius};background:${cardBg};border:1px solid ${borderC};display:flex;align-items:center;justify-content:center;font-size:32px;">&#128205;</div></div></div>`);
     const servicesSection = sec('services', bg, `<div style="max-width:900px;margin:0 auto;text-align:center;">${pill('What We Do')}<div style="margin-top:12px;">${h2('Our Services')}</div>${p('Everything you need, handled by experts.')}<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:24px;margin-top:40px;">${[['&#128295;','Core Service','Our flagship offering.'],['&#128640;','Premium Package','The complete solution.'],['&#128200;','Consultation','Expert advice.'],['&#128274;','Maintenance','Ongoing support.'],['&#128241;','Emergency','24/7 rapid response.'],['&#127881;','Custom','Bespoke solutions.']].map(([i,t2,d])=>svcCard(i,t2,d)).join('')}</div><div style="margin-top:40px;">${btn('View All Services')}</div></div>`);
     const gallerySection = sec('gallery', isDark?'rgba(255,255,255,0.02)':'rgba(0,0,0,0.02)', `<div style="max-width:900px;margin:0 auto;"><div style="text-align:center;">${pill('Portfolio')}<div style="margin-top:12px;">${h2('Our Work')}</div>${p('A sample of our proudest projects.')}</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:40px;">${[1,2,3,4,5,6].map(()=>galTile()).join('')}</div><div style="margin-top:32px;text-align:center;"><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:16px;margin-bottom:32px;">${[testimonial('Absolutely incredible work!','Sarah M.'),testimonial('Professional and fast.','James K.'),testimonial('A seamless experience.','Linda R.')].join('')}</div>${btn('See Full Portfolio')}</div></div>`);
-    const contactSection = `<section id="contact" style="background:${heroGrad};padding:80px 40px;"><div style="max-width:800px;margin:0 auto;"><div style="text-align:center;margin-bottom:48px;">${pill('Get In Touch')}<h2 style="font-size:clamp(24px,4vw,38px);font-weight:800;color:#fff;margin:12px 0;">Ready to Get Started?</h2><p style="color:rgba(255,255,255,0.7);font-size:16px;max-width:480px;margin:0 auto;">Fill in the form and we’ll get back to you within 24 hours.</p></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;"><div style="background:rgba(255,255,255,0.1);border-radius:${radius};padding:32px;">${[['Your Name','text'],['Email Address','email'],['Phone Number','tel']].map(([lbl,type])=>`<div style="margin-bottom:16px;"><label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">${lbl}</label><input type="${type}" placeholder="${lbl}" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;"/></div>`).join('')}<div style="margin-bottom:20px;"><label style="display:block;font-size:12px;font-weight:700;color:rgba(255,255,255,0.7);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Message</label><textarea rows="4" style="width:100%;background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.2);color:#fff;padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;resize:vertical;"></textarea></div><button style="width:100%;background:#fff;color:${primary};border:none;padding:13px;border-radius:${radius};font-weight:800;font-size:15px;cursor:pointer;">Send Message &#8594;</button></div><div style="display:flex;flex-direction:column;gap:20px;justify-content:center;">${[['&#128205;','Address','123 Main Street, Your City'],['&#128222;','Phone','(555) 000-0000'],['&#128231;','Email','hello@yourbusiness.com'],['&#128336;','Hours','Mon-Fri: 8am-6pm']].map(([icon,lbl,val])=>`<div style="display:flex;gap:14px;align-items:flex-start;"><div style="width:42px;height:42px;border-radius:${radius};background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">${icon}</div><div><div style="font-size:11px;font-weight:700;color:rgba(255,255,255,0.6);text-transform:uppercase;">${lbl}</div><div style="font-size:14px;color:#fff;margin-top:3px;">${val}</div></div></div>`).join('')}</div></div></div></section>`;
+    const contactSection = `<section id="contact" style="background:${heroGrad};padding:80px 40px;"><div style="max-width:800px;margin:0 auto;"><div style="text-align:center;margin-bottom:48px;">${pill('Get In Touch')}<h2 style="font-size:clamp(24px,4vw,38px);font-weight:800;color:var(--pure);margin:12px 0;">Ready to Get Started?</h2><p style="color:var(--ink-2);font-size:16px;max-width:480px;margin:0 auto;">Fill in the form and we’ll get back to you within 24 hours.</p></div><div style="display:grid;grid-template-columns:1fr 1fr;gap:40px;"><div style="background:var(--fill-3);border-radius:${radius};padding:32px;">${[['Your Name','text'],['Email Address','email'],['Phone Number','tel']].map(([lbl,type])=>`<div style="margin-bottom:16px;"><label style="display:block;font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">${lbl}</label><input type="${type}" placeholder="${lbl}" style="width:100%;background:var(--fill-3);border:1px solid var(--hair-2);color:var(--pure);padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;"/></div>`).join('')}<div style="margin-bottom:20px;"><label style="display:block;font-size:12px;font-weight:700;color:var(--ink-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px;">Message</label><textarea rows="4" style="width:100%;background:var(--fill-3);border:1px solid var(--hair-2);color:var(--pure);padding:10px 14px;border-radius:${radius};font-size:14px;box-sizing:border-box;resize:vertical;"></textarea></div><button style="width:100%;background:var(--pure);color:${primary};border:none;padding:13px;border-radius:${radius};font-weight:800;font-size:15px;cursor:pointer;">Send Message &#8594;</button></div><div style="display:flex;flex-direction:column;gap:20px;justify-content:center;">${[['&#128205;','Address','123 Main Street, Your City'],['&#128222;','Phone','(555) 000-0000'],['&#128231;','Email','hello@yourbusiness.com'],['&#128336;','Hours','Mon-Fri: 8am-6pm']].map(([icon,lbl,val])=>`<div style="display:flex;gap:14px;align-items:flex-start;"><div style="width:42px;height:42px;border-radius:${radius};background:var(--fill-3);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;">${icon}</div><div><div style="font-size:11px;font-weight:700;color:var(--ink-2);text-transform:uppercase;">${lbl}</div><div style="font-size:14px;color:var(--pure);margin-top:3px;">${val}</div></div></div>`).join('')}</div></div></div></section>`;
     const footer = `<footer style="background:${secondary};padding:32px 40px;text-align:center;border-top:1px solid ${borderC};"><p style="color:${mutedFg};font-size:13px;margin:0;">&#169; 2025 ${bizName}. All rights reserved. &nbsp;|&nbsp; Built with Utiligo</p></footer>`;
     return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">${fontLink}<style>*,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}html{scroll-behavior:smooth;}body{font-family:${fontFamily};color:${fg};background:${bg};}input,textarea,button{font-family:${fontFamily};}a{color:inherit;}</style></head><body>${heroSection}${whyUsSection}${aboutSection}${servicesSection}${gallerySection}${contactSection}${footer}</body></html>`;
   }

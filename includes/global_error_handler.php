@@ -235,11 +235,11 @@ set_exception_handler(function (\Throwable $e): void {
         echo json_encode(['success' => false, 'error' => 'Server error. This has been logged — please try again or contact support.']);
     } else {
         echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/assets/images/icon.svg\"><title>Server error — Utiligo</title>"
-           . "<style>body{font-family:system-ui,Segoe UI,Arial;background:#020817;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}"
+           . "<style>body{font-family:system-ui,Segoe UI,Arial;background:#0a0f1e;color:#e9edf5;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}"
            . ".box{max-width:480px;padding:40px;text-align:center;}"
-           . "h1{font-size:48px;margin:0 0 8px;color:#ef4444}"
-           . "p{color:#94a3b8;line-height:1.6}"
-           . "a{color:#10b981;text-decoration:none}"
+           . "h1{font-size:48px;margin:0 0 8px;color:#e9edf5;font-weight:800;letter-spacing:-.04em}"
+           . "p{color:rgba(233,237,245,.68);line-height:1.65}"
+           . "a{color:#7fe3a8;text-decoration:none}"
            . "</style></head><body>"
            . "<div class=\"box\"><h1>500</h1><h2 style=\"font-weight:600;margin:0 0 16px\">Something went wrong.</h2>"
            . "<p>Utiligo hit an unexpected error. A detailed report has been written to <code>storage/php_errors.log</code>"
@@ -290,11 +290,11 @@ register_shutdown_function(function (): void {
             echo json_encode(['success' => false, 'error' => 'Server error. This has been logged — please try again or contact support.']);
         } else {
             echo "<!DOCTYPE html><html lang=\"en\"><head><meta charset=\"UTF-8\"><link rel=\"icon\" type=\"image/svg+xml\" href=\"/assets/images/icon.svg\"><title>Server error — Utiligo</title>"
-               . "<style>body{font-family:system-ui,Segoe UI,Arial;background:#020817;color:#e2e8f0;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}"
+               . "<style>body{font-family:system-ui,Segoe UI,Arial;background:#0a0f1e;color:#e9edf5;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;}"
                . ".box{max-width:480px;padding:40px;text-align:center;}"
-               . "h1{font-size:48px;margin:0 0 8px;color:#ef4444}"
-               . "p{color:#94a3b8;line-height:1.6}"
-               . "a{color:#10b981;text-decoration:none}"
+               . "h1{font-size:48px;margin:0 0 8px;color:#e9edf5;font-weight:800;letter-spacing:-.04em}"
+               . "p{color:rgba(233,237,245,.68);line-height:1.65}"
+               . "a{color:#7fe3a8;text-decoration:none}"
                . "</style></head><body>"
                . "<div class=\"box\"><h1>500</h1><h2 style=\"font-weight:600;margin:0 0 16px\">Something went wrong.</h2>"
                . "<p>An unexpected server error has been logged to <code>storage/php_errors.log</code>.</p>"

@@ -11,9 +11,12 @@ if (!function_exists('asset_url')) {
 
 $_name     = htmlspecialchars(trim($admin['full_name'] ?? $admin['email'] ?? 'Admin'));
 $_initials = strtoupper(substr($_name, 0, 1));
-$_logo_path = __DIR__ . '/../assets/images/logo.svg';
-$_logo_url  = '/assets/images/logo.svg';
-$_has_logo  = file_exists($_logo_path);
+// Inline wordmark: see includes/brand.php — a logo file cannot follow the theme.
+require_once __DIR__ . '/brand.php';
+// The design layer, before the <html> tag below — glass_attr() is written there
+// and a require that ran after it would be a fatal on every admin page.
+require_once __DIR__ . '/appearance.php';
+$_has_logo = brand_logo_exists();
 
 // How many customer messages are waiting for a reply, for the nav badge.
 // Best-effort: support_unread_admin() swallows its own errors and answers 0, so an
@@ -24,7 +27,8 @@ if (!function_exists('support_unread_admin')) {
 $_supportUnread = support_unread_admin();
 ?>
 <!DOCTYPE html>
-<html lang="en">
+<?php /* The refraction filters for this page: see includes/glass.php. */ ?>
+<html lang="en" <?= glass_attr() ?>>
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -35,28 +39,47 @@ $_supportUnread = support_unread_admin();
 <script src="https://cdn.tailwindcss.com"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <link rel="stylesheet" href="<?= asset_url('/assets/css/style.css') ?>">
+<?php if ($adminPage === 'support'): ?>
+<?php /* The support inbox belongs to the support channel, so it uses that
+         channel's face and tag styles rather than a second, near-identical set. */ ?>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="<?= asset_url('/assets/css/support.css') ?>">
+<?php endif; ?>
 <style>
-  .nav-link { display:flex; align-items:center; gap:10px; padding:10px 14px; border-radius:12px; font-size:.875rem; font-weight:500; color:#94a3b8; transition:all .15s; white-space:nowrap; }
-  .nav-link:hover  { background:rgba(255,255,255,.06); color:#fff; }
-  .nav-link.active { background:rgba(255,255,255,.1); color:#ffffff; }
-  .nav-link.active i { color:#ffffff; }
-  .nav-link i { width:16px; text-align:center; font-size:.85rem; color:#64748b; transition:color .15s; }
-  .nav-link:hover i { color:#e2e8f0; }
-  .nav-link.admin-item { color:#c4b5fd; }
-  .nav-link.admin-item i { color:#a78bfa; }
-  .nav-link.admin-item:hover { background:rgba(139,92,246,.12); color:#ddd6fe; }
-  .nav-link.admin-item.active { background:rgba(139,92,246,.18); color:#ddd6fe; }
-  .nav-link.back-link { color:#64748b; }
-  .nav-link.back-link:hover { color:#94a3b8; }
+  .nav-link { display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:var(--r-ctl,10px); font-size:.875rem; font-weight:500; color:var(--ink-3); transition:background-color .2s var(--ease), color .2s var(--ease); white-space:nowrap; }
+  .nav-link:hover  { background:var(--fill-2); color:var(--ink); }
+  .nav-link.active { background:var(--accent-soft); color:var(--accent); }
+  .nav-link.active i { color:var(--accent); }
+  .nav-link i { width:16px; text-align:center; font-size:.85rem; color:var(--ink-4); transition:color .2s var(--ease); }
+  .nav-link:hover i { color:var(--ink-2); }
+  /* Admin items used to be violet, which made the whole sidebar a second accent
+     competing with the page's own status colours. The section is already marked
+     by its heading and the panel's own chrome. */
+  .nav-link.admin-item { color:var(--ink-2); }
+  .nav-link.admin-item i { color:var(--ink-4); }
+  .nav-link.admin-item:hover { background:var(--fill-2); color:var(--ink); }
+  .nav-link.admin-item.active { background:var(--accent-soft); color:var(--accent); }
+  .nav-link.back-link { color:var(--ink-4); }
+  .nav-link.back-link:hover { color:var(--ink-2); }
   #sidebar { transition: transform .25s cubic-bezier(.4,0,.2,1); }
   @media (max-width: 1023px) {
     #sidebar { position:fixed; top:0; left:0; height:100vh; z-index:50; transform:translateX(-100%); }
     #sidebar.open { transform:translateX(0); }
   }
-  ::-webkit-scrollbar { width:4px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:#334155; border-radius:2px; }
+  ::-webkit-scrollbar { width:6px; } ::-webkit-scrollbar-track { background:transparent; } ::-webkit-scrollbar-thumb { background:var(--fill-3); border-radius:2px; }
 </style>
+<?php /* The design layer, last in <head>. See includes/header.php for why it has
+         to be last and why the reveal gate is an inline line of script. */ ?>
+<?php require_once __DIR__ . '/appearance.php'; ?>
+<?= appearance_bootstrap() ?>
+<link rel="stylesheet" href="<?= asset_url('/assets/css/theme.css') ?>">
+<script defer src="<?= asset_url('/assets/js/ui-theme.js') ?>"></script>
 </head>
 <body class="antialiased bg-slate-950 text-white">
+
+<?= glass_defs() ?>
 
 <div id="sidebarOverlay" class="fixed inset-0 bg-black/60 z-40 hidden lg:hidden" onclick="closeSidebar()"></div>
 
@@ -64,7 +87,7 @@ $_supportUnread = support_unread_admin();
   <div class="px-5 py-5 border-b border-white/5">
     <a href="/admin/index.php" class="flex items-center gap-2.5 group">
       <?php if ($_has_logo): ?>
-        <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-8 w-auto">
+        <?= brand_logo('h-8 w-auto') ?>
       <?php else: ?>
         <div class="w-8 h-8 rounded-lg bg-white flex items-center justify-center shrink-0">
           <i class="fa-solid fa-bolt text-black text-sm"></i>
@@ -73,14 +96,14 @@ $_supportUnread = support_unread_admin();
       <?php if (!$_has_logo): ?>
       <div>
         <span class="text-lg font-black tracking-tight group-hover:text-slate-300 transition">Utiligo</span>
-        <div class="text-[10px] font-semibold text-purple-400 leading-none mt-0.5">Admin Panel</div>
+        <div class="text-[10px] font-semibold text-slate-500 leading-none mt-0.5">Admin Panel</div>
       </div>
       <?php endif; ?>
     </a>
   </div>
 
   <nav class="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-    <p class="text-xs font-semibold text-purple-800 uppercase tracking-widest px-3 mb-2">Admin</p>
+    <p class="text-xs font-semibold text-slate-600 uppercase tracking-widest px-3 mb-2">Admin</p>
     <a href="/admin/index.php" class="nav-link admin-item <?= $adminPage==='dashboard' ? 'active' : '' ?>">
       <i class="fa-solid fa-gauge-high"></i> Dashboard
     </a>
@@ -93,7 +116,7 @@ $_supportUnread = support_unread_admin();
     <a href="/admin/support.php" class="nav-link admin-item <?= $adminPage==='support' ? 'active' : '' ?>">
       <i class="fa-solid fa-headset"></i> Support
       <?php if ($_supportUnread > 0): ?>
-        <span class="ml-auto text-[10px] bg-purple-500/25 text-purple-200 border border-purple-500/40 px-1.5 py-0.5 rounded-full font-bold"><?= (int)$_supportUnread ?></span>
+        <span class="ml-auto text-[10px] bg-[#f0a83c] text-[#1c1917] px-1.5 py-0.5 rounded-[5px] font-bold utl-num"><?= (int)$_supportUnread ?></span>
       <?php endif; ?>
     </a>
     <a href="/admin/email.php" class="nav-link admin-item <?= $adminPage==='email' ? 'active' : '' ?>">
@@ -117,12 +140,12 @@ $_supportUnread = support_unread_admin();
   </nav>
 
   <div class="px-4 py-4 border-t border-white/5 flex items-center gap-3">
-    <div class="w-8 h-8 rounded-full bg-purple-500/20 border border-purple-500/30 flex items-center justify-center shrink-0 text-sm font-bold text-purple-300">
+    <div class="w-8 h-8 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center shrink-0 text-sm font-bold text-white">
       <?= $_initials ?>
     </div>
     <div class="flex-1 min-w-0">
       <p class="text-xs font-semibold text-white truncate"><?= $_name ?></p>
-      <p class="text-xs text-purple-400">Administrator</p>
+      <p class="text-xs text-slate-500">Administrator</p>
     </div>
     <a href="/logout.php" title="Logout" class="text-slate-500 hover:text-red-400 transition text-sm">
       <i class="fa-solid fa-arrow-right-from-bracket"></i>
@@ -136,13 +159,13 @@ $_supportUnread = support_unread_admin();
   </button>
   <a href="/admin/index.php" class="flex items-center gap-2">
     <?php if ($_has_logo): ?>
-      <img src="<?= $_logo_url ?>" alt="Utiligo" width="403" height="124" class="h-7 w-auto">
+      <?= brand_logo('h-7 w-auto') ?>
     <?php else: ?>
       <div class="w-6 h-6 rounded-md bg-white flex items-center justify-center">
         <i class="fa-solid fa-bolt text-black text-xs"></i>
       </div>
     <?php endif; ?>
-    <?php if (!$_has_logo): ?><span class="font-black text-base">Utiligo <span class="text-purple-400 text-xs font-semibold">Admin</span></span><?php endif; ?>
+    <?php if (!$_has_logo): ?><span class="font-black text-base">Utiligo <span class="text-slate-400 text-xs font-semibold">Admin</span></span><?php endif; ?>
   </a>
   <a href="/logout.php" class="text-slate-400 hover:text-white text-sm">
     <i class="fa-solid fa-arrow-right-from-bracket"></i>

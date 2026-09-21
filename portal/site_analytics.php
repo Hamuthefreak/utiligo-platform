@@ -128,8 +128,8 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .analytics-hero > * { position: relative; z-index: 1; }
 
 .stat-card {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.07);
+  background: var(--fill-1);
+  border: 1px solid var(--hair);
   border-radius: 16px;
   padding: 20px;
 }
@@ -137,24 +137,24 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   font-size: .65rem;
   text-transform: uppercase;
   letter-spacing: .08em;
-  color: #64748b;
+  color: var(--ink-3);
   margin-bottom: 6px;
 }
 .stat-value {
   font-size: 2rem;
   font-weight: 900;
-  color: #f1f5f9;
+  color: var(--ink);
   line-height: 1;
 }
 .stat-sub {
   font-size: .7rem;
-  color: #475569;
+  color: var(--ink-4);
   margin-top: 4px;
 }
 
 .chart-wrap {
-  background: rgba(255,255,255,.04);
-  border: 1px solid rgba(255,255,255,.07);
+  background: var(--fill-1);
+  border: 1px solid var(--hair);
   border-radius: 16px;
   padding: 22px;
   margin-bottom: 20px;
@@ -164,7 +164,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: .06em;
-  color: #64748b;
+  color: var(--ink-3);
   margin-bottom: 16px;
 }
 
@@ -173,14 +173,14 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   align-items: center;
   gap: 10px;
   padding: 8px 0;
-  border-bottom: 1px solid rgba(255,255,255,.05);
+  border-bottom: 1px solid var(--hair);
 }
 .device-row:last-child { border-bottom: none; }
 .device-bar-track {
   flex: 1;
   height: 6px;
   border-radius: 3px;
-  background: rgba(255,255,255,.06);
+  background: var(--fill-2);
   overflow: hidden;
 }
 .device-bar-fill {
@@ -194,7 +194,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   align-items: center;
   gap: 10px;
   padding: 9px 0;
-  border-bottom: 1px solid rgba(255,255,255,.05);
+  border-bottom: 1px solid var(--hair);
   font-size: .8rem;
 }
 .ref-row:last-child { border-bottom: none; }
@@ -203,11 +203,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: #cbd5e1;
+  color: var(--ink-2);
 }
 .ref-count {
   font-weight: 700;
-  color: #f1f5f9;
+  color: var(--ink);
   min-width: 32px;
   text-align: right;
 }
@@ -215,7 +215,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 .notice-no-data {
   text-align: center;
   padding: 32px 16px;
-  color: #475569;
+  color: var(--ink-4);
   font-size: .85rem;
 }
 </style>
@@ -231,34 +231,34 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <div class="analytics-hero">
   <div class="flex items-start justify-between flex-wrap gap-4">
     <div>
-      <p class="text-xs font-bold uppercase tracking-widest mb-1" style="color:<?= $isDark ? 'rgba(255,255,255,.5)' : 'rgba(0,0,0,.45)' ?>">
+      <p class="text-xs font-bold uppercase tracking-widest mb-1" style="color:<?= $isDark ? 'var(--ink-2)' : 'rgba(0,0,0,.45)' ?>">
         <?= htmlspecialchars($tpl['label']) ?> · <?= htmlspecialchars($tpl['category']) ?>
       </p>
-      <h1 class="text-2xl font-black" style="color:#fff; text-shadow:0 2px 8px rgba(0,0,0,.5);">
+      <h1 class="text-2xl font-black" style="color:var(--pure); text-shadow:0 2px 8px rgba(0,0,0,.5);">
         <?= htmlspecialchars($site['business_name']) ?>
       </h1>
       <?php if ($site['business_city']): ?>
-        <p class="text-sm mt-0.5" style="color:rgba(255,255,255,.6)">
+        <p class="text-sm mt-0.5" style="color:var(--ink-2)">
           <i class="fa-solid fa-location-dot mr-1 text-xs"></i><?= htmlspecialchars($site['business_city']) ?>
         </p>
       <?php endif; ?>
     </div>
     <div class="flex items-center gap-2 flex-wrap">
       <?php if ($isLive): ?>
-        <span class="text-xs font-bold px-3 py-1 rounded-full" style="background:rgba(16,185,129,.2);color:#6ee7b7;border:1px solid rgba(16,185,129,.3)">● Live</span>
+        <span class="text-xs font-bold px-3 py-1 rounded-full" style="background:var(--accent-a22, rgba(127,227,168,.2));color:#6ee7b7;border:1px solid var(--accent-a28, rgba(127,227,168,.3))">● Live</span>
         <a href="<?= htmlspecialchars($publicUrl) ?>" target="_blank"
            class="text-xs font-bold px-3 py-1.5 rounded-xl transition"
-           style="background:rgba(255,255,255,.15);color:#fff;">
+           style="background:var(--hair-2);color:var(--pure);">
           <i class="fa-solid fa-arrow-up-right-from-square mr-1 text-[10px]"></i>Visit Site
         </a>
       <?php elseif ($isExpired): ?>
         <span class="text-xs font-bold px-3 py-1 rounded-full" style="background:rgba(245,158,11,.15);color:#fbbf24;border:1px solid rgba(245,158,11,.3)">⏱ Expired</span>
       <?php else: ?>
-        <span class="text-xs font-bold px-3 py-1 rounded-full" style="background:rgba(255,255,255,.08);color:#64748b;">Offline</span>
+        <span class="text-xs font-bold px-3 py-1 rounded-full" style="background:var(--hair);color:var(--ink-3);">Offline</span>
       <?php endif; ?>
       <a href="/portal/site_editor.php?site_id=<?= $site_id ?>"
          class="text-xs font-bold px-3 py-1.5 rounded-xl transition"
-         style="background:rgba(255,255,255,.1);color:rgba(255,255,255,.8);">
+         style="background:var(--fill-3);color:var(--ink);">
         <i class="fa-solid fa-pen mr-1 text-[10px]"></i>Edit
       </a>
     </div>
@@ -315,11 +315,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     <?php if ($totalViews > 0): foreach (['desktop','mobile','tablet'] as $dev): ?>
       <div class="device-row">
         <i class="fa-solid <?= $devIcons[$dev] ?> text-xs" style="width:14px;color:<?= $devColors[$dev] ?>;"></i>
-        <span style="font-size:.78rem;color:#cbd5e1;min-width:54px;"><?= ucfirst($dev) ?></span>
+        <span style="font-size:.78rem;color:var(--ink-2);min-width:54px;"><?= ucfirst($dev) ?></span>
         <div class="device-bar-track">
           <div class="device-bar-fill" style="width:<?= $totalDevice > 0 ? round($devices[$dev]/$totalDevice*100) : 0 ?>%;background:<?= $devColors[$dev] ?>;"></div>
         </div>
-        <span style="font-size:.75rem;font-weight:700;color:#f1f5f9;min-width:28px;text-align:right;"><?= $devices[$dev] ?></span>
+        <span style="font-size:.75rem;font-weight:700;color:var(--ink);min-width:28px;text-align:right;"><?= $devices[$dev] ?></span>
       </div>
     <?php endforeach; else: ?>
       <div class="notice-no-data" style="padding:20px;">No data yet</div>
@@ -336,9 +336,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
           $pct = round($ref['cnt'] / $maxRef * 100);
       ?>
       <div class="ref-row">
-        <i class="fa-solid fa-link" style="font-size:.6rem;color:#475569;"></i>
+        <i class="fa-solid fa-link" style="font-size:.6rem;color:var(--ink-4);"></i>
         <span class="ref-name"><?= htmlspecialchars($ref['ref']) ?></span>
-        <div style="width:80px;height:4px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden;">
+        <div style="width:80px;height:4px;border-radius:2px;background:var(--fill-2);overflow:hidden;">
           <div style="height:100%;width:<?= $pct ?>%;background:<?= $chartColor ?>;border-radius:2px;"></div>
         </div>
         <span class="ref-count"><?= number_format($ref['cnt']) ?></span>
@@ -370,12 +370,12 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     ?>
       <div>
         <p class="stat-label" style="margin-bottom:2px;"><?= $d['label'] ?></p>
-        <p style="color:#cbd5e1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($d['value']) ?></p>
+        <p style="color:var(--ink-2);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"><?= htmlspecialchars($d['value']) ?></p>
       </div>
     <?php endforeach; ?>
   </div>
   <?php if ($isLive && $publicUrl): ?>
-    <div class="mt-4 pt-4" style="border-top:1px solid rgba(255,255,255,.06);">
+    <div class="mt-4 pt-4" style="border-top:1px solid var(--hair);">
       <p class="stat-label" style="margin-bottom:4px;">Public URL</p>
       <a href="<?= htmlspecialchars($publicUrl) ?>" target="_blank"
          class="text-sm font-semibold hover:text-white transition" style="color:#6366f1;">
@@ -401,6 +401,17 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   grad.addColorStop(0,   color + '55');
   grad.addColorStop(1,   color + '00');
 
+  /* Colours come from the page's tokens, read at draw time: a canvas cannot
+     resolve var(), it just ignores the assignment and keeps drawing in whatever
+     colour was set before it — black. See the note in assets/js/ui-theme.js. */
+  const T = (name, fallback) => (window.UtligoMotion && UtligoMotion.token)
+    ? (UtligoMotion.token(name) || fallback) : fallback;
+  const A = (name, a, fallback) => (window.UtligoMotion && UtligoMotion.alpha)
+    ? UtligoMotion.alpha(name, a, fallback) : fallback;
+
+  const muted = T('--ink-4', '#94a3b8');
+  const grid  = A('--ink', 0.07, 'rgba(255,255,255,.07)');
+
   new Chart(ctx, {
     type: 'line',
     data: {
@@ -423,11 +434,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       plugins: {
         legend: { display: false },
         tooltip: {
-          backgroundColor: '#1e293b',
-          borderColor: 'rgba(255,255,255,.1)',
+          backgroundColor: T('--panel-2', '#1e293b'),
+          borderColor: T('--hair', 'rgba(255,255,255,.1)'),
           borderWidth: 1,
-          titleColor: '#94a3b8',
-          bodyColor: '#f1f5f9',
+          titleColor: T('--ink-2', '#94a3b8'),
+          bodyColor: T('--ink', '#f1f5f9'),
           callbacks: {
             label: ctx => ' ' + ctx.parsed.y + ' views'
           }
@@ -435,13 +446,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       },
       scales: {
         x: {
-          ticks: { color: '#475569', font: { size: 10 }, maxTicksLimit: 10 },
-          grid:  { color: 'rgba(255,255,255,.04)' }
+          ticks: { color: muted, font: { size: 10 }, maxTicksLimit: 10 },
+          grid:  { color: grid }
         },
         y: {
           beginAtZero: true,
-          ticks: { color: '#475569', font: { size: 10 }, precision: 0 },
-          grid:  { color: 'rgba(255,255,255,.06)' }
+          ticks: { color: muted, font: { size: 10 }, precision: 0 },
+          grid:  { color: grid }
         }
       }
     }

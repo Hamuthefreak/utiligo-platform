@@ -399,6 +399,9 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     'password'      => ['icon'=>'lock',                 'label'=>'Password'],
     'security'      => ['icon'=>'shield-halved',        'label'=>'Security'],
     'notifications' => ['icon'=>'bell',                 'label'=>'Notifications'],
+    // Appearance sits with the other personal settings rather than in a menu: it is
+    // a preference about how the product looks, which is exactly what this page is.
+    'appearance'    => ['icon'=>'palette',              'label'=>'Appearance'],
     'danger'        => ['icon'=>'triangle-exclamation', 'label'=>'Danger Zone'],
   ];
   foreach ($tabs as $t => $meta): ?>
@@ -853,13 +856,13 @@ function copySecret(){const el=document.getElementById('tfaSecretDisplay');if(!e
         <!-- Toggle -->
         <div class="relative shrink-0 mt-1">
           <input type="checkbox" name="<?= $key ?>" value="1" id="notif_<?= $key ?>" <?= $on?'checked':'' ?> class="sr-only peer">
-          <div class="w-9 h-5 rounded-full border transition
-                      bg-slate-700 border-slate-600
-                      peer-checked:bg-white peer-checked:border-white cursor-pointer"
-               onclick="document.getElementById('notif_<?= $key ?>').click()"></div>
-          <div class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-slate-400 transition
-                      peer-checked:translate-x-4 peer-checked:bg-slate-900
-                      pointer-events-none"></div>
+          <?php /* The knob is drawn from the theme tokens and the state is one class,
+                   so "on" is a solid plate of the theme's ink with a knob in the
+                   canvas colour. It used to be four Tailwind peer-checked utilities
+                   painted over by inline styles from the script below — on the light
+                   theme the plate stayed white and the switch disappeared. */ ?>
+          <div class="w-9 h-5 rounded-full border transition notif-track<?= $on?' is-on':'' ?> cursor-pointer"></div>
+          <div class="absolute top-0.5 left-0.5 w-4 h-4 rounded-full transition notif-thumb<?= $on?' is-on':'' ?> pointer-events-none"></div>
         </div>
       </label>
       <?php endforeach; ?>
@@ -877,20 +880,40 @@ function copySecret(){const el=document.getElementById('tfaSecretDisplay');if(!e
   </div>
 </div>
 <style>
-label:has(input[type=checkbox]:checked) .peer-indicator { transform: translateX(1rem); background:#0f172a; }
+/* Off is a hollow slot, on is a solid one — the same two states in every theme,
+   because both colours are tokens (--pure is white on the dark themes and black on
+   Paper, --canvas is the reverse). */
+.notif-track  { background: var(--fill-3); border-color: var(--hair-2); }
+.notif-track.is-on  { background: var(--pure); border-color: var(--pure); }
+.notif-thumb  { background: var(--ink-3); }
+.notif-thumb.is-on  { transform: translateX(1rem); background: var(--canvas); }
 </style>
 <script>
-document.querySelectorAll('.sr-only').forEach(cb=>{
+/* The switch mirrors its checkbox. The label already wraps the input, so a click
+   anywhere on it toggles the input natively — an extra `input.click()` on the track
+   made every click land twice and cancel itself out. */
+document.querySelectorAll('input[type=checkbox].sr-only').forEach(cb=>{
   const track=cb.nextElementSibling;
   const dot=track?.nextElementSibling;
   if(!track||!dot)return;
-  function sync(){track.style.background=cb.checked?'#fff':'';track.style.borderColor=cb.checked?'#fff':'';dot.style.transform=cb.checked?'translateX(1rem)':'';dot.style.background=cb.checked?'#0f172a':'';}
-  sync();
+  function sync(){ track.classList.toggle('is-on', cb.checked); dot.classList.toggle('is-on', cb.checked); }
   cb.addEventListener('change',sync);
-  track.addEventListener('click',()=>{ cb.checked=!cb.checked; cb.dispatchEvent(new Event('change')); });
+  sync();
 });
 </script>
 
+
+<?php elseif ($tab === 'appearance'): ?>
+<!-- ════════════════════════════════════════ APPEARANCE ═══════════════════════════════════════ -->
+<?php
+require_once __DIR__ . '/../includes/appearance.php';
+// The picker is server-rendered (see appearance_panel_html) and applied by the
+// inline bootstrap in <head>, so the choice is live before the page paints and
+// survives every page in between. Nothing here is submitted: there is no form,
+// because there is nothing for the server to store — see the note in
+// includes/appearance.php about why this preference lives in the browser.
+?>
+<?= appearance_panel_html() ?>
 
 <?php elseif ($tab === 'danger'): ?>
 <!-- ════════════════════════════════════════ DANGER ZONE ═══════════════════════════════════════ -->

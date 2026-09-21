@@ -19,7 +19,7 @@ $stages = [
     'contacted'   => ['label'=>'Contacted',   'color'=>'#f59e0b','icon'=>'fa-envelope'],
     'proposal'    => ['label'=>'Proposal',    'color'=>'#8b5cf6','icon'=>'fa-file-lines'],
     'negotiation' => ['label'=>'Negotiation', 'color'=>'#ec4899','icon'=>'fa-handshake'],
-    'won'         => ['label'=>'Won',         'color'=>'#10b981','icon'=>'fa-trophy'],
+    'won'         => ['label'=>'Won',         'color'=>'var(--accent, #7fe3a8)','icon'=>'fa-trophy'],
     'lost'        => ['label'=>'Lost',        'color'=>'#ef4444','icon'=>'fa-xmark'],
 ];
 $valid_stages = array_keys($stages);
@@ -124,7 +124,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
             $stage = in_array($_POST['stage'] ?? '', $valid_stages) ? $_POST['stage'] : 'lead';
             $val   = max(0, (float)($_POST['deal_value'] ?? 0));
             $prob  = min(100, max(0, (int)($_POST['probability'] ?? 50)));
-            $colors = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444'];
+            $colors = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','var(--accent, #7fe3a8)','#ef4444'];
             $color  = $colors[array_rand($colors)];
 
             if ($name === '') {
@@ -420,7 +420,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['crm_action'])) {
                 }
             }
 
-            $colors = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','#10b981','#ef4444'];
+            $colors = ['#3b82f6','#8b5cf6','#ec4899','#f59e0b','var(--accent, #7fe3a8)','#ef4444'];
             $name   = trim($lead['business_name'] ?? '') ?: ('Lead #'.$lead_id);
             $biz    = $name;
             $email  = trim($lead['business_email'] ?? '');
@@ -553,66 +553,66 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 ?>
 
 <style>
-.crm-tab { padding:8px 18px; border-radius:10px; font-size:.8rem; font-weight:600; color:#64748b; cursor:pointer; transition:all .15s; white-space:nowrap; border:none; background:none; }
-.crm-tab:hover { color:#fff; background:rgba(255,255,255,.06); }
-.crm-tab.active { color:#fff; background:rgba(255,255,255,.1); }
+.crm-tab { padding:8px 18px; border-radius:10px; font-size:.8rem; font-weight:600; color:var(--ink-3); cursor:pointer; transition:all .15s; white-space:nowrap; border:none; background:none; }
+.crm-tab:hover { color:var(--pure); background:var(--fill-2); }
+.crm-tab.active { color:var(--pure); background:var(--fill-3); }
 .crm-tab-pane { display:none; }
 .crm-tab-pane.active { display:block; }
 .stage-col { min-width:220px; }
-.pipeline-card { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:14px; padding:12px 14px; cursor:grab; transition:box-shadow .15s,transform .15s; }
+.pipeline-card { background:var(--fill-1); border:1px solid var(--hair); border-radius:14px; padding:12px 14px; cursor:grab; transition:box-shadow .15s,transform .15s; }
 .pipeline-card:hover { box-shadow:0 4px 20px rgba(0,0,0,.4); transform:translateY(-2px); }
 .stage-dot { width:8px; height:8px; border-radius:50%; display:inline-block; margin-right:6px; flex-shrink:0; }
-.prob-bar { height:3px; border-radius:2px; background:rgba(255,255,255,.08); }
+.prob-bar { height:3px; border-radius:2px; background:var(--fill-2); }
 .prob-fill { height:100%; border-radius:2px; transition:width .4s; }
 .rev-bar-wrap { display:flex; align-items:flex-end; gap:6px; height:80px; overflow:visible; }
-.rev-bar { flex:1; border-radius:4px 4px 0 0; background:rgba(255,255,255,.15); transition:height .5s cubic-bezier(.4,0,.2,1); min-height:4px; position:relative; cursor:default; overflow:visible; }
-.rev-bar:hover { background:rgba(255,255,255,.3); }
-.rev-tip { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:#1e293b; border:1px solid rgba(255,255,255,.12); color:#fff; font-size:.65rem; font-weight:700; padding:2px 7px; border-radius:6px; white-space:nowrap; opacity:0; transition:opacity .15s; pointer-events:none; z-index:10; }
+.rev-bar { flex:1; border-radius:4px 4px 0 0; background:var(--fill-3); transition:height .5s cubic-bezier(.4,0,.2,1); min-height:4px; position:relative; cursor:default; overflow:visible; }
+.rev-bar:hover { background:var(--fill-4); }
+.rev-tip { position:absolute; bottom:calc(100% + 6px); left:50%; transform:translateX(-50%); background:var(--panel-2); border:1px solid var(--hair); color:var(--pure); font-size:.65rem; font-weight:700; padding:2px 7px; border-radius:6px; white-space:nowrap; opacity:0; transition:opacity .15s; pointer-events:none; z-index:10; }
 .rev-bar:hover .rev-tip { opacity:1; }
-.task-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.task-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-bottom:1px solid var(--hair); }
 .task-row:last-child { border-bottom:none; }
-.task-check { width:18px; height:18px; border-radius:5px; border:1.5px solid rgba(255,255,255,.2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all .15s; }
-.task-check.done { background:#10b981; border-color:#10b981; }
+.task-check { width:18px; height:18px; border-radius:5px; border:1.5px solid var(--hair-2); display:flex; align-items:center; justify-content:center; cursor:pointer; flex-shrink:0; transition:all .15s; }
+.task-check.done { background:var(--accent, #7fe3a8); border-color:var(--accent, #7fe3a8); }
 .pri-dot { width:6px; height:6px; border-radius:50%; flex-shrink:0; }
-.note-card { background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.07); border-radius:12px; padding:14px 16px; }
+.note-card { background:var(--fill-1); border:1px solid var(--hair); border-radius:12px; padding:14px 16px; }
 .note-card.pinned { border-color:rgba(251,191,36,.2); background:rgba(251,191,36,.03); }
 .modal-backdrop { position:fixed; inset:0; background:rgba(0,0,0,.7); z-index:100; display:flex; align-items:center; justify-content:center; padding:16px; opacity:0; pointer-events:none; transition:opacity .2s; }
 .modal-backdrop.open { opacity:1; pointer-events:all; }
-.modal-box { background:#0f172a; border:1px solid rgba(255,255,255,.1); border-radius:20px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto; padding:28px; transform:translateY(12px); transition:transform .2s; }
+.modal-box { background:var(--panel); border:1px solid var(--hair); border-radius:20px; width:100%; max-width:520px; max-height:90vh; overflow-y:auto; padding:28px; transform:translateY(12px); transition:transform .2s; }
 .modal-backdrop.open .modal-box { transform:translateY(0); }
-.crm-input { width:100%; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); color:#f1f5f9; font-size:.875rem; padding:.6rem .75rem; border-radius:10px; outline:none; transition:border-color .15s; }
-.crm-input:focus { border-color:rgba(255,255,255,.22); }
-.crm-input::placeholder { color:#475569; }
-select.crm-input option { background:#0f172a; }
-.upgrade-wall { border:1px dashed rgba(255,255,255,.1); border-radius:16px; padding:40px 24px; text-align:center; }
+.crm-input { width:100%; background:var(--fill-1); border:1px solid var(--hair); color:var(--ink); font-size:.875rem; padding:.6rem .75rem; border-radius:10px; outline:none; transition:border-color .15s; }
+.crm-input:focus { border-color:var(--hair-2); }
+.crm-input::placeholder { color:var(--ink-4); }
+select.crm-input option { background:var(--panel); }
+.upgrade-wall { border:1px dashed var(--hair); border-radius:16px; padding:40px 24px; text-align:center; }
 @keyframes crm-in { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
 .crm-in { animation:crm-in .22s ease both; }
 
 /* ── Detail view (added for client profile page) ── */
-.activity-row { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.05); }
+.activity-row { display:flex; gap:12px; padding:10px 0; border-bottom:1px solid var(--hair); }
 .activity-row:last-child { border-bottom:none; }
 .activity-ic { width:28px; height:28px; border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:11px; flex-shrink:0; }
-.activity-ic.note        { background:rgba(148,163,184,.12); color:#94a3b8; }
+.activity-ic.note        { background:rgba(148,163,184,.12); color:var(--ink-2); }
 .activity-ic.call       { background:rgba(59,130,246,.12);  color:#60a5fa; }
 .activity-ic.email       { background:rgba(245,158,11,.12); color:#fbbf24; }
 .activity-ic.meeting     { background:rgba(139,92,246,.12); color:#a78bfa; }
-.activity-ic.milestone   { background:rgba(16,185,129,.12); color:#34d399; }
+.activity-ic.milestone   { background:var(--accent-a12, rgba(127,227,168,.12)); color:#34d399; }
 .activity-ic.stage_change{ background:rgba(236,72,153,.12); color:#f472b6; }
 .activity-ic.task        { background:rgba(99,102,241,.12); color:#818cf8; }
-.activity-ic.edit        { background:rgba(148,163,184,.08); color:#64748b; }
+.activity-ic.edit        { background:rgba(148,163,184,.08); color:var(--ink-3); }
 .activity-ic.delete      { background:rgba(239,68,68,.08);  color:#f87171; }
-.remind-toggle { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); font-size:11px; color:#64748b; cursor:pointer; transition:all .15s; }
-.remind-toggle:hover { color:#fff; border-color:rgba(255,255,255,.18); }
+.remind-toggle { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:8px; background:var(--fill-1); border:1px solid var(--hair); font-size:11px; color:var(--ink-3); cursor:pointer; transition:all .15s; }
+.remind-toggle:hover { color:var(--pure); border-color:var(--hair-2); }
 .remind-toggle.on { background:rgba(245,158,11,.12); border-color:rgba(245,158,11,.3); color:#fbbf24; }
 .pill { display:inline-flex; align-items:center; gap:5px; padding:3px 9px; border-radius:99px; font-size:10px; font-weight:700; }
-.kv-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid rgba(255,255,255,.04); }
+.kv-row { display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--hair); }
 .kv-row:last-child { border-bottom:none; }
-.kv-key { font-size:11px; font-weight:600; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
-.kv-val { font-size:13px; color:#f1f5f9; text-align:right; }
+.kv-key { font-size:11px; font-weight:600; color:var(--ink-3); text-transform:uppercase; letter-spacing:.04em; }
+.kv-val { font-size:13px; color:var(--ink); text-align:right; }
 /* Drag-and-drop visual states */
 .pipeline-card.dragging { opacity:.5; cursor:grabbing; }
-.stage-col.drop-target { background:rgba(255,255,255,.04); border-radius:12px; padding:6px; transition:background .15s; }
-.stage-col.drop-target.over { background:rgba(255,255,255,.08); }
+.stage-col.drop-target { background:var(--fill-1); border-radius:12px; padding:6px; transition:background .15s; }
+.stage-col.drop-target.over { background:var(--fill-2); }
 </style>
 
 <!-- PAGE HEADER -->
@@ -775,7 +775,7 @@ $_cdone_tasks = array_filter($detail_tasks, fn($t) =>  $t['done']);
         ?>
         <div class="task-row crm-in" id="task-<?=(int)$t['id']?>">
           <div class="task-check <?=$t['done']?'done':''?>" onclick="toggleTask(<?=(int)$t['id']?>,this)">
-            <?php if ($t['done']):?><i class="fa-solid fa-check text-white text-[9px]"></i><?php endif;?>
+            <?php if ($t['done']):?><i class="fa-solid fa-check text-[#04150c] text-[9px]"></i><?php endif;?>
           </div>
           <span class="pri-dot" style="background:<?=$pri_color?>"></span>
           <div class="flex-1">
@@ -981,14 +981,14 @@ if (formEditClient) {
   <?php
   $tiles = [
     ['fa-users',       'Total Clients',  $stats['total'],                              ''],
-    ['fa-trophy',      'Won Deals',      $stats['won'],                                '#10b981'],
-    ['fa-sack-dollar', 'Revenue Won',    '$'.number_format($stats['won_value'],0),     '#10b981'],
+    ['fa-trophy',      'Won Deals',      $stats['won'],                                'var(--accent, #7fe3a8)'],
+    ['fa-sack-dollar', 'Revenue Won',    '$'.number_format($stats['won_value'],0),     'var(--accent, #7fe3a8)'],
     ['fa-filter',      'Pipeline Value', '$'.number_format($stats['pipeline_value'],0),'#8b5cf6'],
   ];
   foreach ($tiles as [$ic,$lbl,$val,$col]):?>
   <div class="glass rounded-2xl p-4 crm-in">
     <div class="flex items-center gap-2 mb-2">
-      <i class="fa-solid <?=$ic?> text-xs" style="color:<?=$col ?: '#64748b'?>"></i>
+      <i class="fa-solid <?=$ic?> text-xs" style="color:<?=$col ?: 'var(--ink-3)'?>"></i>
       <span class="text-[10px] font-semibold text-slate-600 uppercase tracking-wide"><?=$lbl?></span>
     </div>
     <p class="text-2xl font-extrabold text-white"><?=$val?></p>
@@ -1234,7 +1234,7 @@ if (formEditClient) {
     ?>
     <div class="task-row crm-in" id="task-<?=(int)$t['id']?>">
       <div class="task-check <?=$t['done']?'done':''?>" onclick="toggleTask(<?=(int)$t['id']?>,this)">
-        <?php if ($t['done']):?><i class="fa-solid fa-check text-white text-[9px]"></i><?php endif;?>
+        <?php if ($t['done']):?><i class="fa-solid fa-check text-[#04150c] text-[9px]"></i><?php endif;?>
       </div>
       <span class="pri-dot" style="background:<?=$pri_color?>"></span>
       <div class="flex-1">
@@ -1497,7 +1497,7 @@ function toggleTask(id, el) {
         text.classList.toggle('text-slate-600', isDone);
         text.classList.toggle('text-white', !isDone);
       }
-      el.innerHTML = el.classList.contains('done') ? '<i class="fa-solid fa-check text-white text-[9px]"></i>' : '';
+      el.innerHTML = el.classList.contains('done') ? '<i class="fa-solid fa-check text-[#04150c] text-[9px]"></i>' : '';
     }).catch(() => {});
 }
 
@@ -1557,7 +1557,7 @@ function filterClients() {
     // Header dot color → stage key (reverse of $stages).
     const colorMap = {
       '#3b82f6':'lead','#f59e0b':'contacted','#8b5cf6':'proposal',
-      '#ec4899':'negotiation','#10b981':'won','#ef4444':'lost'
+      '#ec4899':'negotiation','var(--accent, #7fe3a8)':'won','#ef4444':'lost'
     };
     const dot = colEl.querySelector('.stage-dot');
     const color = dot ? dot.style.background : '';

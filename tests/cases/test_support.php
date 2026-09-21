@@ -227,6 +227,76 @@ t_like($att['url'], '/api/support-file.php?id=3',
 t_unlike($att['url'], 'storage/', 'never as a direct storage path');
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * 5b. The panel's presentation rules
+ *
+ * Everything below is a TEXT-LEVEL guard on a decision that was made once and
+ * could be undone by a tidy-up. It cannot prove the panel looks right — only a
+ * browser can — but it can prove the decisions are still implemented, which is
+ * the failure mode these rules actually have: a later edit restores a full-screen
+ * mobile sheet or drops the font link, and nothing else notices.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+t_section('The panel floats at every width, including phones');
+
+$cssDir  = dirname(__DIR__, 2);
+$css     = (string)file_get_contents($cssDir . '/assets/css/support.css');
+$js      = (string)file_get_contents($cssDir . '/assets/js/support.js');
+$layout  = (string)file_get_contents($cssDir . '/includes/portal_layout.php');
+$adminL  = (string)file_get_contents($cssDir . '/includes/admin_layout.php');
+
+/** The @media block for phones, so its rules can be judged on their own. */
+$mobile = '';
+if (preg_match('~@media \(max-width: 767px\)\s*\{(.*?)\n\}~s', $css, $m)) {
+    $mobile = $m[1];
+}
+t_ok($mobile !== '', 'there is a phone breakpoint for the panel');
+t_unlike($mobile, 'width: 100%', 'and it is NOT a full-screen sheet');
+t_unlike($mobile, 'height: 100%', 'still sized as a card, not as the screen');
+t_like($mobile, 'calc(100vw - ', 'inset from the viewport edge instead');
+t_like($css, 'height: min(560px, calc(100dvh - 120px))',
+    'and the desktop height uses dvh where it exists, so a mobile URL bar cannot cover the composer');
+
+t_section('It animates, and the animation is optional');
+
+t_like($css, '.sp-panel.is-open', 'the panel has an explicit open state to animate to');
+t_like($css, 'transform-origin: 100% 100%', 'which grows out of the corner it lives in');
+t_like($js, "panel.classList.add('is-open')", 'and the script drives that state');
+t_like($js, 'requestAnimationFrame',
+    'from a frame after unhiding, or the browser skips the transition entirely');
+t_like($js, 'if (!state.open) panel.hidden = true',
+    'the panel is only hidden once the closing transition has had its window');
+
+$reduced = '';
+if (preg_match('~@media \(prefers-reduced-motion: reduce\)\s*\{(.*?)\n\}~s', $css, $m)) {
+    $reduced = $m[1];
+}
+t_like($reduced, '.sp-panel',
+    'a reduced-motion user gets the panel without the movement, not a panel that stays invisible');
+t_like($reduced, 'animation: none', 'and no reply pulse');
+
+t_section('Its own typeface, actually delivered');
+
+t_like($css, "--sp-font: 'Space Grotesk'", 'the channel declares its own face, once');
+t_like($css, '.sp-channel', 'and a class the admin inbox shares so one conversation looks like one product');
+t_like($layout, 'family=Space+Grotesk', 'the portal loads it');
+t_like($adminL, 'family=Space+Grotesk', 'so does the admin panel');
+t_like($adminL, "$adminPage === 'support'",
+    'but only on the page that needs it, not on every admin screen');
+
+t_section('A reply is announced, quietly and at the right time');
+
+t_like($js, "localStorage.getItem('utiligo_support_muted')",
+    'the chime preference is remembered across page loads');
+t_like($js, 'if (state.muted) return;', 'and the chime itself checks the preference');
+t_like($js, 'AudioContext', 'the sound is synthesised — nothing to ship, nothing to 404');
+t_like($js, 'createOscillator', 'from two oscillators rather than an audio file');
+t_like($js, "document.visibilityState === 'visible'",
+    'nothing is asked of the API while the tab is hidden');
+t_like($js, 'animationend', 'the launcher pulse clears itself so it can fire again');
+t_unlike($js, 'Notification.requestPermission',
+    'and no browser-notification permission prompt is raised behind the customer\'s back');
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * 6. The endpoint
  * ──────────────────────────────────────────────────────────────────────────── */
 
