@@ -8,11 +8,38 @@ require_once __DIR__ . '/../includes/plans.php';
 require_once __DIR__ . '/../includes/entitlements.php';
 require_once __DIR__ . '/../includes/functions.php';
 require_once __DIR__ . '/../includes/mailer.php';
+// For whop_manage_url()/whop_log(), and for the state read below: who is actually
+// billing this account decides which cancel control the page may show.
+require_once __DIR__ . '/../includes/whop.php';
 
 require_login();
 $user    = current_user();
 $message = '';
 $error   = '';
+
+/**
+ * Is manual activation available on this deployment?
+ *
+ * The billing page used to render a card form that activated a plan with no
+ * payment behind it, under a banner reading "any 12-digit number works, no real
+ * charge". In a real browser that is a free-plan button: a free account could
+ * click "Subscribe to Pro", type twelve digits, and have the product.
+ *
+ * So the form needs BOTH of two independent conditions, and either one alone is
+ * enough to refuse it:
+ *
+ *   TEST_PAYMENT_MODE   the product's own flag, which an admin turns on for
+ *                       testing. It defaults to OFF now — a flag that gives away
+ *                       paid plans should not ship enabled.
+ *   APP_ENV             and never in production, whatever the flag says. A
+ *                       mis-set flag is exactly the kind of mistake that costs
+ *                       money, so it is not allowed to be the only gate.
+ *
+ * The POST handler below checks the same value, because a hand-crafted request
+ * must not be worth more than the UI. */
+$canActivateLocally = (defined('TEST_PAYMENT_MODE') ? (bool)TEST_PAYMENT_MODE : false)
+    && !(defined('APP_ENV') && APP_ENV === 'production');
+$_whop_manage_url = '';   // set only by a refused cancel, and rendered as a link beside it
 
 $_target_plan = 'pro';
 if (isset($_GET['plan']) && $_GET['plan'] === 'entrepreneur')                            $_target_plan = 'entrepreneur';
@@ -21,7 +48,7 @@ elseif (isset($_POST['subscribe_plan']) && $_POST['subscribe_plan'] === 'entrepr
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if (!csrf_verify($_POST['csrf_token'] ?? null)) {
         $error = 'Invalid session. Please refresh the page and try again.';
-    } elseif ($_POST['action'] === 'test_subscribe') {
+    } elseif ($_POST['action'] === 'test_subscribe' && $canActivateLocally) {
         $subscribePlan = in_array($_POST['subscribe_plan'] ?? '', ['pro','entrepreneur']) ? $_POST['subscribe_plan'] : 'pro';
         $cardNumber    = preg_replace('/\D/', '', $_POST['card_number'] ?? '');
         $cardExpiry    = preg_replace('/\s/', '', trim($_POST['card_expiry'] ?? ''));
@@ -51,24 +78,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $error = 'Something went wrong while activating your plan. Please try again or contact support.';
             }
         }
+    } elseif ($_POST['action'] === 'test_subscribe') {
+        // Refused, and the form that would send it is not rendered either. This
+        // branch grants a paid plan with no payment behind it, so both halves are
+        // gated on the same value — see $canActivateLocally above.
+        error_log('[billing] refused a test_subscribe POST: manual activation is off (test mode '
+            . (defined('TEST_PAYMENT_MODE') && TEST_PAYMENT_MODE ? 'on' : 'off')
+            . ', APP_ENV ' . (defined('APP_ENV') ? APP_ENV : 'unset') . ')');
+        $error = 'Card payments are handled by Whop — use the subscribe button to continue.';
     } elseif ($_POST['action'] === 'cancel') {
-        // Self-service cancel. Status only — the plan is deliberately left alone
-        // so the paid features run to the end of the period, which is what the
-        // message below promises. The Stripe customer.subscription.deleted event
-        // finalises the downgrade when the period actually ends.
-        // stamp_clock: the customer decided at this moment, so a saved success
-        // URL replayed afterwards must lose to this decision on time.
-        $result = entitlement_set_status((int)$user['id'], 'cancelled', [
-            'source'      => 'billing.cancel',
-            'stamp_clock' => true,
-        ]);
+        // A WHOP subscription is not ours to cancel, and pretending otherwise is
+        // the worst possible outcome: this branch would mark the account
+        // 'cancelled', show the customer "active until the end of your period",
+        // and Whop would go on charging their card every month. So the request is
+        // refused and handed to the one place that can actually stop it.
+        $whopState = entitlement_whop_state((int)$user['id']);
 
-        if ($result['applied'] || $result['reason'] === 'no change') {
-            $message = 'Subscription cancelled. Your plan features remain active until the end of your billing period.';
-            $user['subscription_status'] = 'cancelled';
+        if (trim((string)$whopState['membership_id']) !== '') {
+            $_whop_manage_url = whop_manage_url((string)$whopState['member_id']);
+            $error = 'Your subscription is billed by Whop, so it has to be cancelled there — cancelling it here would stop nothing.';
+            whop_log('billing', 'refused a local cancel for account ' . (int)$user['id'] . ' — the Whop membership is ' . $whopState['membership_id']);
         } else {
-            error_log('[billing] cancel failed: ' . $result['reason']);
-            $error = 'Could not cancel subscription right now. Please try again.';
+            // Self-service cancel. Status only — the plan is deliberately left alone
+            // so the paid features run to the end of the period, which is what the
+            // message below promises. The Stripe customer.subscription.deleted event
+            // finalises the downgrade when the period actually ends.
+            // stamp_clock: the customer decided at this moment, so a saved success
+            // URL replayed afterwards must lose to this decision on time.
+            $result = entitlement_set_status((int)$user['id'], 'cancelled', [
+                'source'      => 'billing.cancel',
+                'stamp_clock' => true,
+            ]);
+
+            if ($result['applied'] || $result['reason'] === 'no change') {
+                $message = 'Subscription cancelled. Your plan features remain active until the end of your billing period.';
+                $user['subscription_status'] = 'cancelled';
+            } else {
+                error_log('[billing] cancel failed: ' . $result['reason']);
+                $error = 'Could not cancel subscription right now. Please try again.';
+            }
         }
     }
 }
@@ -79,6 +127,46 @@ $is_ent       = $plan === 'entrepreneur';
 $is_paid      = $is_pro || $is_ent;
 $is_active    = ($user['subscription_status'] ?? '') === 'active';
 $is_cancelled = ($user['subscription_status'] ?? '') === 'cancelled';
+
+/* WHICH PROVIDER BILLS THIS ACCOUNT
+ * A subscription can come from Stripe (the original integration) or from Whop
+ * (the merchant of record for both plans now). The difference is not cosmetic: a
+ * Whop membership can only be cancelled at Whop, so the page shows that link
+ * instead of a cancel form that would do nothing. Read through the module that
+ * owns the columns — one read, used by both the control and any message. */
+$_whop_state     = entitlement_whop_state((int)$user['id']);
+$_whop_member_id = trim((string)$_whop_state['member_id']);
+
+/**
+ * THE PURCHASE CONTROL. One helper rather than one form per card, because the
+ * two cards already drifted apart once: the Pro card and the Entrepreneur card
+ * carried their own copies of the same markup, so a change to one missed the
+ * other, and both ended up pointing at register.php even for a signed-in
+ * customer.
+ *
+ * What it posts to is the part that matters. /whop-checkout.php creates a
+ * checkout configuration with THIS ACCOUNT'S ID IN ITS METADATA and hands the
+ * customer to Whop. Nothing is granted here and nothing is granted by the
+ * redirect that follows: only a signed payment.succeeded does that, which is why
+ * there is no plan-switching SQL anywhere near this button.
+ */
+$render_whop_button = static function (string $plan, string $label, string $buttonClass): void { ?>
+  <form method="POST" action="/whop-checkout.php" class="space-y-3 mb-6">
+    <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+    <input type="hidden" name="plan" value="<?= htmlspecialchars($plan) ?>">
+    <button type="submit" class="w-full <?= htmlspecialchars($buttonClass) ?> py-4 rounded-xl font-black text-base mt-1">
+      <i class="fa-solid fa-lock mr-2 text-sm"></i><?= htmlspecialchars($label) ?>
+    </button>
+    <div class="trust-row justify-center pt-1">
+      <i class="fa-solid fa-lock"></i><span>Checkout by</span>
+      <span class="font-black text-slate-300">Whop</span>
+      <span class="mx-1 text-slate-700">·</span>
+      <i class="fa-solid fa-shield-halved text-slate-600"></i><span>256-bit SSL</span>
+      <span class="mx-1 text-slate-700">·</span>
+      <span>Cancel any time</span>
+    </div>
+  </form>
+<?php };
 
 $_pro_leads     = (int) PRO_LEAD_LIMIT;
 $_pro_sites     = (int) PRO_SITE_LIMIT;
@@ -101,6 +189,18 @@ if (isset($_GET['cancelled'])) $message = 'Checkout cancelled — you were not c
 // has always had: Stripe not yet configured on this install.
 if (isset($_GET['stripe_error']) && $error === '') {
     $error = 'We could not start that purchase: ' . (string)$_GET['stripe_error'];
+}
+
+// A Whop purchase that could not be started comes back the same way, and the two
+// reasons it can have are the two the customer can do something about, so they get
+// sentences rather than codes.
+if (isset($_GET['whop_error']) && $error === '') {
+    $whopReason = (string)$_GET['whop_error'];
+    $error = match ($whopReason) {
+        'already_subscribed' => 'You already have a subscription, so we did not start a second one — that would have billed you twice. Manage or change your plan from the button below.',
+        'not_configured'     => 'Card payments are not switched on for this plan yet. Please contact support and we will take your payment directly.',
+        default              => 'We could not start that purchase: ' . $whopReason,
+    };
 }
 
 /* The plan pill is told apart by WEIGHT and BORDER, not by hue — the same rule the
@@ -207,7 +307,13 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php endif; ?>
 <?php if ($error): ?>
 <div class="flex items-center gap-3 bg-red-500/10 border border-red-400/20 text-red-400 rounded-2xl px-5 py-4 mb-6 text-sm">
-  <i class="fa-solid fa-triangle-exclamation shrink-0"></i><?= htmlspecialchars($error) ?>
+  <i class="fa-solid fa-triangle-exclamation shrink-0"></i><span><?= htmlspecialchars($error) ?><?php
+    // The one refusal whose fix is a link rather than a retry: a Whop subscriber
+    // can only cancel where they are billed, so the sentence above is half a
+    // message without somewhere to go.
+    if (!empty($_whop_manage_url)): ?>
+    <a href="<?= htmlspecialchars($_whop_manage_url) ?>" target="_blank" rel="noopener" class="font-semibold underline ml-1">Open your Whop billing page &rarr;</a><?php endif; ?>
+  </span>
 </div>
 <?php endif; ?>
 
@@ -239,6 +345,19 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
   <?php if ($is_paid && $is_active && !$_pro_upgrading_to_ent): ?>
   <div class="mt-5 pt-4 border-t border-white/5">
+    <?php if ($_whop_member_id !== ''):
+      /* Billed by Whop: the honest control is a link to the page that can
+         actually stop the charge. A cancel button here would look identical and
+         do nothing, which is the one thing a billing page must never do. */
+      $__whop_manage = whop_manage_url($_whop_member_id);
+      if ($__whop_manage !== ''): ?>
+      <a href="<?= htmlspecialchars($__whop_manage) ?>" target="_blank" rel="noopener" class="text-xs text-slate-400 hover:text-slate-200 transition inline-flex items-center gap-1.5">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>Manage or cancel your subscription in Whop
+      </a>
+      <?php else: ?>
+      <p class="text-xs text-slate-500">Your subscription is billed by Whop. Open your Whop billing page to manage or cancel it.</p>
+      <?php endif; ?>
+    <?php else: ?>
     <form method="POST" action="/portal/billing" onsubmit="return confirm('Cancel your subscription?');">
       <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
       <input type="hidden" name="action" value="cancel">
@@ -246,6 +365,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <i class="fa-solid fa-xmark mr-1"></i>Cancel subscription
       </button>
     </form>
+    <?php endif; ?>
   </div>
   <?php endif; ?>
 </div>
@@ -288,7 +408,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <?php if ($_pro_upgrading_to_ent): ?>
 <div class="flex items-center gap-3 bg-white/5 border border-white/15 text-slate-300 rounded-2xl px-5 py-3 mb-5 text-sm">
   <i class="fa-solid fa-bolt shrink-0"></i>
-  <span>You're upgrading from <strong>Pro</strong> to <strong>Entrepreneur</strong>. Enter your card to activate instantly.</span>
+  <span>You're upgrading from <strong>Pro</strong> to <strong>Entrepreneur</strong>. Whop's checkout settles the change in place, so there is no second subscription and nothing to cancel.</span>
   <a href="/portal/billing" class="ml-auto text-xs text-slate-500 hover:text-slate-300 transition shrink-0">Cancel</a>
 </div>
 <?php endif; ?>
@@ -379,9 +499,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
 
   <div class="px-7 py-7">
+    <?php $render_whop_button('entrepreneur', ($_pro_upgrading_to_ent ? 'Upgrade to Entrepreneur' : 'Unlock Entrepreneur') . ' — $' . $_ent_price_fmt . '/mo', 'ent-btn'); ?>
+    <?php if ($canActivateLocally): /* developer-only activation, see the guard in the POST handler above */ ?>
     <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
       <i class="fa-solid fa-flask text-amber-500/70"></i>
-      <span><strong class="text-amber-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
+      <span><strong class="text-amber-400">Development only</strong> &mdash; activates without a payment. Turn TEST_PAYMENT_MODE off to hide it.</span>
     </div>
     <form method="POST" action="/portal/billing?plan=entrepreneur" class="space-y-4" id="entForm"
           onsubmit="this.querySelector('#entSubmitBtn').disabled=true;this.querySelector('#entSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
@@ -429,6 +551,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <span>Cancel any time</span>
       </div>
     </form>
+    <?php endif; ?>
   </div>
 </div>
 
@@ -460,9 +583,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </div>
   </div>
   <div class="px-7 py-7">
+    <?php $render_whop_button('pro', 'Subscribe to Pro — $' . $_pro_price_fmt . '/mo', 'bg-white hover:bg-slate-100 text-black shadow-lg shadow-white/5 transition-all'); ?>
+    <?php if ($canActivateLocally): /* developer-only activation, see the guard in the POST handler above */ ?>
     <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
       <i class="fa-solid fa-flask text-amber-500/70"></i>
-      <span><strong class="text-amber-400">Test mode</strong> &mdash; any 12-digit number works, no real charge.</span>
+      <span><strong class="text-amber-400">Development only</strong> &mdash; activates without a payment. Turn TEST_PAYMENT_MODE off to hide it.</span>
     </div>
     <form method="POST" action="/portal/billing?plan=pro" class="space-y-4" id="billingForm"
           onsubmit="this.querySelector('#proSubmitBtn').disabled=true;this.querySelector('#proSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
@@ -510,6 +635,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
         <span>Cancel any time</span>
       </div>
     </form>
+    <?php endif; ?>
   </div>
 </div>
 

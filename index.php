@@ -23,6 +23,24 @@ $ENT_PRICE         = ENTREPRENEUR_PLAN_PRICE;
 require_once __DIR__ . '/includes/site_templates.php';
 $TMPL_COUNT = count(get_all_site_templates());
 
+/**
+ * Where a pricing card's button points.
+ *
+ * A visitor who is already signed in goes straight to the checkout; everybody
+ * else goes to sign up CARRYING the plan, which is the only order that works —
+ * Whop needs to know which account is buying, so the account has to exist first.
+ *
+ * This is one helper rather than two hand-written hrefs because the pair had
+ * already drifted once: both cards pointed at register.php even for a signed-in
+ * customer, so buying a plan meant filling in a signup form for an account they
+ * were logged into.
+ */
+$plan_href = static function (string $plan): string {
+    return is_logged_in()
+        ? '/whop-checkout.php?plan=' . urlencode($plan)
+        : '/register.php?plan=' . urlencode($plan);
+};
+
 $faq_pro_leads  = $PRO_LEAD_LIMIT;
 $faq_pro_sites  = $PRO_SITE_LIMIT;
 $faq_ent_sites  = $ENT_SITE_LIMIT;
@@ -346,7 +364,7 @@ require_once __DIR__ . '/includes/header.php';
         <li><i class="fa-solid fa-check text-slate-400 mr-2"></i>Call scripts on every page</li>
         <li><i class="fa-solid fa-check text-slate-400 mr-2"></i>Priority support</li>
       </ul>
-      <a href="/register.php?plan=pro" class="utl-btn utl-btn--primary w-full mt-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Pro</a>
+      <a href="<?= $plan_href('pro') ?>" class="utl-btn utl-btn--primary w-full mt-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Pro</a>
     </div>
 
     <!-- ENTREPRENEUR -->
@@ -375,7 +393,7 @@ require_once __DIR__ . '/includes/header.php';
         </li>
         <li><i class="fa-solid fa-check text-slate-400 mr-2"></i>Team seats</li>
       </ul>
-      <a href="/register.php?plan=entrepreneur" class="utl-btn utl-btn--ghost w-full mt-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Entrepreneur</a>
+      <a href="<?= $plan_href('entrepreneur') ?>" class="utl-btn utl-btn--ghost w-full mt-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-slate-950">Go Entrepreneur</a>
     </div>
 
   </div>

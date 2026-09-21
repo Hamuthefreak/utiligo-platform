@@ -114,6 +114,31 @@ function entitlement_current_plan(int $userId, string $customerId = ''): ?string
 }
 
 /**
+ * Which provider column a change is about, from a white list.
+ *
+ * Two providers now write entitlement — Stripe (stripe_customer_id /
+ * stripe_subscription_id) and Whop (whop_member_id / whop_membership_id) — and a
+ * change names the pair it means. The value reaches SQL text, so it is matched
+ * against a literal list rather than escaped: a column name cannot be a bound
+ * parameter, and "we interpolate a caller-supplied string here" is not a sentence
+ * that should exist in a module that hands out paid plans. An unrecognised name
+ * falls back to the default rather than erroring, because the caller is our own
+ * code and the useful behaviour is to keep the entitlement write working.
+ */
+function entitlement_identity_column(string $requested, string $default): string
+{
+    static $allowed = [
+        'stripe_customer_id',
+        'stripe_subscription_id',
+        'whop_member_id',
+        'whop_membership_id',
+    ];
+
+    $requested = trim($requested);
+    return in_array($requested, $allowed, true) ? $requested : $default;
+}
+
+/**
  * The Stripe identity and subscription state this account has recorded.
  *
  * Exists for the checkout, which has to answer one question before it sells
@@ -273,13 +298,18 @@ function entitlement_statement(array $c, ?string $plan, ?string $status, array $
     $userId     = (int)$c['user_id'];
     $customerId = trim((string)$c['customer_id']);
 
+    // Which provider's identity columns this change is about. Stripe remains the
+    // default so every existing caller is unaffected.
+    $customerColumn     = entitlement_identity_column((string)($c['customer_column'] ?? ''), 'stripe_customer_id');
+    $subscriptionColumn = entitlement_identity_column((string)($c['subscription_column'] ?? ''), 'stripe_subscription_id');
+
     if ($userId > 0) {
         $where[]   = 'id = ?';
         $wparams[] = $userId;
     } elseif ($customerId !== '') {
-        // Matched by Stripe customer, for the subscription lifecycle events
-        // that only carry a customer id.
-        $where[]   = 'stripe_customer_id = ?';
+        // Matched by the provider's customer identity, for the subscription
+        // lifecycle events that only carry one.
+        $where[]   = $customerColumn . ' = ?';
         $wparams[] = $customerId;
     } else {
         return ['', []];
@@ -312,15 +342,15 @@ function entitlement_statement(array $c, ?string $plan, ?string $status, array $
         $params[] = $status;
     }
 
-    if (!empty($c['store_customer']) && !in_array('stripe_customer_id', $omit, true)) {
+    if (!empty($c['store_customer']) && !in_array($customerColumn, $omit, true)) {
         // COALESCE/NULLIF so an empty customer id never clobbers a stored one.
-        $sets[]   = "stripe_customer_id = COALESCE(NULLIF(?, ''), stripe_customer_id)";
+        $sets[]   = $customerColumn . " = COALESCE(NULLIF(?, ''), $customerColumn)";
         $params[] = $customerId;
     }
 
     $subscriptionId = trim((string)$c['subscription_id']);
-    if ($subscriptionId !== '' && !in_array('stripe_subscription_id', $omit, true)) {
-        $sets[]   = 'stripe_subscription_id = ?';
+    if ($subscriptionId !== '' && !in_array($subscriptionColumn, $omit, true)) {
+        $sets[]   = $subscriptionColumn . ' = ?';
         $params[] = $subscriptionId;
 
         if (!empty($c['match_subscription'])) {
@@ -330,7 +360,7 @@ function entitlement_statement(array $c, ?string $plan, ?string $status, array $
             // timestamp is newer, so ordering alone cannot save them.
             // A NULL column means "recorded before we tracked subscriptions",
             // and is accepted so a real cancellation is never lost.
-            $where[]   = '(stripe_subscription_id IS NULL OR stripe_subscription_id = ?)';
+            $where[]   = '(' . $subscriptionColumn . ' IS NULL OR ' . $subscriptionColumn . ' = ?)';
             $wparams[] = $subscriptionId;
         }
     }
@@ -403,6 +433,10 @@ function entitlement_apply(array $change): array
         'match_subscription' => false,
         'started_at'         => false,
         'source'             => 'entitlement',
+        // Which provider's identity columns this change is about. Defaults are
+        // Stripe, so nothing that existed before this line had to change.
+        'customer_column'     => 'stripe_customer_id',
+        'subscription_column' => 'stripe_subscription_id',
     ];
 
     $source = (string)$c['source'];
@@ -463,17 +497,36 @@ function entitlement_apply(array $change): array
         }
     }
 
-    // Optional columns are dropped one group at a time, in the order the
-    // migrations that introduced them would have run. This replaces the
+    // Optional columns are dropped one at a time, in the order the migrations
+    // that introduced them would have run, so an install that has not run the
+    // newest migration still completes the write. This replaces the
     // per-call-site "retry without stripe_customer_id" copies that used to live
     // in the webhook, billing and the success page.
-    $fallbacks = [
-        [],
-        ['stripe_customer_id'],
-        ['stripe_customer_id', 'stripe_subscription_id'],
-        ['stripe_customer_id', 'stripe_subscription_id', 'subscription_event_at'],
-        ['stripe_customer_id', 'stripe_subscription_id', 'subscription_event_at', 'subscription_started_at'],
-    ];
+    //
+    // The ladder is now BUILT from the columns this change actually touches
+    // rather than listed. It has to be: there are two providers, and a Whop
+    // change on an install that has not run migration 030 must be able to drop
+    // the whop columns even though the stripe ones exist — and a Stripe change
+    // must still be able to drop the stripe ones. For a Stripe change the ladder
+    // below is identical to the list it replaces.
+    $optional = [];
+    if (!empty($c['store_customer'])) {
+        $optional[] = entitlement_identity_column((string)$c['customer_column'], 'stripe_customer_id');
+    }
+    if (trim((string)$c['subscription_id']) !== '') {
+        $optional[] = entitlement_identity_column((string)$c['subscription_column'], 'stripe_subscription_id');
+    }
+    if ($c['event_at'] !== null) {
+        $optional[] = 'subscription_event_at';
+    }
+    if (!empty($c['started_at'])) {
+        $optional[] = 'subscription_started_at';
+    }
+
+    $fallbacks = [[]];
+    for ($i = 1, $n = count($optional); $i <= $n; $i++) {
+        $fallbacks[] = array_slice($optional, 0, $i);
+    }
 
     $lastError = '';
     foreach ($fallbacks as $i => $omit) {
@@ -552,12 +605,15 @@ function entitlement_no_change_detail(PDO $pdo, array $c, ?array $current, ?stri
         $customerId = trim((string)$c['customer_id']);
         $eventAt    = $c['event_at'] === null ? null : sprintf('%.6F', (float)$c['event_at']);
 
-        $sql = 'SELECT stripe_subscription_id'
+        $column = entitlement_identity_column((string)($c['subscription_column'] ?? ''), 'stripe_subscription_id');
+        $cust   = entitlement_identity_column((string)($c['customer_column'] ?? ''), 'stripe_customer_id');
+
+        $sql = 'SELECT ' . $column . ' AS subscription_id'
              . ($eventAt === null
                     ? ', 0 AS event_not_newer'
                     : ', (subscription_event_at IS NOT NULL AND subscription_event_at >= FROM_UNIXTIME(?)) AS event_not_newer')
              . ' FROM utiligo_users WHERE '
-             . ($userId > 0 ? 'id = ?' : 'stripe_customer_id = ?') . ' LIMIT 1';
+             . ($userId > 0 ? 'id = ?' : $cust . ' = ?') . ' LIMIT 1';
 
         $params = $eventAt === null ? [] : [$eventAt];
         $params[] = $userId > 0 ? $userId : $customerId;
@@ -572,7 +628,7 @@ function entitlement_no_change_detail(PDO $pdo, array $c, ?array $current, ?stri
             }
 
             $requested = trim((string)$c['subscription_id']);
-            $stored    = trim((string)($row['stripe_subscription_id'] ?? ''));
+            $stored    = trim((string)($row['subscription_id'] ?? ''));
             if (!empty($c['match_subscription']) && $requested !== '' && $stored !== '' && $stored !== $requested) {
                 $detail[] = 'it names subscription ' . $requested . ', but the account is on ' . $stored;
             }
@@ -605,13 +661,19 @@ function entitlement_read(PDO $pdo, array $c): ?array
         $userId     = (int)$c['user_id'];
         $customerId = trim((string)$c['customer_id']);
 
+        // The provider's own identity columns, so this reads what the change is
+        // about rather than assuming Stripe. Aliased to `subscription_id` because
+        // the caller does not care which provider supplied it.
+        $column = entitlement_identity_column((string)($c['subscription_column'] ?? ''), 'stripe_subscription_id');
+        $cust   = entitlement_identity_column((string)($c['customer_column'] ?? ''), 'stripe_customer_id');
+        $select = 'SELECT id, plan, subscription_status, subscription_event_at, '
+                . $column . ' AS subscription_id FROM utiligo_users WHERE ';
+
         if ($userId > 0) {
-            $stmt = $pdo->prepare('SELECT id, plan, subscription_status, subscription_event_at, stripe_subscription_id
-                                   FROM utiligo_users WHERE id = ? LIMIT 1');
+            $stmt = $pdo->prepare($select . 'id = ? LIMIT 1');
             $stmt->execute([$userId]);
         } elseif ($customerId !== '') {
-            $stmt = $pdo->prepare('SELECT id, plan, subscription_status, subscription_event_at, stripe_subscription_id
-                                   FROM utiligo_users WHERE stripe_customer_id = ? LIMIT 1');
+            $stmt = $pdo->prepare($select . $cust . ' = ? LIMIT 1');
             $stmt->execute([$customerId]);
         } else {
             return null;
@@ -740,6 +802,180 @@ function entitlement_flag_past_due(array $opts): array
         'match_subscription' => true,
         'source'             => (string)($opts['source'] ?? 'stripe-past-due'),
     ]);
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Whop — the same two intents, on the other provider's identity columns
+ *
+ * A Whop purchase does exactly the same thing to an account as a Stripe one, so
+ * these are the same calls with `customer_column` / `subscription_column`
+ * pointed at the whop_* pair. They are named wrappers rather than letting the
+ * webhook assemble its own change, because the guards each flow needs —
+ * downgrade refused on a purchase, downgrade allowed on a cancellation, the
+ * subscription-id match — are the ones spelled out above, and a caller that
+ * built its own would be free to get them wrong.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Grant a plan from a Whop-verified payment.
+ *
+ * $eventAt is the webhook envelope's timestamp, so a replayed or out-of-order
+ * delivery cannot re-grant — the same guard Stripe events get, for the same
+ * reason: Whop retries for roughly 71 hours and states plainly that delivery
+ * order is not guaranteed.
+ */
+function entitlement_grant_from_whop(int $userId, string $plan, array $opts = []): array
+{
+    $source    = (string)($opts['source'] ?? 'whop-grant');
+    $requested = $plan;
+    $plan      = entitlement_normalize_plan($plan);
+
+    // A purchase can only buy a paid plan. Without this, a payment whose metadata
+    // named the free tier would be applied as a change to free rather than
+    // rejected as nonsense, and would set subscription_status = active on the way
+    // through.
+    if ($plan === null || !is_paid_plan($plan)) {
+        entitlement_log($source, 'refused: not a paid plan ("' . $requested . '")');
+        return entitlement_result(false, 'not a paid plan', 0, $plan, $source);
+    }
+
+    return entitlement_apply([
+        'user_id'             => $userId,
+        'plan'                => $plan,
+        'status'              => 'active',
+        'customer_id'         => (string)($opts['member_id'] ?? ''),
+        'subscription_id'     => (string)($opts['membership_id'] ?? ''),
+        'customer_column'     => 'whop_member_id',
+        'subscription_column' => 'whop_membership_id',
+        'event_at'            => $opts['event_at'] ?? null,
+        'store_customer'      => true,
+        'started_at'          => true,
+        'source'              => $source,
+    ]);
+}
+
+/**
+ * Revoke entitlement when a Whop membership is deactivated.
+ *
+ * Matched on the membership id where we hold one, so the deactivation of an OLD
+ * membership cannot cancel a newer one the customer has since bought — the same
+ * tie-break the Stripe deletion handler needs, and for the same reason.
+ */
+function entitlement_cancel_from_whop(array $opts): array
+{
+    return entitlement_apply([
+        'user_id'             => (int)($opts['user_id'] ?? 0),
+        'customer_id'         => (string)($opts['member_id'] ?? ''),
+        'subscription_id'     => (string)($opts['membership_id'] ?? ''),
+        'customer_column'     => 'whop_member_id',
+        'subscription_column' => 'whop_membership_id',
+        'plan'                => entitlement_default_plan(),
+        'status'              => 'cancelled',
+        'event_at'            => $opts['event_at'] ?? null,
+        'allow_downgrade'     => true,   // a cancellation IS a downgrade
+        'match_subscription'  => true,
+        'source'              => (string)($opts['source'] ?? 'whop-cancellation'),
+    ]);
+}
+
+/**
+ * The Whop identity and subscription state this account has recorded.
+ *
+ * The mirror of entitlement_stripe_state(), and it exists for the same reason:
+ * the webhook has to answer "which account is this membership about?" before it
+ * changes anything, and the answer has to come from the one place that knows the
+ * column names. Deliberately NOT a generalisation of the Stripe reader — the two
+ * providers' columns are unrelated, and a shared function with a provider switch
+ * inside would make every future column addition a change to Stripe's code path.
+ *
+ * Returns ['member_id', 'membership_id', 'plan', 'status', 'found'].
+ * `found => false` means the row could not be read at all (including on an
+ * install that has not run migration 030), which a caller must treat as
+ * "unknown" rather than as "no subscription".
+ */
+function entitlement_whop_state(int $userId): array
+{
+    $state = [
+        'member_id'     => '',
+        'membership_id' => '',
+        'plan'          => entitlement_default_plan(),
+        'status'        => 'none',
+        'found'         => false,
+    ];
+
+    if ($userId <= 0) {
+        return $state;
+    }
+
+    $columns = [
+        'plan, subscription_status, whop_member_id, whop_membership_id',
+        'plan, subscription_status',
+    ];
+
+    foreach ($columns as $columnList) {
+        try {
+            $stmt = get_user_db()->prepare('SELECT ' . $columnList . ' FROM utiligo_users WHERE id = ? LIMIT 1');
+            $stmt->execute([$userId]);
+            $row = $stmt->fetch();
+
+            if (!$row) {
+                return $state;
+            }
+
+            return [
+                'member_id'     => trim((string)($row['whop_member_id'] ?? '')),
+                'membership_id' => trim((string)($row['whop_membership_id'] ?? '')),
+                'plan'          => (string)($row['plan'] ?? entitlement_default_plan()),
+                'status'        => (string)($row['subscription_status'] ?? 'none'),
+                'found'         => true,
+            ];
+        } catch (\Throwable $e) {
+            if (!entitlement_is_schema_error($e)) {
+                entitlement_log('whop-state', 'could not read the row for user ' . $userId . ': ' . $e->getMessage());
+                return $state;
+            }
+        }
+    }
+
+    entitlement_log('whop-state', 'no readable utiligo_users row shape for user ' . $userId);
+    return $state;
+}
+
+/**
+ * Which account a Whop member id belongs to, or 0 when it is not a unique match.
+ *
+ * Ambiguity resolves to 0 — "do not act" — rather than to the first row. Two
+ * accounts pointing at one Whop member is a data problem a human has to fix, and
+ * guessing would either hand a paid plan to the wrong account or revoke the
+ * right one. Never throws: a webhook that cannot answer this must still answer
+ * Whop, and the event is recorded so the mismatch is visible afterwards.
+ */
+function entitlement_user_for_whop_member(string $memberId): int
+{
+    $memberId = trim($memberId);
+    if ($memberId === '') {
+        return 0;
+    }
+
+    try {
+        $stmt = get_user_db()->prepare('SELECT id FROM utiligo_users WHERE whop_member_id = ? LIMIT 2');
+        $stmt->execute([$memberId]);
+        $rows = $stmt->fetchAll();
+
+        if (count($rows) === 1) {
+            return (int)$rows[0]['id'];
+        }
+
+        if (count($rows) > 1) {
+            entitlement_log('whop-member', 'member ' . $memberId . ' maps to more than one account — ignoring');
+        }
+    } catch (\Throwable $e) {
+        // An install without migration 030 lands here, or the database is down.
+        // Either way the caller falls back to the other identities it has.
+        entitlement_log('whop-member', 'lookup failed: ' . $e->getMessage());
+    }
+
+    return 0;
 }
 
 /**

@@ -152,7 +152,50 @@ if (!defined('STRIPE_WEBHOOK_SECRET'))  define('STRIPE_WEBHOOK_SECRET',  getenv(
 if (!defined('STRIPE_PRO_PRICE_ID')) define('STRIPE_PRO_PRICE_ID', getenv('STRIPE_PRO_PRICE_ID') ?: 'YOUR_STRIPE_PRO_PRICE_ID');
 if (!defined('STRIPE_ENT_PRICE_ID')) define('STRIPE_ENT_PRICE_ID', getenv('STRIPE_ENT_PRICE_ID') ?: 'YOUR_STRIPE_ENT_PRICE_ID');
 
-if (!defined('TEST_PAYMENT_MODE')) define('TEST_PAYMENT_MODE', (bool)(getenv('TEST_PAYMENT_MODE') ?: true));
+// ---- Whop ----
+// The merchant of record for the two subscription plans. Both values are
+// secrets: the API key can create checkouts and read members in the account,
+// and the webhook secret is the only thing that proves an event really came
+// from Whop. Neither may ever reach a page, a data attribute or a log line —
+// see includes/whop.php, which refuses to log them and redacts them if it has
+// to mention them at all.
+if (!defined('WHOP_API_KEY'))         define('WHOP_API_KEY',         getenv('WHOP_API_KEY')         ?: 'YOUR_WHOP_API_KEY');
+if (!defined('WHOP_WEBHOOK_SECRET'))  define('WHOP_WEBHOOK_SECRET',  getenv('WHOP_WEBHOOK_SECRET')  ?: 'YOUR_WHOP_WEBHOOK_SECRET');
+
+// The business account that owns the plans (biz_...). Needed to create a
+// checkout configuration; the plan ids below are the two live subscriptions.
+if (!defined('WHOP_ACCOUNT_ID'))      define('WHOP_ACCOUNT_ID',      getenv('WHOP_ACCOUNT_ID')      ?: 'YOUR_WHOP_ACCOUNT_ID');
+if (!defined('WHOP_PRO_PLAN_ID'))     define('WHOP_PRO_PLAN_ID',     getenv('WHOP_PRO_PLAN_ID')     ?: 'plan_F1oV5alSzN82W');
+if (!defined('WHOP_ENT_PLAN_ID'))     define('WHOP_ENT_PLAN_ID',     getenv('WHOP_ENT_PLAN_ID')     ?: 'plan_AHQpUK6syZ5Pu');
+
+// The shareable checkout link each plan falls back to when the API key is not
+// configured or the API is unreachable. A purchase through one of these still
+// works and is still reconciled by the webhook — what it loses is the metadata
+// that says WHICH account is buying, which is why includes/whop.php resolves
+// identity from the payer's email as well.
+if (!defined('WHOP_PRO_CHECKOUT_URL')) define('WHOP_PRO_CHECKOUT_URL', getenv('WHOP_PRO_CHECKOUT_URL') ?: 'https://whop.com/checkout/plan_F1oV5alSzN82W');
+if (!defined('WHOP_ENT_CHECKOUT_URL')) define('WHOP_ENT_CHECKOUT_URL', getenv('WHOP_ENT_CHECKOUT_URL') ?: 'https://whop.com/checkout/plan_AHQpUK6syZ5Pu');
+
+// Where the customer is sent back to after paying. Whop appends status=success
+// or status=error, which the landing page reports; the entitlement itself is
+// applied by the webhook, never by the redirect.
+if (!defined('WHOP_RETURN_PATH'))     define('WHOP_RETURN_PATH',     getenv('WHOP_RETURN_PATH')     ?: '/purchase-success.php');
+
+// Overridable so the test suite can point the API client at a local stub and
+// never touch the network — the same arrangement stripe_api.php already uses.
+if (!defined('WHOP_API_BASE'))        define('WHOP_API_BASE',        getenv('WHOP_API_BASE')        ?: 'https://api.whop.com');
+
+// How far a webhook timestamp may be from our clock before the request is
+// refused as a replay. Whop's own SDKs use five minutes.
+if (!defined('WHOP_WEBHOOK_TOLERANCE')) define('WHOP_WEBHOOK_TOLERANCE', (int)(getenv('WHOP_WEBHOOK_TOLERANCE') ?: 300));
+
+// Manual activation — the billing page's card form, which grants a plan with no
+// payment behind it. It defaults to OFF, and it should: this is a payments
+// product, and a flag that "makes any 12-digit card number work" shipping as ON
+// is a free-plan button in a real browser. Turn it on from Admin → Settings while
+// developing; the billing page additionally refuses it in production whatever
+// this says (see the gate in portal/billing.php).
+if (!defined('TEST_PAYMENT_MODE')) define('TEST_PAYMENT_MODE', (bool)(getenv('TEST_PAYMENT_MODE') ?: false));
 
 require_once __DIR__ . '/includes/plan_limits.php';
 

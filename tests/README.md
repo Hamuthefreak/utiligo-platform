@@ -30,6 +30,15 @@ usually just works.
 host and aborts the run, so a stray `storage/config_overrides.php` cannot turn a
 test run into a production write.
 
+**The tests never contact a payment provider.** `run.php` starts local stubs and
+points the application server at them: `tests/lib/stripe_stub.php` for
+`api.stripe.com`, `tests/lib/mail_stub.php` for Brevo, and `tests/lib/whop_stub.php`
+for `api.whop.com`. Each records every request it receives, which is what lets a
+test assert the *absence* of a call — "no second checkout was created for a
+customer who already subscribes" cannot be made against a last-request snapshot.
+The Whop webhook secret the suite signs with is a real `ws_`-shaped one, so the
+signature tests exercise the same key derivation production uses.
+
 ### Getting a MySQL
 
 ```bash
@@ -85,6 +94,7 @@ executed.
 | `test_auto_search.php` | saved searches that run themselves: the cadence gate, what an automated run asks for, delivery of the digest, and the failures it survives |
 | `test_support.php` | support tickets end to end: the model's rules, the ticket endpoint, attachment access control and the admin inbox |
 | `test_session.php` | the two ways a signed-in visitor gets turned away, both of which were live 500s |
+| `test_whop.php` | the whole Whop payment path: signature attacks, replay, out-of-order delivery, identity rules, the idempotency ledger, checkout creation, and what the billing page is allowed to sell |
 
 Mail is replaced by `tests/lib/mail_stub.php`, reached by `MAIL_API_BASE` — the
 same arrangement as Stripe, and for the same reason. Before that variable existed

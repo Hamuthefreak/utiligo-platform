@@ -701,6 +701,167 @@ function t_post_webhook(string $appUrl, array $event, ?string $secret = null, ?a
     ]);
 }
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Whop stub control, and signing a Whop webhook
+ *
+ * The same idea as the Stripe and mail stubs. Whop signs the string
+ * `{webhook-id}.{webhook-timestamp}.{raw body}` with HMAC-SHA256 and sends the
+ * base64 result as `v1,<signature>`, so these helpers produce exactly that —
+ * with a KEY THE TEST NAMES, never with the key the application would derive.
+ * That distinction is the whole value of the signature tests: signing through
+ * the app's own derivation would accept any derivation, including a wrong one.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/** The Whop webhook secret this run is configured with. */
+function t_whop_secret(): string
+{
+    return defined('WHOP_WEBHOOK_SECRET') ? (string)WHOP_WEBHOOK_SECRET : '';
+}
+
+/** The byte string the hex half of that secret stands for. */
+function t_whop_hex_key(): string
+{
+    $inner = str_starts_with(t_whop_secret(), 'ws_') ? substr(t_whop_secret(), 3) : t_whop_secret();
+    $key   = preg_match('/^[0-9a-fA-F]+$/', $inner) && strlen($inner) % 2 === 0 ? @hex2bin($inner) : false;
+
+    return is_string($key) ? $key : '';
+}
+
+/** One `v1,<signature>` value for a body, a delivery id and a unix time. */
+function t_whop_signature(string $body, string $id, int $timestamp, string $key): string
+{
+    return 'v1,' . base64_encode(hash_hmac('sha256', $id . '.' . $timestamp . '.' . $body, $key, true));
+}
+
+/**
+ * A Whop v1 envelope, shaped the way Whop delivers one.
+ *
+ * `timestamp` is in the envelope because the application reads the event's own
+ * time out of it — that value, not the arrival order, is what an entitlement
+ * change is ordered by.
+ */
+function t_whop_event(string $type, array $data, array $overrides = []): array
+{
+    return $overrides + [
+        'id'          => 'msg_test_' . bin2hex(random_bytes(6)),
+        'type'        => $type,
+        'api_version' => 'v1',
+        'timestamp'   => gmdate('Y-m-d\TH:i:s.v\Z'),
+        'data'        => $data + ['object' => 'payment'],
+    ];
+}
+
+/** A payment.succeeded payload for an account, with the metadata our checkout writes. */
+function t_whop_payment(int $userId, string $planId, string $memberId, string $membershipId, array $overrides = []): array
+{
+    return $overrides + [
+        'id'            => 'pay_' . bin2hex(random_bytes(5)),
+        'status'        => 'paid',
+        'substatus'     => 'succeeded',
+        'billing_reason' => 'subscription_create',
+        'plan'          => ['id' => $planId, 'metadata' => ['plan' => 'pro']],
+        'member'        => ['id' => $memberId],
+        'membership'    => ['id' => $membershipId, 'status' => 'active'],
+        'user'          => ['email' => 'payer@example.test'],
+        'metadata'      => ['utiligo_user_id' => (string)$userId, 'plan' => 'pro'],
+    ];
+}
+
+/**
+ * POST a signed Whop envelope to the real endpoint.
+ *
+ * $body may be the array to encode or the exact bytes to send, which is how a
+ * tampered body is tested: the signature is computed over the ORIGINAL bytes and
+ * a different body is posted, so only the HMAC can tell the difference.
+ *
+ * Pass $overrides to lie about any of it — a stale timestamp, a missing id, a
+ * signature made with a key we do not have.
+ */
+function t_post_whop_webhook(string $appUrl, $body, array $overrides = []): array
+{
+    $raw       = is_array($body) ? json_encode($body) : (string)$body;
+    $id        = (string)($overrides['id'] ?? (is_array($body) ? ($body['id'] ?? 'msg_test') : 'msg_test'));
+    $timestamp = (int)($overrides['timestamp'] ?? time());
+    $key       = (string)($overrides['key'] ?? t_whop_hex_key());
+
+    $headers = $overrides['headers'] ?? [
+        'webhook-id: ' . $id,
+        'webhook-timestamp: ' . $timestamp,
+        'webhook-signature: ' . ($overrides['signature'] ?? t_whop_signature($raw, $id, $timestamp, $key)),
+    ];
+
+    return t_http('POST', $appUrl . '/whop-webhook.php', [
+        'raw'     => $raw,
+        'headers' => $headers,
+    ]);
+}
+
+/* ── Whop stub control ────────────────────────────────────────────────────── */
+
+/** Every request the Whop stub has received since the last reset, in order. */
+function t_whop_requests(): array
+{
+    $path = t_tmp_dir() . '/whop_requests.log';
+    if (!is_file($path)) {
+        return [];
+    }
+
+    $out = [];
+    foreach (file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+        $data = json_decode($line, true);
+        if (is_array($data)) {
+            $out[] = $data;
+        }
+    }
+
+    return $out;
+}
+
+/** The requests the stub received for one path. */
+function t_whop_requests_to(string $path): array
+{
+    return array_values(array_filter(t_whop_requests(),
+        fn($request) => ($request['path'] ?? '') === $path));
+}
+
+function t_reset_whop_stub(): void
+{
+    @unlink(t_tmp_dir() . '/whop_last_request.json');
+    @unlink(t_tmp_dir() . '/whop_requests.log');
+    @unlink(t_tmp_dir() . '/whop_failures.json');
+    @unlink(t_tmp_dir() . '/whop_checkout.json');
+}
+
+/** Make the stub answer a call with an error status. Keys are "METHOD PATH". */
+function t_set_whop_failures(array $failures): void
+{
+    $path = t_tmp_dir() . '/whop_failures.json';
+    if (!$failures) {
+        @unlink($path);
+        return;
+    }
+    file_put_contents($path, json_encode($failures));
+}
+
+/** The checkout configuration the stub should return, or '_status' to refuse. */
+function t_set_whop_checkout(array $fixture): void
+{
+    file_put_contents(t_tmp_dir() . '/whop_checkout.json', json_encode($fixture));
+}
+
+/** The Whop identity columns for an account. */
+function t_whop_state(int $id): array
+{
+    $u = t_user($id) ?: [];
+    return [
+        'plan'          => (string)($u['plan'] ?? '?'),
+        'status'        => (string)($u['subscription_status'] ?? '?'),
+        'member_id'     => (string)($u['whop_member_id'] ?? ''),
+        'membership_id' => (string)($u['whop_membership_id'] ?? ''),
+        'event_at'      => (string)($u['subscription_event_at'] ?? ''),
+    ];
+}
+
 /**
  * Extensions the suite needs, as command-line flags for a child PHP process.
  *
