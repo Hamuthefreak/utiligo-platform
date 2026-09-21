@@ -189,7 +189,13 @@ if (!defined('WHOP_API_BASE'))        define('WHOP_API_BASE',        getenv('WHO
 // refused as a replay. Whop's own SDKs use five minutes.
 if (!defined('WHOP_WEBHOOK_TOLERANCE')) define('WHOP_WEBHOOK_TOLERANCE', (int)(getenv('WHOP_WEBHOOK_TOLERANCE') ?: 300));
 
-if (!defined('TEST_PAYMENT_MODE')) define('TEST_PAYMENT_MODE', (bool)(getenv('TEST_PAYMENT_MODE') ?: true));
+// Manual activation — the billing page's card form, which grants a plan with no
+// payment behind it. It defaults to OFF, and it should: this is a payments
+// product, and a flag that "makes any 12-digit card number work" shipping as ON
+// is a free-plan button in a real browser. Turn it on from Admin → Settings while
+// developing; the billing page additionally refuses it in production whatever
+// this says (see the gate in portal/billing.php).
+if (!defined('TEST_PAYMENT_MODE')) define('TEST_PAYMENT_MODE', (bool)(getenv('TEST_PAYMENT_MODE') ?: false));
 
 require_once __DIR__ . '/includes/plan_limits.php';
 

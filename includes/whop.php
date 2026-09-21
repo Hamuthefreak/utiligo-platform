@@ -284,7 +284,12 @@ function whop_signature_keys(string $secret): array
 
     if ($inner !== '' && preg_match('/^[A-Za-z0-9+\/]+={0,2}$/', $inner)) {
         $decoded = base64_decode($inner, true);
-        if (is_string($decoded) && $decoded !== '' && base64_encode($decoded) === rtrim($inner, '=')) {
+        // Both sides are compared WITHOUT their "=" padding. Comparing the
+        // re-encoded value to the trimmed input rejects every secret whose key is
+        // not a multiple of three bytes — which is most of them, and includes the
+        // 32-byte keys Standard Webhooks issues — so a real secret would have
+        // failed verification for looking like an attack.
+        if (is_string($decoded) && $decoded !== '' && rtrim(base64_encode($decoded), '=') === rtrim($inner, '=')) {
             $keys[] = $decoded;
         }
     }

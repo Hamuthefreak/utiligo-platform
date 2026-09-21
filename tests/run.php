@@ -86,6 +86,19 @@ $defaults = [
     'STRIPE_WEBHOOK_SECRET' => 'whsec_test_stub_secret',
     'STRIPE_PRO_PRICE_ID'   => 'price_test_pro',
     'STRIPE_ENT_PRICE_ID'   => 'price_test_ent',
+    // Whop, the merchant of record for both plans now. The webhook secret is a
+    // `ws_`-prefixed one carrying 64 hex characters, which is the form Whop's
+    // own secret example shows, so the signature tests exercise the real
+    // derivation rather than a convenient one. The plan ids are the live ones:
+    // the intent table has to recognise the ids the product actually sells.
+    'WHOP_API_KEY'          => 'whop_test_api_key',
+    'WHOP_WEBHOOK_SECRET'   => 'ws_' . str_repeat('ab', 32),
+    'WHOP_ACCOUNT_ID'       => 'biz_test_account',
+    // Manual activation is OFF by default now (it grants a plan with no payment),
+    // so the suite turns it on explicitly: the billing page's developer path has
+    // to keep being exercised, and the test that proves production refuses it
+    // reads the page's source rather than its output.
+    'TEST_PAYMENT_MODE'     => '1',
 ];
 foreach ($defaults as $key => $value) {
     if (getenv($key) === false || getenv($key) === '') {
@@ -106,6 +119,10 @@ require_once __DIR__ . '/lib/harness.php';
 
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../includes/entitlements.php';
+// The Whop boundary (signature verification, the intent table, identity
+// resolution, the ledger claim) is asserted directly as well as through the
+// endpoint, so it is loaded here the way the Stripe helpers are.
+require_once __DIR__ . '/../includes/whop.php';
 require_once __DIR__ . '/../includes/stripe_api.php';
 require_once __DIR__ . '/../includes/auto_search.php';
 // The call dock's rules (validation, ordering, seeding, import parsing,
@@ -160,6 +177,15 @@ if ($dbReady) {
         $stub = t_server(__DIR__ . '/lib', __DIR__ . '/lib/stripe_stub.php', [], 'stripe stub');
         putenv('STRIPE_API_BASE=' . $stub['url']);
 
+        // Whop gets its own stub for the same reason: the checkout leg has to be
+        // provable without a Whop account, and the only way to assert that the
+        // buyer's account id really travelled with the purchase is to receive the
+        // request. Set before the application server is spawned, so the child —
+        // and only the child — talks to the stub.
+        $whopStub = t_server(__DIR__ . '/lib', __DIR__ . '/lib/whop_stub.php', [], 'whop stub');
+        putenv('WHOP_API_BASE=' . $whopStub['url']);
+        echo "  whop:    stub at " . $whopStub['url'] . " (api.whop.com never contacted)\n";
+
         // Mail gets the same treatment as Stripe, and for the same reason: until
         // MAIL_API_BASE existed there was no way to assert that an email was sent
         // at all — send_email() either posted to Brevo for real or fell through to
@@ -192,6 +218,7 @@ $context = [
     'app_url'       => $app['url'] ?? null,
     'stub_url'      => $stub['url'] ?? null,
     'mail_stub_url' => $mailStub['url'] ?? null,
+    'whop_stub_url' => $whopStub['url'] ?? null,
 ];
 
 register_shutdown_function(function () use ($trackedLog, $trackedLogBefore) {

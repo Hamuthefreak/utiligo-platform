@@ -52,6 +52,28 @@ unset($_SESSION['purchase_animation_plan']);
 // attempt or a lost webhook needs retrying. Costs one Stripe read.
 $grant = _purchase_verified_session($sessionId, $userId);
 
+/*
+ * A WHOP RETURN.
+ *
+ * Whop sends the buyer back here with ?whop_plan=… and the entitlement arrives
+ * from the webhook a moment afterwards, so a customer who follows the redirect
+ * quickly can reach this page before their plan exists. Without this the page
+ * would hand them to a dashboard reading "Free" seconds after their card was
+ * charged, which is the one thing a checkout return must never do.
+ *
+ * The query string grants nothing: there is no branch in this file that writes
+ * from it, and the celebration flag below is still only ever set by a Stripe
+ * session this server verified. All this decides is what the hand-off page says
+ * while the payment settles.
+ */
+$whopPending = null;
+if ($sessionId === '') {
+    $wanted = strtolower(trim((string)($_GET['whop_plan'] ?? '')));
+    if (is_paid_plan($wanted) && !_purchase_account_holds_plan($userId, $wanted)) {
+        $whopPending = $wanted;
+    }
+}
+
 // Only a Stripe-confirmed grant may write to the database. The dev fallback
 // below is fine for driving an animation, but it must never hand out
 // entitlements from a URL — otherwise a deploy that forgot its Stripe keys
@@ -285,7 +307,13 @@ function _purchase_unverified_session(): ?array
 </style>
 </head>
 <body>
+<?php if ($whopPending !== null): ?>
+<p>Whop is confirming your <?= htmlspecialchars(ucfirst($whopPending)) ?> plan&hellip;
+  <span style="display:block;margin-top:.7rem;font-size:.78rem;color:#64748b">This usually takes a few seconds. Your plan appears on the dashboard by itself &mdash; you can close this tab.</span>
+</p>
+<?php else: ?>
 <p>Setting up your account&hellip;</p>
+<?php endif; ?>
 <script>
 <?php if ($celebrate !== null): ?>
   // Client-side half of the animation signal. Only emitted once the session is
@@ -295,7 +323,14 @@ function _purchase_unverified_session(): ?array
   // Must always run — a privacy mode that blocks sessionStorage, a failed
   // verification, or a failed reconcile still has to land the user on their
   // dashboard.
-  window.location.replace('/portal/index.php');
+  // Whop's webhook lands a moment after the redirect, so a buyer who arrives
+  // early waits here instead of being dropped on a dashboard that still says
+  // "Free". The entitlement comes from the webhook, never from this page.
+  if (<?= $whopPending !== null ? 'true' : 'false' ?>) {
+    setTimeout(function () { window.location.replace('/portal/index.php'); }, 4000);
+  } else {
+    window.location.replace('/portal/index.php');
+  }
 </script>
 <noscript>
   <meta http-equiv="refresh" content="0;url=/portal/index.php">
