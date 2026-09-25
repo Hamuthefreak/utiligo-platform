@@ -129,6 +129,115 @@ function whop_can_verify(): bool
 }
 
 /**
+ * May we take money for a plan at all?
+ *
+ * Selling a subscription we cannot then apply is the worst state this product can
+ * be in, and it is worse than selling nothing:
+ *
+ *   • Whop charges the card.
+ *   • The webhook arrives, and an endpoint with no webhook secret has nothing to
+ *     verify it with, so it answers 401 — see whop_verify_webhook().
+ *   • Whop retries for about three days, then gives up.
+ *   • The customer has paid and is still on the free plan.
+ *
+ * A customer who was never sold anything is a lost sale. A customer who paid and
+ * got nothing is a refund, an angry email, and a support ticket. So the webhook
+ * secret is not only "what the webhook needs": it gates the sale. whop-checkout.php
+ * refuses while it is missing and says so in plain words, and the admin Payments
+ * page (admin/payments.php) shows the same fact to the person who can fix it.
+ *
+ * Note what is deliberately NOT required: the API key. Without it the customer
+ * still goes to the plan's shareable link and the payment is reconciled through
+ * the payer's verified email, which works. Losing the metadata is a worse
+ * reconciliation, not a broken one.
+ */
+function whop_can_accept_payments(): bool
+{
+    return whop_can_verify() && whop_plan_ids() !== [];
+}
+
+/**
+ * The state of the payment configuration, for the admin Payments page.
+ *
+ * Reports WHETHER a value is present, never the value — not even a masked preview
+ * of it. That is the whole design rule of this file (see the redaction note at the
+ * top): the API key and the webhook secret are the two things that must never reach
+ * a response body, and "the first four characters" is a value reaching a response
+ * body. All the admin page gets is a boolean and a length, and a length is genuinely
+ * useful: it catches the classic "the key was pasted with a trailing newline" and
+ * tells nobody anything they could authenticate with.
+ *
+ * The plan ids and the shareable links are printed in full because they are not
+ * secrets: the plan ids are already in the checkout links on the pricing page.
+ */
+function whop_config_report(): array
+{
+    $masked = static function (string $value): string {
+        $value = trim($value);
+        if ($value === '') {
+            return '';
+        }
+        return strlen($value) <= 8
+            ? str_repeat('•', strlen($value))
+            : substr($value, 0, 4) . str_repeat('•', 6) . substr($value, -4);
+    };
+
+    $secret = whop_webhook_secret();
+    $key    = whop_api_key();
+
+    $blocking = [];
+    if ($secret === '') {
+        $blocking[] = 'WHOP_WEBHOOK_SECRET is not set, so no payment can be applied. Checkout is refused until it is — a customer who paid and got nothing is worse than a customer we did not sell to.';
+    }
+    if (whop_plan_ids() === []) {
+        $blocking[] = 'Neither Whop plan id is set, so there is no plan to sell.';
+    }
+    if ($key === '') {
+        $blocking[] = 'WHOP_API_KEY is not set. Payments still work through the shareable plan links, but the purchase carries no account id, so it has to be matched by the payer\'s verified email.';
+    }
+    if (whop_account_id() === '') {
+        $blocking[] = 'WHOP_ACCOUNT_ID is not set, so a checkout configuration cannot be created and every purchase falls back to the shareable plan link.';
+    }
+
+    return [
+        // No 'masked' key on either secret, deliberately: the admin page renders
+        // what it is given, and a masked value is still a value in a response body.
+        'api_key'             => ['set' => $key !== '',    'length' => strlen($key)],
+        'webhook_secret'      => ['set' => $secret !== '', 'length' => strlen($secret)],
+        // The account id is not a secret — it is a public identifier that appears
+        // in every checkout link — so a masked preview is honest and useful here.
+        'account_id'          => ['set' => whop_account_id() !== '', 'masked' => $masked(whop_account_id())],
+        'plans'               => whop_plan_ids(),
+        'checkout_links'      => [
+            'pro'          => whop_plan_link('pro'),
+            'entrepreneur' => whop_plan_link('entrepreneur'),
+        ],
+        'api_base'            => whop_api_base(),
+        'can_create_checkout' => whop_can_create_checkout(),
+        'can_verify'          => whop_can_verify(),
+        'can_accept_payments' => whop_can_accept_payments(),
+        'blocking'            => $blocking,
+    ];
+}
+
+/**
+ * The webhook url to paste into Whop's dashboard for this deployment.
+ *
+ * Built from APP_BASE_URL so a staging install registers its own address rather
+ * than the production one — registering production's url on staging is how a
+ * staging webhook silently eats production events.
+ */
+function whop_webhook_url(): string
+{
+    $base = defined('APP_BASE_URL') ? trim((string)APP_BASE_URL) : '';
+    if ($base === '') {
+        $base = 'https://utiligo.ca';
+    }
+
+    return rtrim($base, '/') . '/whop-webhook.php';
+}
+
+/**
  * plan name => Whop plan id, in the order the product lists its plans.
  *
  * Built from the plan table rather than a literal pair, so adding a third plan is

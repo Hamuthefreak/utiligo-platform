@@ -31,14 +31,23 @@
  * more step for the customer and it is the correct one: the alternative is a
  * double charge we would have to refund.
  *
- * FAILING OPEN, DELIBERATELY, BUT WITHOUT LYING
- * ─────────────────────────────────────────────
+ * FAILING OPEN — BUT ONLY WHERE FAILING OPEN IS SAFE
+ * ──────────────────────────────────────────────────
  * If the API key is missing or the API is unreachable, the customer still goes to
  * the plan's shareable checkout link — a sale that arrives without metadata is
  * reconciled by the webhook through the payer's email, and the alternative (an
  * error page on a working pricing button) loses a sale for no reason. What is
  * logged is that identity is missing, so an operator can see why a payment had to
  * be matched by email.
+ *
+ * There is one failure this file does NOT fall open on, and it is the one that
+ * costs a customer money: a deployment with no webhook secret cannot apply any
+ * payment at all (every delivery is refused — see whop_verify_webhook()). Sending
+ * a customer to pay in that state takes their money and leaves them on the free
+ * plan while Whop retries a webhook nobody can verify for three days. So the sale
+ * is refused, in plain words, until the deployment can honour it — see
+ * whop_can_accept_payments(), and admin/payments.php, which is where the fix is
+ * described to the person who can make it.
  *
  * @see includes/whop.php      the API call, the fallback, and the reasoning
  * @see whop-webhook.php       what actually grants the plan
@@ -86,6 +95,19 @@ if ($plan === '' || !is_paid_plan($plan)) {
 if (whop_plan_id_for($plan) === '') {
     // The plan is real but not sold on Whop — a deployment with one provider's
     // configuration missing. Say so rather than sending them to the wrong page.
+    $bail('not_configured');
+}
+
+if (!whop_can_accept_payments()) {
+    // The one refusal in this file that is not about the customer. A deployment
+    // without a webhook secret can be paid but cannot grant the plan, so the
+    // honest thing is to take no money and say why — for the customer on the
+    // billing page, and for whoever has to fix it in storage/config_overrides.php
+    // (or the admin Payments page, which lists exactly this as the blocker).
+    whop_log('checkout', 'refused a ' . $plan . ' checkout for account ' . $userId
+        . ': this deployment cannot apply a payment (webhook secret '
+        . (whop_can_verify() ? 'set' : 'MISSING') . ', plans '
+        . (whop_plan_ids() === [] ? 'none configured' : 'configured') . ')');
     $bail('not_configured');
 }
 

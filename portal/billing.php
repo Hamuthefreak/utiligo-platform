@@ -150,22 +150,22 @@ $_whop_member_id = trim((string)$_whop_state['member_id']);
  * redirect that follows: only a signed payment.succeeded does that, which is why
  * there is no plan-switching SQL anywhere near this button.
  */
-$render_whop_button = static function (string $plan, string $label, string $buttonClass): void { ?>
-  <form method="POST" action="/whop-checkout.php" class="space-y-3 mb-6">
+$render_whop_button = static function (string $plan, string $label): void { ?>
+  <form method="POST" action="/whop-checkout.php" class="mt-4"
+        onsubmit="var b=this.querySelector('button[type=submit]');if(b){b.disabled=true;b.innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Taking you to Whop…';}">
     <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
     <input type="hidden" name="plan" value="<?= htmlspecialchars($plan) ?>">
-    <button type="submit" class="w-full <?= htmlspecialchars($buttonClass) ?> py-4 rounded-xl font-black text-base mt-1">
-      <i class="fa-solid fa-lock mr-2 text-sm"></i><?= htmlspecialchars($label) ?>
+    <button type="submit"
+      class="btn-accent w-full py-3.5 rounded-xl font-black text-sm tracking-tight flex items-center justify-center gap-2">
+      <i class="fa-solid fa-lock text-xs"></i><?= htmlspecialchars($label) ?>
     </button>
-    <div class="trust-row justify-center pt-1">
-      <i class="fa-solid fa-lock"></i><span>Checkout by</span>
-      <span class="font-black text-slate-300">Whop</span>
-      <span class="mx-1 text-slate-700">·</span>
-      <i class="fa-solid fa-shield-halved text-slate-600"></i><span>256-bit SSL</span>
-      <span class="mx-1 text-slate-700">·</span>
-      <span>Cancel any time</span>
-    </div>
   </form>
+  <div class="trust-row justify-center pt-3">
+    <i class="fa-solid fa-shield-halved"></i><span>Secure checkout by</span>
+    <span class="font-black text-slate-300">Whop</span>
+    <span class="mx-1 text-slate-700">·</span>
+    <span>Visa &middot; Mastercard &middot; Amex</span>
+  </div>
 <?php };
 
 $_pro_leads     = (int) PRO_LEAD_LIMIT;
@@ -178,6 +178,200 @@ $_pro_price     = (float) PRO_PLAN_PRICE;
 $_ent_price     = (float) ENTREPRENEUR_PLAN_PRICE;
 $_pro_price_fmt = number_format($_pro_price, 2);
 $_ent_price_fmt = number_format($_ent_price, 2);
+
+/**
+ * ONE PURCHASE CARD, BOTH PLANS.
+ *
+ * The page used to carry two near-identical cards built inline: the Pro one and
+ * the Entrepreneur one, with different badges, different chrome and a different
+ * shape of feature list. A customer comparing tiers saw two designs rather than two
+ * prices, and every copy change had to be made twice. This is one card driven by
+ * one array per plan, so the only thing that differs between the tiers is what
+ * actually differs: the name, the price and the contents.
+ *
+ * It is also arranged the way a checkout is: what you get on the left, what you
+ * pay and the button on the right, and the one line that matters — Whop is the
+ * merchant of record — underneath the button where the doubt is.
+ */
+$_checkout_plans = [
+    'pro' => [
+        'name'     => 'Pro',
+        'icon'     => 'crown',
+        'price'    => $_pro_price_fmt,
+        'blurb'    => 'Everything you need to run a full client-getting operation of your own.',
+        'flag'     => '',
+        'features' => [
+            [number_format($_pro_leads) . ' fresh leads per period'],
+            [$_pro_sites . ' active websites'],
+            ['Full phone numbers'],
+            ['Call scripts on every lead'],
+            ['All templates + ZIP export'],
+            ['Revenue dashboard'],
+        ],
+        'cta'      => 'Subscribe to Pro — $' . $_pro_price_fmt . '/mo',
+        'dev'      => ['form' => 'billingForm', 'number' => 'cardNumberInput', 'icon' => 'cardBrandIconPro', 'expiry' => 'cardExpiryInput', 'cvc' => 'cardCvcInput'],
+    ],
+    'entrepreneur' => [
+        'name'     => 'Entrepreneur',
+        'icon'     => 'bolt',
+        'price'    => $_ent_price_fmt,
+        'blurb'    => 'Built for agencies running several clients at once.',
+        'flag'     => 'Most popular',
+        'features' => [
+            ['Unlimited leads'],
+            [$_ent_sites . ' active websites'],
+            [$_ent_seats . ' team seats'],
+            ['Everything in Pro'],
+            ['Call scripts on every lead'],
+            ['Priority support'],
+            ['Custom domains', true],
+            ['Client reports', true],
+        ],
+        'cta'      => 'Unlock Entrepreneur — $' . $_ent_price_fmt . '/mo',
+        'dev'      => ['form' => 'entForm', 'number' => 'cardNumberInputEnt', 'icon' => 'cardBrandIconEnt', 'expiry' => 'cardExpiryInputEnt', 'cvc' => 'cardCvcInputEnt'],
+    ],
+];
+
+$render_checkout_card = static function (string $plan, array $cfg, string $switchNote = '') use ($render_whop_button, $canActivateLocally): void { ?>
+<div class="checkout-card rounded-2xl overflow-hidden">
+
+  <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,1.25fr)_minmax(0,1fr)]">
+
+    <!-- What the plan contains -->
+    <div class="p-6 sm:p-8 border-b lg:border-b-0 lg:border-r border-white/5">
+      <div class="flex items-center gap-2.5 mb-6">
+        <i class="fa-solid fa-<?= $cfg['icon'] ?> text-slate-300 text-sm"></i>
+        <span class="text-[11px] font-black uppercase tracking-[.18em] text-slate-400"><?= $cfg['name'] ?> plan</span>
+        <?php if ($cfg['flag'] !== ''): ?>
+        <span class="ml-auto text-[10px] font-bold uppercase tracking-wider border border-white/15 text-slate-300 rounded-full px-2.5 py-1"><?= $cfg['flag'] ?></span>
+        <?php endif; ?>
+      </div>
+
+      <div class="flex items-end gap-2">
+        <span class="text-5xl font-black tracking-tight">$<?= $cfg['price'] ?></span>
+        <span class="text-slate-400 text-sm mb-2">/ month</span>
+      </div>
+      <p class="text-slate-400 text-sm mt-2 mb-7"><?= $cfg['blurb'] ?></p>
+
+      <ul class="grid grid-cols-1 sm:grid-cols-2 gap-x-7 gap-y-3">
+        <?php foreach ($cfg['features'] as $feature):
+          $soon = !empty($feature[1]); ?>
+        <li class="feature-item<?= $soon ? ' is-soon' : '' ?>">
+          <i class="fa-solid <?= $soon ? 'fa-clock' : 'fa-check' ?>"></i>
+          <span><?= $feature[0] ?><?= $soon ? ' <span class="text-slate-600">(soon)</span>' : '' ?></span>
+        </li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+
+    <!-- What happens when the button is pressed -->
+    <div class="p-6 sm:p-7">
+      <div class="summary-panel rounded-2xl p-5">
+        <p class="text-[10px] font-bold uppercase tracking-[.16em] text-slate-500 mb-4">Order summary</p>
+
+        <div class="summary-row">
+          <span><?= $cfg['name'] ?>, billed monthly</span>
+          <strong>$<?= $cfg['price'] ?> /mo</strong>
+        </div>
+        <div class="summary-row mt-2">
+          <span>Setup fee</span>
+          <strong>None</strong>
+        </div>
+        <div class="summary-due">
+          <span class="text-sm text-slate-400">Due today</span>
+          <span class="text-2xl font-black tracking-tight">$<?= $cfg['price'] ?></span>
+        </div>
+
+        <?php if ($switchNote !== ''): ?>
+        <p class="text-[11px] text-slate-500 mt-3 leading-relaxed"><?= $switchNote ?></p>
+        <?php endif; ?>
+
+        <?php if (whop_can_accept_payments()): ?>
+          <?php $render_whop_button($plan, $cfg['cta']); ?>
+        <?php else: ?>
+          <div class="mt-4 bg-amber-500/[.08] border border-amber-500/25 text-amber-300/90 rounded-xl px-4 py-3 text-xs leading-relaxed">
+            <p class="font-semibold text-amber-300 mb-1"><i class="fa-solid fa-clock mr-1.5"></i>Card payments are being switched on</p>
+            Nothing has been charged and nothing will be. Want this plan now?
+            <a href="/portal/support.php" class="font-semibold underline">Message us</a> and we will set it up with you directly.
+          </div>
+        <?php endif; ?>
+      </div>
+
+      <p class="text-[11px] text-slate-500 mt-4 leading-relaxed">
+        <strong class="text-slate-400 font-semibold">Whop is the merchant of record.</strong>
+        The charge appears on your statement as Whop, your receipt is emailed by them, and the card details
+        never reach our servers. Cancel any time — the link to manage the subscription is added to this page
+        the moment it is active.
+      </p>
+
+      <?php if ($canActivateLocally): /* developer-only activation, see the guard in the POST handler above */ ?>
+      <details class="mt-5 pt-4 border-t border-white/5">
+        <summary class="text-[11px] font-semibold text-amber-400/80 cursor-pointer select-none">
+          <i class="fa-solid fa-flask mr-1.5"></i>Development only &mdash; activates without a payment
+        </summary>
+        <form method="POST" action="/portal/billing?plan=<?= htmlspecialchars($plan) ?>" class="space-y-3 mt-4" id="<?= $cfg['dev']['form'] ?>">
+          <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
+          <input type="hidden" name="action" value="test_subscribe">
+          <input type="hidden" name="subscribe_plan" value="<?= htmlspecialchars($plan) ?>">
+          <div>
+            <label class="input-label" for="<?= $cfg['dev']['number'] ?>">Card number</label>
+            <div class="relative">
+              <input type="text" name="card_number" id="<?= $cfg['dev']['number'] ?>" inputmode="numeric"
+                placeholder="1234 5678 9012 3456" maxlength="19" required autocomplete="cc-number"
+                class="card-input pr-14">
+              <span id="<?= $cfg['dev']['icon'] ?>" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-lg pointer-events-none">
+                <i class="fa-regular fa-credit-card"></i>
+              </span>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="input-label" for="<?= $cfg['dev']['expiry'] ?>">Expiry</label>
+              <input type="text" name="card_expiry" id="<?= $cfg['dev']['expiry'] ?>" inputmode="numeric"
+                placeholder="MM / YY" maxlength="7" required autocomplete="cc-exp" class="card-input">
+            </div>
+            <div>
+              <label class="input-label" for="<?= $cfg['dev']['cvc'] ?>">CVC</label>
+              <input type="text" name="card_cvc" id="<?= $cfg['dev']['cvc'] ?>" inputmode="numeric"
+                placeholder="123" maxlength="4" required autocomplete="cc-csc" class="card-input">
+            </div>
+          </div>
+          <button type="submit" class="w-full bg-white/10 hover:bg-white/15 border border-white/10 text-white py-3 rounded-xl font-bold text-sm transition">
+            Activate <?= $cfg['name'] ?> without paying
+          </button>
+          <p class="text-[11px] text-amber-400/60">This form only exists while TEST_PAYMENT_MODE is on and the site is not in production.</p>
+        </form>
+      </details>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <!-- The three things a buyer actually wants to know before typing a card number -->
+  <div class="px-6 sm:px-8 py-5 border-t border-white/5 grid grid-cols-1 sm:grid-cols-3 gap-5">
+    <div class="step-block">
+      <span class="step-num">1</span>
+      <div>
+        <p class="text-xs font-semibold text-slate-200">Pay at Whop</p>
+        <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Their checkout, their payment security. We never see your card.</p>
+      </div>
+    </div>
+    <div class="step-block">
+      <span class="step-num">2</span>
+      <div>
+        <p class="text-xs font-semibold text-slate-200">Your plan switches on</p>
+        <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Automatically, usually within seconds of the payment clearing.</p>
+      </div>
+    </div>
+    <div class="step-block">
+      <span class="step-num">3</span>
+      <div>
+        <p class="text-xs font-semibold text-slate-200">Manage it any time</p>
+        <p class="text-[11px] text-slate-500 leading-relaxed mt-0.5">Change plan, change card or cancel from your Whop billing page.</p>
+      </div>
+    </div>
+  </div>
+</div>
+<?php };
 
 if (isset($_GET['cancelled'])) $message = 'Checkout cancelled — you were not charged.';
 
@@ -198,7 +392,7 @@ if (isset($_GET['whop_error']) && $error === '') {
     $whopReason = (string)$_GET['whop_error'];
     $error = match ($whopReason) {
         'already_subscribed' => 'You already have a subscription, so we did not start a second one — that would have billed you twice. Manage or change your plan from the button below.',
-        'not_configured'     => 'Card payments are not switched on for this plan yet. Please contact support and we will take your payment directly.',
+        'not_configured'     => 'Card payments are not switched on for this plan yet, so nothing was charged. Message us from Support and we will set the plan up with you directly.',
         default              => 'We could not start that purchase: ' . $whopReason,
     };
 }
@@ -255,39 +449,59 @@ require_once __DIR__ . '/../includes/portal_layout.php';
    painted with a padding-box/border-box trick over a flat #0d0d0d fill — a black
    card on a near-black canvas, which is why the page read as a different product
    from the dashboard one click away. */
-.ent-btn{
+.btn-accent{
   background:var(--accent, #7fe3a8);color:var(--accent-ink, #04150c);
   transition:background .18s var(--ease, cubic-bezier(.22,.61,.36,1));
 }
-.ent-btn:hover{background:var(--accent-hi, #a2f3c4)}
-.ent-btn:active{background:var(--accent, #7fe3a8)}
-.ent-btn:disabled{opacity:.6;cursor:not-allowed}
-.ent-card-wrap,
-.pro-card-wrap{
+.btn-accent:hover{background:var(--accent-hi, #a2f3c4)}
+.btn-accent:active{background:var(--accent, #7fe3a8)}
+.btn-accent:disabled{opacity:.6;cursor:not-allowed}
+
+/* ── The purchase card ────────────────────────────────────────────────────────
+   One card for both plans, so a change to the purchase layout cannot reach one
+   tier and miss the other — the same reason the button above is one helper. The
+   accent hairline is what marks it as the card that asks for money; everything
+   inside is ink on the house surface. */
+.checkout-card{
   background:var(--fill-1);
-  border:1px solid var(--hair, var(--hair));
-  box-shadow:0 24px 60px -40px rgba(0,0,0,.85);
+  border:1px solid var(--accent-line, var(--hair));
+  box-shadow:0 30px 70px -50px rgba(0,0,0,.9);
 }
-/* Feature chips: a chip is a label, not a highlight. Six violet lozenges stacked
-   under a price is the single loudest thing on this page, and every one of them is
-   also in the table below in plain text. */
-.pill-feature{
-  display:inline-flex;align-items:center;gap:.35rem;
+.summary-panel{
   background:var(--fill-2);
   border:1px solid var(--hair);
-  color:var(--ink-2);
-  border-radius:5px;padding:.3rem .6rem;font-size:.7rem;font-weight:600;
+}
+.summary-row{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;font-size:.8125rem;color:var(--ink-2)}
+.summary-row strong{color:var(--ink);font-weight:700}
+.summary-due{display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;padding-top:.9rem;margin-top:.9rem;border-top:1px solid var(--hair)}
+.feature-item{display:flex;align-items:flex-start;gap:.6rem;font-size:.8125rem;color:var(--ink-2);line-height:1.45}
+.feature-item i{color:var(--accent, #7fe3a8);font-size:.7rem;margin-top:.28rem;flex-shrink:0}
+.feature-item.is-soon{color:var(--ink-4)}
+.feature-item.is-soon i{color:var(--ink-4)}
+.step-block{display:flex;align-items:flex-start;gap:.7rem}
+.step-num{
+  width:1.375rem;height:1.375rem;border-radius:.5rem;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--fill-3);color:var(--ink-2);font-size:.65rem;font-weight:800;
+}
+/* The upgrade bar above the plans. One rule, one user: the two "premium frames"
+   that used to sit here painted a gradient border over a flat #0d0d0d fill — a
+   black card on a near-black canvas, which is why this page read as a different
+   product from the dashboard one click away. */
+.ent-card-wrap{
+  background:var(--fill-1);
+  border:1px solid var(--hair);
+  box-shadow:0 24px 60px -40px rgba(0,0,0,.85);
 }
 .card-input{width:100%;background:var(--fill-1);border:1px solid var(--hair, var(--hair));color:var(--ink, #e9edf5);border-radius:10px;padding:.875rem 1rem;font-size:.95rem;outline:none;transition:border-color .2s var(--ease, cubic-bezier(.22,.61,.36,1))}
 .card-input::placeholder{color:rgba(148,163,184,.5)}
 .card-input:focus{border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34)));box-shadow:none}
-.card-input-ent:focus{border-color:var(--accent-line, var(--accent-a34, rgba(127,227,168,.34)));box-shadow:none}
 .input-label{display:block;font-size:.7rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;margin-bottom:.45rem;color:rgba(148,163,184,.8)}
 .trust-row{display:flex;flex-wrap:wrap;align-items:center;gap:.25rem .75rem;font-size:.7rem;color:rgba(100,116,139,.8)}
 .plan-tab{padding:.5rem 1.25rem;border-radius:8px;font-size:.8rem;font-weight:700;transition:background .18s,color .18s;cursor:pointer;text-decoration:none}
 .plan-tab-active{background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12)));color:var(--accent, #7fe3a8)}
-.plan-tab-inactive{background:var(--fill-2);color:rgba(148,163,184,.9)}
-.plan-tab-inactive:hover{background:var(--fill-3)}
+.plan-tab-inactive{background:transparent;color:rgba(148,163,184,.9)}
+.plan-tab-inactive:hover{background:var(--fill-2);color:var(--ink)}
 .plan-tab-ent-active{background:var(--accent-soft, var(--accent-a12, rgba(127,227,168,.12)));color:var(--accent, #7fe3a8)}
 /* Tick and cross are a yes/no pair; a green tick next to a violet tick in the next
    column made two different answers look like two different kinds of thing. */
@@ -345,6 +559,16 @@ require_once __DIR__ . '/../includes/portal_layout.php';
   </div>
   <?php if ($is_paid && $is_active && !$_pro_upgrading_to_ent): ?>
   <div class="mt-5 pt-4 border-t border-white/5">
+    <?php if ($is_active && $_whop_member_id !== ''): ?>
+    <?php /* The three facts a subscriber asks about, in one line, before the control
+             that changes anything: what happens next, where the receipt comes from,
+             and who is actually charging the card. */ ?>
+    <div class="flex flex-wrap items-center gap-x-5 gap-y-1.5 text-[11px] text-slate-500 mb-3.5">
+      <span><i class="fa-solid fa-rotate mr-1.5 text-slate-600"></i>Renews monthly, automatically</span>
+      <span><i class="fa-regular fa-envelope mr-1.5 text-slate-600"></i>Receipts emailed by Whop</span>
+      <span><i class="fa-solid fa-shield-halved mr-1.5 text-slate-600"></i>Whop is the merchant of record</span>
+    </div>
+    <?php endif; ?>
     <?php if ($_whop_member_id !== ''):
       /* Billed by Whop: the honest control is a link to the page that can
          actually stop the charge. A cancel button here would look identical and
@@ -379,7 +603,7 @@ require_once __DIR__ . '/../includes/portal_layout.php';
       <p class="text-white font-semibold text-sm">Unlimited leads, team seats &amp; every Pro feature</p>
     </div>
     <a href="/portal/billing?plan=entrepreneur"
-       class="shrink-0 ent-btn text-sm font-black px-7 py-3 rounded-xl whitespace-nowrap inline-block text-center">
+       class="shrink-0 btn-accent text-sm font-black px-7 py-3 rounded-xl whitespace-nowrap inline-block text-center">
       Upgrade &rarr; $<?= $_ent_price_fmt ?>/mo
     </a>
   </div>
@@ -389,8 +613,22 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 <!-- UPGRADE SECTION -->
 <?php if (!$is_paid || $is_cancelled || $_pro_upgrading_to_ent): ?>
 
+<?php
+/* Say it before the click, not after it. A customer who presses Subscribe, is
+   bounced back and then reads why has already spent the moment of trust this page
+   was building — so the state of the checkout is stated up here, in the same
+   breath as the prices, and the card below repeats it where the button is. */
+if (!whop_can_accept_payments()): ?>
+<div class="flex items-start gap-3 bg-amber-500/[.07] border border-amber-500/20 rounded-2xl px-5 py-4 mb-5 text-xs text-amber-200/80 leading-relaxed">
+  <i class="fa-solid fa-clock mt-0.5 shrink-0 text-amber-400"></i>
+  <span><strong class="text-amber-200 font-semibold">Card payments are being switched on.</strong>
+  You can look at both plans and their prices here, but nothing on this page can charge you yet.
+  <a href="/portal/support.php" class="underline font-semibold">Message us</a> if you want one of them sooner.</span>
+</div>
+<?php endif; ?>
+
 <?php if (!$_pro_upgrading_to_ent): ?>
-<div class="flex gap-2 mb-5">
+<div class="inline-flex gap-1 p-1 rounded-xl mb-5" style="background:var(--fill-1);border:1px solid var(--hair)">
   <a href="/portal/billing?plan=pro"
      class="plan-tab <?= $_target_plan==='pro' ? 'plan-tab-active' : 'plan-tab-inactive' ?>">
     <i class="fa-solid fa-crown mr-1.5 text-xs"></i>Pro &mdash; $<?= $_pro_price_fmt ?>/mo
@@ -404,52 +642,20 @@ require_once __DIR__ . '/../includes/portal_layout.php';
 
 <?php if ($_target_plan === 'entrepreneur' || $_pro_upgrading_to_ent): ?>
 
-<!-- ENTREPRENEUR PAYMENT CARD -->
-<?php if ($_pro_upgrading_to_ent): ?>
-<div class="flex items-center gap-3 bg-white/5 border border-white/15 text-slate-300 rounded-2xl px-5 py-3 mb-5 text-sm">
-  <i class="fa-solid fa-bolt shrink-0"></i>
-  <span>You're upgrading from <strong>Pro</strong> to <strong>Entrepreneur</strong>. Whop's checkout settles the change in place, so there is no second subscription and nothing to cancel.</span>
-  <a href="/portal/billing" class="ml-auto text-xs text-slate-500 hover:text-slate-300 transition shrink-0">Cancel</a>
-</div>
-<?php endif; ?>
+<!-- ENTREPRENEUR CHECKOUT -->
+<?php
+// The purchase card, from the single renderer both plans share. The note appears
+// only when this is a plan CHANGE rather than a first purchase: "the price replaces
+// the old one" is reassuring when it is true, and confusing when there is no old
+// plan to replace. Keeping the way back on Pro next to it is the other half of that
+// sentence being honest.
+$render_checkout_card('entrepreneur', $_checkout_plans['entrepreneur'], $_pro_upgrading_to_ent
+    ? 'Whop settles the change in place: the Entrepreneur price replaces the Pro one on the same subscription, so there is nothing to cancel and no second charge. <a href="/portal/billing" class="underline">Stay on Pro</a>'
+    : '');
+?>
 
-<div class="rounded-2xl ent-card-wrap overflow-hidden mb-6">
-
-  <div class="relative px-7 pt-8 pb-7 border-b border-white/5 overflow-hidden">
-    <div class="relative flex flex-wrap gap-6 items-start justify-between">
-      <div>
-        <div class="flex flex-wrap items-center gap-2 mb-4">
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black border border-white/25 text-white">
-            <i class="fa-solid fa-bolt text-slate-300 text-[10px]"></i>
-            <span style="font-weight:900;letter-spacing:.05em">BEST VALUE</span>
-          </span>
-          <span class="text-[11px] px-2.5 py-1 rounded-full border border-white/12 text-slate-400 font-bold">Most Popular</span>
-        </div>
-        <div class="flex items-end gap-2 mb-2">
-          <span class="text-5xl font-black tracking-tight">$<?= $_ent_price_fmt ?></span>
-          <span class="text-slate-400 text-sm mb-2">/ month</span>
-        </div>
-        <p class="text-slate-400 text-sm">Built for agencies running multiple clients at scale.</p>
-      </div>
-      <div class="text-xs text-slate-500 space-y-1.5">
-        <p><i class="fa-solid fa-rotate text-slate-600 mr-1.5"></i>Billed monthly</p>
-        <p><i class="fa-solid fa-ban text-slate-600 mr-1.5"></i>Cancel any time</p>
-        <p><i class="fa-solid fa-shield-halved text-slate-600 mr-1.5"></i>No lock-in</p>
-      </div>
-    </div>
-    <div class="mt-5 flex flex-wrap gap-1.5">
-      <span class="pill-feature"><i class="fa-solid fa-infinity"></i>Unlimited leads</span>
-      <span class="pill-feature"><i class="fa-solid fa-globe"></i>Custom domains (soon)</span>
-      <span class="pill-feature"><i class="fa-solid fa-users"></i><?= $_ent_seats ?> team seats</span>
-      <span class="pill-feature"><i class="fa-solid fa-chart-line"></i>Client reports (soon)</span>
-      <span class="pill-feature"><i class="fa-solid fa-phone-volume"></i>Call scripts</span>
-      <span class="pill-feature"><i class="fa-solid fa-server"></i><?= $_ent_sites ?> sites</span>
-      <span class="pill-feature"><i class="fa-solid fa-headset"></i>Priority support</span>
-    </div>
-  </div>
-
-  <div class="px-7 py-5 border-b border-white/5 overflow-x-auto">
-    <p class="text-[10px] font-bold text-slate-600 uppercase tracking-widest mb-3">Entrepreneur vs Pro</p>
+<div class="glass rounded-2xl p-6 mb-6 overflow-x-auto">
+    <p class="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-3">Entrepreneur vs Pro</p>
     <table class="w-full text-xs min-w-[340px]">
       <thead><tr>
         <th class="text-left text-slate-500 font-semibold pb-2.5 pr-4">Feature</th>
@@ -491,153 +697,11 @@ require_once __DIR__ . '/../includes/portal_layout.php';
     </table>
   </div>
 
-  <div class="px-7 py-3 border-b border-white/5 trust-row">
-    <span><i class="fa-solid fa-star text-slate-600 mr-1"></i>200+ agencies</span>
-    <span><i class="fa-solid fa-bolt text-slate-600 mr-1"></i>Instant activation</span>
-    <span><i class="fa-solid fa-shield-halved text-slate-600 mr-1"></i>Cancel any time</span>
-    <span><i class="fa-solid fa-headset text-slate-600 mr-1"></i>Priority support</span>
-  </div>
-
-  <div class="px-7 py-7">
-    <?php $render_whop_button('entrepreneur', ($_pro_upgrading_to_ent ? 'Upgrade to Entrepreneur' : 'Unlock Entrepreneur') . ' — $' . $_ent_price_fmt . '/mo', 'ent-btn'); ?>
-    <?php if ($canActivateLocally): /* developer-only activation, see the guard in the POST handler above */ ?>
-    <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
-      <i class="fa-solid fa-flask text-amber-500/70"></i>
-      <span><strong class="text-amber-400">Development only</strong> &mdash; activates without a payment. Turn TEST_PAYMENT_MODE off to hide it.</span>
-    </div>
-    <form method="POST" action="/portal/billing?plan=entrepreneur" class="space-y-4" id="entForm"
-          onsubmit="this.querySelector('#entSubmitBtn').disabled=true;this.querySelector('#entSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
-      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-      <input type="hidden" name="action" value="test_subscribe">
-      <input type="hidden" name="subscribe_plan" value="entrepreneur">
-      <div>
-        <label class="input-label text-slate-500" for="cardNumberInputEnt">Card number</label>
-        <div class="relative">
-          <input type="text" name="card_number" id="cardNumberInputEnt" inputmode="numeric"
-            placeholder="1234 5678 9012 3456" maxlength="19" required autocomplete="cc-number"
-            class="card-input card-input-ent pr-14">
-          <span id="cardBrandIconEnt" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-lg pointer-events-none">
-            <i class="fa-regular fa-credit-card"></i>
-          </span>
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="input-label text-slate-500" for="cardExpiryInputEnt">Expiry</label>
-          <input type="text" name="card_expiry" id="cardExpiryInputEnt" inputmode="numeric"
-            placeholder="MM / YY" maxlength="7" required autocomplete="cc-exp"
-            class="card-input card-input-ent">
-        </div>
-        <div>
-          <label class="input-label text-slate-500" for="cardCvcInputEnt">CVC</label>
-          <div class="relative">
-            <input type="text" name="card_cvc" id="cardCvcInputEnt" inputmode="numeric"
-              placeholder="123" maxlength="4" required autocomplete="cc-csc"
-              class="card-input card-input-ent pr-10">
-            <i class="fa-solid fa-lock absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 text-xs pointer-events-none"></i>
-          </div>
-        </div>
-      </div>
-      <button type="submit" id="entSubmitBtn"
-        class="w-full ent-btn py-4 rounded-xl font-black text-base mt-1">
-        <i class="fa-solid fa-bolt mr-2"></i><?= $_pro_upgrading_to_ent ? 'Upgrade to Entrepreneur' : 'Unlock Entrepreneur' ?> &mdash; $<?= $_ent_price_fmt ?>/mo
-      </button>
-      <div class="trust-row justify-center pt-1">
-        <i class="fa-solid fa-lock"></i><span>Secured by</span>
-        <i class="fa-brands fa-stripe text-lg text-slate-400"></i>
-        <span class="mx-1 text-slate-700">·</span>
-        <i class="fa-solid fa-shield-halved text-slate-600"></i><span>256-bit SSL</span>
-        <span class="mx-1 text-slate-700">·</span>
-        <span>Cancel any time</span>
-      </div>
-    </form>
-    <?php endif; ?>
-  </div>
-</div>
 
 <?php else: ?>
 
-<!-- PRO PAYMENT CARD -->
-<div class="rounded-2xl pro-card-wrap overflow-hidden mb-6">
-  <div class="px-7 pt-8 pb-7 border-b border-white/5">
-    <div class="flex flex-wrap gap-6 items-start justify-between">
-      <div>
-        <div class="flex items-center gap-2 mb-4">
-          <i class="fa-solid fa-crown text-white/80 text-sm"></i>
-          <span class="text-xs font-black uppercase tracking-widest text-white/60">Pro Plan</span>
-        </div>
-        <div class="flex items-end gap-2 mb-2">
-          <span class="text-5xl font-black tracking-tight">$<?= $_pro_price_fmt ?></span>
-          <span class="text-slate-400 text-sm mb-2">/ month</span>
-        </div>
-        <p class="text-slate-400 text-sm">Everything you need to run a full client-getting operation.</p>
-      </div>
-      <ul class="space-y-2 text-sm">
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i><?= number_format($_pro_leads) ?> leads / period</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i><?= $_pro_sites ?> active websites</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>Full phone numbers</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>Call scripts on every page</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>All templates + ZIP export</li>
-        <li class="flex items-center gap-2 text-slate-300"><i class="fa-solid fa-check text-slate-300 w-3.5 shrink-0"></i>Revenue dashboard</li>
-      </ul>
-    </div>
-  </div>
-  <div class="px-7 py-7">
-    <?php $render_whop_button('pro', 'Subscribe to Pro — $' . $_pro_price_fmt . '/mo', 'bg-white hover:bg-slate-100 text-black shadow-lg shadow-white/5 transition-all'); ?>
-    <?php if ($canActivateLocally): /* developer-only activation, see the guard in the POST handler above */ ?>
-    <div class="flex items-center gap-2 bg-amber-500/8 border border-amber-500/18 rounded-xl px-4 py-2.5 mb-6 text-xs text-amber-400/80">
-      <i class="fa-solid fa-flask text-amber-500/70"></i>
-      <span><strong class="text-amber-400">Development only</strong> &mdash; activates without a payment. Turn TEST_PAYMENT_MODE off to hide it.</span>
-    </div>
-    <form method="POST" action="/portal/billing?plan=pro" class="space-y-4" id="billingForm"
-          onsubmit="this.querySelector('#proSubmitBtn').disabled=true;this.querySelector('#proSubmitBtn').innerHTML='<i class=\'fa-solid fa-spinner fa-spin mr-2\'></i>Activating&hellip;';">
-      <input type="hidden" name="csrf_token" value="<?= csrf_token() ?>">
-      <input type="hidden" name="action" value="test_subscribe">
-      <input type="hidden" name="subscribe_plan" value="pro">
-      <div>
-        <label class="input-label text-slate-500" for="cardNumberInput">Card number</label>
-        <div class="relative">
-          <input type="text" name="card_number" id="cardNumberInput" inputmode="numeric"
-            placeholder="1234 5678 9012 3456" maxlength="19" required autocomplete="cc-number"
-            class="card-input pr-14">
-          <span id="cardBrandIconPro" class="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 text-lg pointer-events-none">
-            <i class="fa-regular fa-credit-card"></i>
-          </span>
-        </div>
-      </div>
-      <div class="grid grid-cols-2 gap-3">
-        <div>
-          <label class="input-label text-slate-500" for="cardExpiryInput">Expiry</label>
-          <input type="text" name="card_expiry" id="cardExpiryInput" inputmode="numeric"
-            placeholder="MM / YY" maxlength="7" required autocomplete="cc-exp"
-            class="card-input">
-        </div>
-        <div>
-          <label class="input-label text-slate-500" for="cardCvcInput">CVC</label>
-          <div class="relative">
-            <input type="text" name="card_cvc" id="cardCvcInput" inputmode="numeric"
-              placeholder="123" maxlength="4" required autocomplete="cc-csc"
-              class="card-input pr-10">
-            <i class="fa-solid fa-lock absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-600 text-xs pointer-events-none"></i>
-          </div>
-        </div>
-      </div>
-      <button type="submit" id="proSubmitBtn"
-        class="w-full bg-white hover:bg-slate-100 active:scale-[.98] text-black py-4 rounded-xl font-black text-base shadow-lg shadow-white/5 transition-all mt-1">
-        <i class="fa-solid fa-lock mr-2 text-sm"></i>Subscribe to Pro &mdash; $<?= $_pro_price_fmt ?>/mo
-      </button>
-      <div class="trust-row justify-center pt-1">
-        <i class="fa-solid fa-lock"></i><span>Secured by</span>
-        <i class="fa-brands fa-stripe text-lg text-slate-400"></i>
-        <span class="mx-1 text-slate-700">·</span>
-        <i class="fa-solid fa-shield-halved text-slate-600"></i><span>256-bit SSL</span>
-        <span class="mx-1 text-slate-700">·</span>
-        <span>Cancel any time</span>
-      </div>
-    </form>
-    <?php endif; ?>
-  </div>
-</div>
+<!-- PRO CHECKOUT -->
+<?php $render_checkout_card('pro', $_checkout_plans['pro']); ?>
 
 <div class="text-center text-xs text-slate-500 mb-6">
   Want unlimited leads &amp; team seats?

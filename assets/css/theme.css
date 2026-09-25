@@ -294,61 +294,76 @@
    `text-white` on every headline and figure in the product, and on this canvas
    every one of them has to be black or it disappears. */
 :root[data-theme="paper"] {
-  --canvas:      #ffffff;
+  /* THE CANVAS IS A SOFT GREY SHEET, NOT WHITE.
+
+     This one line is what stops the light theme glaring. White can only be read
+     as *above* the page if the page itself is not white — a white panel on a
+     white canvas has nothing to be elevated over, so every card, chip and row
+     had to shout instead (a heavier border, a harder shadow, a deeper black) to
+     be seen at all. That is what "too flashy" was. A grey canvas is also what
+     macOS light mode is built on, for the same reason. */
+  --canvas:      #eceef2;
   --panel:       #ffffff;
-  --panel-2:     #f5f5f6;
-  --canvas-rgb:  255 255 255;
+  --panel-2:     #f4f5f8;
+  --canvas-rgb:  236 238 242;
   --panel-rgb:   255 255 255;
 
-  /* Inverted AND re-tuned. A translucent black on white loses contrast faster than
-     a translucent white on near-black, so the same four alphas are darker here than
-     they are on Midnight — .36 black on white is 2.2:1, which is where the light
-     theme's 11px labels were before this pass. */
-  --ink:         #0b0b0c;
-  --ink-2:       rgba(11,11,12,.78);
-  --ink-3:       rgba(11,11,12,.66);
-  --ink-4:       rgba(11,11,12,.56);
-  --pure:        #0b0b0c;
+  /* A warm near-black rather than #0b0b0c. Pure black on a bright screen is the
+     maximum contrast a monitor can produce, which over a long session is eye
+     strain, and the greys below keep their spacing against the grey canvas. */
+  --ink:         #15171c;
+  --ink-2:       rgba(21,23,28,.76);
+  --ink-3:       rgba(21,23,28,.62);
+  --ink-4:       rgba(21,23,28,.52);
+  --pure:        #15171c;
 
-  --hair:        rgba(0,0,0,.10);
-  --hair-2:      rgba(0,0,0,.18);
-  --fill-1:      rgba(0,0,0,.028);
-  --fill-2:      rgba(0,0,0,.055);
-  --fill-3:      rgba(0,0,0,.09);
-  --fill-4:      rgba(0,0,0,.14);
+  --hair:        rgba(18,22,32,.10);
+  --hair-2:      rgba(18,22,32,.16);
+  --fill-1:      rgba(18,22,32,.032);
+  --fill-2:      rgba(18,22,32,.055);
+  --fill-3:      rgba(18,22,32,.085);
+  --fill-4:      rgba(18,22,32,.13);
 
-  --card-top:    #ffffff;
-  --card-bot:    #fbfbfc;
-  --sheen:       rgba(255,255,255,.95);
-  --lift:        0 1px 2px rgba(0,0,0,.05),
-                 0 20px 44px -28px rgba(0,0,0,.24),
-                 0 1px 3px -1px rgba(0,0,0,.06);
+  /* TRANSLUCENT, exactly like the dark themes — and this is the whole answer to
+     "where is the liquid glass in the white theme".
 
-  /* Paper gets the *shape* of the material and almost none of the blur. A
-     translucent white panel over white paper reads as a smudge, so the body is
-     nearly opaque, the rim is a real highlight rather than a hint, and the
-     specular sweep — invisible as white light on white — is left switched off by
-     the theme's own rule further down. This is the one theme where the "glass"
-     is a lit sheet of paper, which is the honest answer for a light theme. */
-  --glass-fill:    rgba(255,255,255,.72);
+     These two stops are what the material paints its body from, and they were
+     opaque #ffffff/#fbfbfc here. So a Paper panel was a solid rectangle: the
+     blur, the rim and the travelling sweep were all still in the stylesheet and
+     all three were invisible, because there was nothing behind the surface and
+     no way through it. A translucent white over a grey canvas passes colour
+     through, which is what the blur has to work with. */
+  --card-top:    rgba(255,255,255,.74);
+  --card-bot:    rgba(255,255,255,.54);
+  --sheen:       rgba(255,255,255,.85);
+  --lift:        0 1px 2px rgba(16,20,30,.06),
+                 0 16px 36px -24px rgba(16,20,30,.28),
+                 0 1px 3px -1px rgba(16,20,30,.08);
+
+  /* The material, lit from the front. The rim is a real white highlight along the
+     top edge and a hairline of ink around the far side, because white-on-white
+     has no far edge to speak of. The specular sweep is ON: it used to be switched
+     off here on the theory that white light is invisible on white paper, which is
+     only true if the surface it crosses is white too. */
+  --glass-fill:    rgba(255,255,255,.58);
   --glass-rim:     rgba(255,255,255,.95);
-  --glass-rim-dim: rgba(0,0,0,.06);
-  --glass-blur:    16px;
-  --glass-sat:     100%;
-  --glass-bright:  1.05;
-  --spec-op:       0;
-  --spec-dur:      16s;
+  --glass-rim-dim: rgba(16,20,30,.10);
+  --glass-blur:    20px;
+  --glass-sat:     130%;
+  --glass-bright:  1.02;
+  --spec-op:       .30;
+  --spec-dur:      15s;
   --glass-radius:  16px;
 
-  --blur-card:   14px;
-  --blur-nav:    16px;
-  --saturate:    100%;
+  --blur-card:   18px;
+  --blur-nav:    20px;
+  --saturate:    130%;
 
-  /* Barely there. A colour wash that reads as depth on near-black is a stain on
-     white, so the aurora drops to 3-5%. */
-  --aurora-a:    rgb(var(--accent-rgb) / 5%);
-  --aurora-b:    rgba(0,0,0,.02);
-  --aurora-c:    rgb(var(--accent-rgb) / 3%);
+  /* A whisper of colour, the same kind as the dark themes carry: enough that the
+     room is lit from somewhere, not enough to be a shape on the page. */
+  --aurora-a:    rgb(var(--accent-rgb) / 8%);
+  --aurora-b:    rgba(126,146,186,.07);
+  --aurora-c:    rgb(var(--accent-rgb) / 6%);
 
   /* Deep enough to read as text on white, which the dark reds are not. */
   --danger:      #b3261e;
@@ -428,7 +443,13 @@
 :root[data-theme="paper"] .bg-white\/\[0\.04\],
 :root[data-theme="paper"] .bg-white\/\[\.04\] { background-color: rgba(0,0,0,.035) !important; }
 
-:root[data-theme="paper"] [class*="hover:bg-white/"]:hover { background-color: rgba(0,0,0,.06) !important; }
+:root[data-theme="paper"] [class*="hover:bg-white/"]:hover { background-color: rgba(18,22,32,.065) !important; }
+
+/* Small surfaces get a slightly stronger sweep than the material's default. A
+   .30 band crosses a 28px chip in a single frame, which reads as a flicker
+   rather than as light travelling; the same width over a 400px panel reads
+   correctly. This is the one place the light theme needs a different number. */
+:root[data-theme="paper"] .utl-glass--sm { --spec-op: .22; }
 
 :root[data-theme="paper"] [class*="border-white/"] { border-color: var(--hair) !important; }
 :root[data-theme="paper"] .border-white        { border-color: var(--pure) !important; }

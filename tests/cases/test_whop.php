@@ -549,6 +549,26 @@ $res = t_http('GET', $unconfigured['url'] . '/whop-checkout.php?plan=pro');
 t_is($res['status'], 302, 'the checkout page still answers on a deployment with no webhook secret');
 t_like((string)$res['location'], '/register.php', 'by sending the visitor to sign up first, exactly as a configured one does');
 
+/* ── And a SIGNED-IN customer on that deployment is refused ───────────────────
+ * This is the assertion the money depends on. Without a secret a delivery can
+ * never be verified, so a sale started here would take the card, leave the plan on
+ * free, and have Whop retry a webhook nobody can read for three days. The refusal
+ * is not a missing feature: it is the feature. */
+$noSecretVisitor = t_fixture(['email' => 'whop-nosecret@example.test']);
+
+$res = t_http('GET', $unconfigured['url'] . '/whop-checkout.php?plan=pro', ['cookie' => t_login($noSecretVisitor)]);
+t_is($res['status'], 302, 'a signed-in customer with a working pricing button is redirected rather than sent to pay');
+t_like((string)$res['location'], '/portal/billing.php', 'back to the billing page, where the reason is explained');
+t_like((string)$res['location'], 'whop_error=not_configured', 'with the reason carried in the query string');
+t_unlike((string)$res['location'], 'whop.com', 'and never to Whop, because this deployment could not honour the payment');
+
+t_is(t_whop_requests_to('/api/v1/checkout_configurations'), [], 'and no checkout is created on the way to that refusal');
+
+$res = t_http('GET', $unconfigured['url'] . '/portal/billing.php?plan=pro', ['cookie' => t_login($noSecretVisitor)]);
+t_is($res['status'], 200, 'the billing page still renders on a deployment that cannot take payments');
+t_unlike($res['body'], 'action="/whop-checkout.php"', 'with no purchase button anywhere on it');
+t_like($res['body'], 'Card payments are being switched on', 'and the state of the checkout stated above the plans, before anyone clicks');
+
 t_section('Authenticated nonsense is ignored, not applied');
 
 $signedButUnreadable = t_post_whop_webhook($app, 'this is not json');
