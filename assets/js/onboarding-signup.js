@@ -21,7 +21,7 @@
   /* ── Real plan limits & prices ────────────────────────────────
      Server-rendered as data-plan-info on <body> (includes/plans.php).
      Never hardcode a limit or price in this file: an admin can change
-     any of them in Admin > Config Editor and hardcoded copy goes stale. */
+     any of them in Admin > Settings and hardcoded copy goes stale. */
   let INFO = {};
   try { INFO = JSON.parse(document.body.dataset.planInfo || '{}') || {}; } catch (e) { INFO = {}; }
   const P        = k => INFO[k] || {};

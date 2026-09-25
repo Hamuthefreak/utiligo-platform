@@ -11,6 +11,22 @@ ErrorDocument 500 /notfound/500.php
 ErrorDocument 503 /notfound/503.php
 
 # ---------------------------------------------------------------
+# CREDENTIAL FILES — root only, and never served
+# ---------------------------------------------------------------
+# config.php / db.php / userdb.php hold the database credentials and are loaded
+# by other scripts through the filesystem; nothing should ever fetch one over
+# HTTP. The extensionless form is blocked too, because rule 4 below would
+# otherwise rewrite /config to config.php and serve it anyway.
+#
+# This is a RewriteRule on the REQUEST URI, and it has to be — it used to be
+# <FilesMatch "^(config|db|userdb)\.php$">, which matches the base name in ANY
+# directory, so it also denied /admin/config.php (the Config Editor, the only
+# place the Whop keys could be set) and /admin/db.php before any PHP ran. Both of
+# those pages enforce require_admin() themselves; the three files this rule names
+# have no such check, which is the whole reason they are listed here.
+RewriteRule ^(config|db|userdb)(\.php)?$ - [F,L]
+
+# ---------------------------------------------------------------
 # ROUTING
 # ---------------------------------------------------------------
 
@@ -60,9 +76,9 @@ RewriteRule ^sql/        - [F,L]
 RewriteRule ^migrations/ - [F,L]
 RewriteRule ^includes/   - [F,L]
 
-<FilesMatch "^(config|db|userdb)\.php$">
-    Require all denied
-</FilesMatch>
+# (Credentials are refused at the top of this file, as a RewriteRule on the
+# request URI rather than a FilesMatch on the base name — see the note there for
+# why a FilesMatch also 403'd /admin/config.php.)
 # Block sensitive file types. NOT ".zip" — user-generated site exports
 # are served from /exports/*.zip (api/generate-site.php), and blocking
 # *.zip globally would 403 every legitimate ZIP download.

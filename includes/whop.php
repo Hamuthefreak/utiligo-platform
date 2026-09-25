@@ -1338,7 +1338,7 @@ function whop_alert_action(string $kind): string
             . 'first, Whop\'s own retries apply the payment without anybody doing anything.',
         'unmapped_plan' =>
             'Nothing was granted, and that is correct — guessing a tier is worse than doing nothing. Either the plan id '
-            . 'changed in Whop (compare it with WHOP_PRO_PLAN_ID / WHOP_ENT_PLAN_ID in Admin → Config Editor), or '
+            . 'changed in Whop (compare it with WHOP_PRO_PLAN_ID / WHOP_ENT_PLAN_ID in Admin → Settings), or '
             . 'another product on the same Whop account shares this webhook.',
         'write_failed' =>
             'The account was identified and the database refused the write, so Whop has been asked to retry and will. '
@@ -1346,7 +1346,7 @@ function whop_alert_action(string $kind): string
         'signature_refused' =>
             'Every delivery is being refused, which means one of two things: the webhook secret on this deployment is '
             . 'not the one Whop signs with (a rotation in the dashboard is the usual cause), or somebody is posting '
-            . 'forged events. Fix the secret in Admin → Config Editor → Payments (Whop), then use '
+            . 'forged events. Fix the secret in Admin → Settings → Payments (Whop), then use '
             . 'Admin → Payments to deliver a signed test event. Until this is fixed, no purchase can be applied.',
     ];
 

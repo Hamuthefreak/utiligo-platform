@@ -2,10 +2,10 @@
 // includes/plan_limits.php
 // THE ONE FILE TO EDIT FOR PLAN LIMITS.
 // Values here are defaults. To override without editing code, use
-// the Admin > Config Editor which writes to storage/config_overrides.php.
+// the Admin > Settings page which writes to storage/config_overrides.php.
 // That file is loaded first, so its defines() win everywhere.
 
-// Load admin overrides first (written by admin/config.php)
+// Load admin overrides first (written by admin/settings.php)
 $_overrides_file = __DIR__ . '/../storage/config_overrides.php';
 if (file_exists($_overrides_file)) {
     require_once $_overrides_file;

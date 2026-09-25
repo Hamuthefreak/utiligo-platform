@@ -19,7 +19,7 @@ error_reporting(E_ALL);
 if (!defined('APP_ENV')) define('APP_ENV', getenv('APP_ENV') ?: 'production');
 
 // ── Load admin-managed config overrides FIRST ─────────────────────────
-// storage/config_overrides.php is written by admin/config.php and may
+// storage/config_overrides.php is written by admin/settings.php and may
 // define() any constant in this file (DB creds, plan limits, keys, …).
 // It MUST be loaded before the defines below so its values win over the
 // defaults.  (plan_limits.php loaded later will see them already set.)
