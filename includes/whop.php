@@ -660,7 +660,13 @@ function whop_plan_from_payment(array $data): ?string
  * What a verified event should do. Pure: no database, no clock, no network.
  *
  * Returns ['action' => 'grant'|'revoke'|'ignore', 'plan' => ?string,
- *          'status' => ?string, 'reason' => string].
+ *          'status' => ?string, 'reason' => string, 'alert' => string (optional)].
+ *
+ * 'alert' is the one place this table says "and tell a human". It is set only on
+ * the ignore that means MONEY ARRIVED AND NOTHING HAPPENED — a paid payment for a
+ * plan this deployment does not sell — because that is the case where every other
+ * layer here is correct and the customer is still charged for nothing. The kind
+ * is the alert name; see whop_alert().
  *
  * The table, and why each row is what it is:
  *
@@ -706,8 +712,18 @@ function whop_intent(array $event): array
 
         $plan = whop_plan_from_payment($data);
         if ($plan === null) {
-            return $ignore('a payment for a plan we do not sell (plan id '
-                . trim((string)($data['plan']['id'] ?? '(none)')) . ')');
+            // Not the plain $ignore(): this is the one no-op that is about money.
+            // Nothing is granted, correctly — see whop_plan_for_id, where the only
+            // available guesses are "the wrong tier" or "the cheapest tier" — but
+            // somebody's card was just charged and every page still says "Free".
+            return [
+                'action' => 'ignore',
+                'alert'  => 'unmapped_plan',
+                'plan'   => null,
+                'status' => null,
+                'reason' => 'a payment for a plan we do not sell (plan id '
+                    . trim((string)($data['plan']['id'] ?? '(none)')) . ')',
+            ];
         }
 
         return [
@@ -1119,6 +1135,17 @@ function whop_handle_event(array $parsed, string $webhookId = ''): array
         $reason = $intent['reason'] . ' — ' . $identity['reason'];
         whop_ledger_finish($webhookId, 'ignored', $reason, $userId);
         whop_log('event', 'ignored ' . $type . ': ' . $reason);
+
+        // A no-op that is nevertheless money: a verified, paid payment for a plan
+        // we do not sell. The account is untouched, which is right, and a human is
+        // told, which is the part that was missing.
+        if (!empty($intent['alert'])) {
+            whop_alert((string)$intent['alert'],
+                'A payment arrived for a plan this deployment does not sell',
+                $reason,
+                ['webhook_id' => $webhookId, 'facts' => whop_event_facts($parsed)]);
+        }
+
         return ['status' => 'ignored', 'http' => 200, 'reason' => $reason, 'user_id' => $userId, 'plan' => null];
     }
 
@@ -1130,6 +1157,15 @@ function whop_handle_event(array $parsed, string $webhookId = ''): array
         $reason = 'could not identify the account: ' . $identity['reason'];
         whop_ledger_finish($webhookId, 'failed', $reason);
         whop_log('event', $type . ' could not be applied: ' . $reason);
+
+        // A paying customer reading "Free". Whop's retries may still resolve it on
+        // their own (the common cause is an unverified payer email), but nobody
+        // finds out until somebody is told — which is this line.
+        whop_alert('unidentified_payment',
+            'A payment arrived that could not be attached to any account',
+            $intent['reason'] . '; ' . $reason,
+            ['webhook_id' => $webhookId, 'facts' => whop_event_facts($parsed)]);
+
         return ['status' => 'failed', 'http' => 500, 'reason' => $reason, 'user_id' => 0, 'plan' => null];
     }
 
@@ -1170,6 +1206,15 @@ function whop_handle_event(array $parsed, string $webhookId = ''): array
 
     if ($writeFailed) {
         whop_log('event', 'FAILED ' . $reason);
+
+        // The account was identified and the write was refused: the customer has
+        // paid and is still on free until Whop's retry lands. Rare, and always a
+        // database problem, so the alert carries the same sentence the log does.
+        whop_alert('write_failed',
+            'A payment was identified but the plan could not be written',
+            $reason,
+            ['webhook_id' => $webhookId, 'facts' => whop_event_facts($parsed)]);
+
         return ['status' => 'failed', 'http' => 500, 'reason' => $reason, 'user_id' => $userId, 'plan' => $intent['plan']];
     }
 
@@ -1227,4 +1272,299 @@ function whop_redact(string $message): string
 function whop_log(string $scope, string $message): void
 {
     error_log('[whop][' . $scope . '] ' . whop_redact($message));
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 5. TELLING A HUMAN
+ *
+ * WHY THIS EXISTS
+ * ───────────────
+ * Every failure in this file is silent from the only two places that could
+ * notice it: the customer sees "Free" and has no way to know that is wrong (they
+ * just paid, so they assume the plan is coming), and a log line is real but
+ * nobody reads a log file on a hosted site. That is exactly the shape of the bug
+ * this integration shipped with: payments taken, deliveries refused, nobody told.
+ *
+ * So the failures that cost money now send one email each, to ADMIN_EMAIL — the
+ * same address, and the same best-effort attitude, as the global error handler's
+ * fatal-error alerts. Three rules shape it:
+ *
+ *   • TELL THE TRUTH ABOUT WHAT TO DO. Each kind carries the actual next step,
+ *     because "something failed" without one is a second notification, not a fix.
+ *   • DON'T CRY WOLF. Whop retries a failed delivery with backoff for about three
+ *     days, and every retry is the same event about the same payment. The alert
+ *     is keyed to the delivery, so it fires once; the burst cap stops a hundred
+ *     bad payments from becoming a hundred emails.
+ *   • AN ALERT MUST NEVER BREAK THE MONEY PATH. Nothing here throws, nothing here
+ *     is fatal, and a mail server that is down changes nothing about whether the
+ *     payment is applied.
+ * ═══════════════════════════════════════════════════════════════════════════ */
+
+/**
+ * How often each kind of alert may be sent.
+ *
+ *   key 'delivery'  the alert is about one delivery, so the delivery id is the
+ *                   throttle key and seconds '0' means "never twice": a retry of
+ *                   the same event can never email again.
+ *   key 'kind'      the alert is about a condition rather than a delivery (every
+ *                   delivery being refused), so it is re-armed on a timer. A
+ *                   rotated secret produces hundreds of refusals and exactly one
+ *                   thing to fix.
+ *
+ * An unknown kind is throttled as a condition, hourly. Being wrong in that
+ * direction sends one email too many; being wrong the other way hides a payment.
+ */
+function whop_alert_policy(string $kind): array
+{
+    $policies = [
+        'unidentified_payment' => ['key' => 'delivery', 'seconds' => 0],
+        'unmapped_plan'        => ['key' => 'delivery', 'seconds' => 0],
+        'write_failed'         => ['key' => 'delivery', 'seconds' => 0],
+        'signature_refused'    => ['key' => 'kind', 'seconds' => 21600],
+    ];
+
+    return $policies[$kind] ?? ['key' => 'kind', 'seconds' => 3600];
+}
+
+/** What the operator should actually do, per kind. The whole point of the email. */
+function whop_alert_action(string $kind): string
+{
+    $actions = [
+        'unidentified_payment' =>
+            'The money is real and nobody is being charged twice. The usual cause is that the customer paid with an '
+            . 'address that is not verified on their account, or paid signed in as somebody else. Fix it from Admin '
+            . '→ Payments: the account can be found there by the payer\'s email and the Whop member id, and the plan '
+            . 'can be granted by hand. The delivery is deliberately left open, so if the customer verifies that address '
+            . 'first, Whop\'s own retries apply the payment without anybody doing anything.',
+        'unmapped_plan' =>
+            'Nothing was granted, and that is correct — guessing a tier is worse than doing nothing. Either the plan id '
+            . 'changed in Whop (compare it with WHOP_PRO_PLAN_ID / WHOP_ENT_PLAN_ID in Admin → Config Editor), or '
+            . 'another product on the same Whop account shares this webhook.',
+        'write_failed' =>
+            'The account was identified and the database refused the write, so Whop has been asked to retry and will. '
+            . 'If it repeats, read storage/php_errors.log — until it lands, somebody who paid is still on the free plan.',
+        'signature_refused' =>
+            'Every delivery is being refused, which means one of two things: the webhook secret on this deployment is '
+            . 'not the one Whop signs with (a rotation in the dashboard is the usual cause), or somebody is posting '
+            . 'forged events. Fix the secret in Admin → Config Editor → Payments (Whop), then use '
+            . 'Admin → Payments to deliver a signed test event. Until this is fixed, no purchase can be applied.',
+    ];
+
+    return $actions[$kind] ?? 'Open Admin → Payments for the delivery ledger and the current configuration.';
+}
+
+/**
+ * The handful of facts about a delivery worth putting in an email.
+ *
+ * Read defensively — the payload is only partly ours, and a missing field must be
+ * a missing row, never a warning. Amount is labelled "as Whop sent it" on purpose:
+ * the scale (cents or units) is not documented in anything we can rely on, and a
+ * wrong currency symbol in an alert is worse than no symbol.
+ */
+function whop_event_facts(array $parsed): array
+{
+    $data  = is_array($parsed['data'] ?? null) ? $parsed['data'] : [];
+    $facts = [];
+
+    $add = static function (string $label, $value) use (&$facts): void {
+        if ((is_string($value) || is_numeric($value)) && trim((string)$value) !== '') {
+            $facts[$label] = trim((string)$value);
+        }
+    };
+
+    $add('Event', (string)($parsed['type'] ?? ''));
+    $add('Whop plan id', $data['plan']['id'] ?? '');
+    $add('Plan named in metadata', $data['metadata']['plan'] ?? ($data['plan']['metadata']['plan'] ?? ''));
+    $add('Payment status', $data['status'] ?? '');
+    $add('Billing reason', $data['billing_reason'] ?? '');
+    $add('Payer email', $data['user']['email'] ?? ($data['email'] ?? ''));
+    $add('Member id', $data['member']['id'] ?? '');
+    $add('Membership id', $data['membership']['id'] ?? ($data['id'] ?? ''));
+    $add('Paid at', $data['paid_at'] ?? '');
+    if (isset($data['amount']) && is_numeric($data['amount'])) {
+        $add('Amount (as Whop sent it)', $data['amount'] . (isset($data['currency']) ? ' ' . $data['currency'] : ''));
+    }
+    $add('Delivery id', (string)($parsed['webhook_id'] ?? ''));
+
+    return $facts;
+}
+
+/**
+ * Where the throttle state lives. A directory rather than a table: it is
+ * bookkeeping with no recovery value — lose it and the worst outcome is one extra
+ * email — and it has to work on a deployment whose database is the very thing
+ * that is broken, which is one of the conditions worth alerting about.
+ */
+function whop_alert_dir(): string
+{
+    $dir = defined('WHOP_ALERT_DIR') ? (string)WHOP_ALERT_DIR : dirname(__DIR__) . '/storage';
+
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0777, true);
+    }
+
+    return rtrim($dir, '/\\');
+}
+
+/** Per-kind hourly budget, so a burst of bad payments is one email and not fifty. */
+function whop_alert_budget(string $kind): int
+{
+    return defined('WHOP_ALERT_MAX_PER_HOUR') ? max(1, (int)WHOP_ALERT_MAX_PER_HOUR) : 3;
+}
+
+/**
+ * May this alert be sent right now? Does not consume anything — the caller
+ * records the send only once the mail server has actually taken the message.
+ *
+ * Returns ['ok' => bool, 'reason' => string, 'key' => string].
+ */
+function whop_alert_allowed(string $kind, array $context, int $now): array
+{
+    $dir    = whop_alert_dir();
+    $policy = whop_alert_policy($kind);
+
+    $delivery = trim((string)($context['webhook_id'] ?? ''));
+    $window   = (int)$policy['seconds'];
+
+    if ($policy['key'] === 'delivery' && $delivery !== '') {
+        $bucket = $delivery;
+    } else {
+        // No delivery to key on, so the key is the period itself. The bucket size is
+        // never smaller than a minute: a zero-second window with no key would
+        // otherwise make every single refusal an email.
+        $bucket = 'period-' . intdiv($now, max(60, $window));
+        $window = max(60, $window);
+    }
+
+    $key  = md5($kind . '|' . $bucket);
+    $mark = $dir . '/whop_alert_' . $key . '.time';
+
+    if (is_file($mark)) {
+        // seconds 0 means "this key never alerts twice".
+        if ($window === 0 || ($now - (int)@file_get_contents($mark)) < $window) {
+            return ['ok' => false, 'reason' => 'this one has already been alerted', 'key' => $key];
+        }
+    }
+
+    $burstFile = $dir . '/whop_alert_burst.json';
+    $burst     = json_decode((string)@file_get_contents($burstFile), true);
+    $burst     = is_array($burst) ? $burst : [];
+    $hour      = intdiv($now, 3600);
+
+    if ((int)($burst['hour'] ?? 0) !== $hour) {
+        $burst = ['hour' => $hour, 'kinds' => [], 'total' => 0];
+    }
+
+    $used = (int)($burst['kinds'][$kind] ?? 0);
+    if ($used >= whop_alert_budget($kind)) {
+        return ['ok' => false, 'reason' => 'the hourly budget for this kind of alert is used up', 'key' => $key];
+    }
+
+    return ['ok' => true, 'reason' => '', 'key' => $key];
+}
+
+/** Record a send that the mail server accepted, so the next one is throttled. */
+function whop_alert_record(string $kind, string $key, int $now): void
+{
+    $dir = whop_alert_dir();
+    @file_put_contents($dir . '/whop_alert_' . $key . '.time', (string)$now, LOCK_EX);
+
+    $burstFile = $dir . '/whop_alert_burst.json';
+    $burst     = json_decode((string)@file_get_contents($burstFile), true);
+    $burst     = is_array($burst) ? $burst : [];
+
+    if ((int)($burst['hour'] ?? 0) !== intdiv($now, 3600)) {
+        $burst = ['hour' => intdiv($now, 3600), 'kinds' => [], 'total' => 0];
+    }
+
+    $burst['kinds'][$kind] = (int)($burst['kinds'][$kind] ?? 0) + 1;
+    $burst['total']        = (int)($burst['total'] ?? 0) + 1;
+
+    @file_put_contents($burstFile, json_encode($burst), LOCK_EX);
+}
+
+/**
+ * Tell the site administrator that a delivery did something, or failed to.
+ *
+ * Returns ['sent' => bool, 'reason' => string]. Never throws, never blocks the
+ * caller, and always writes the log line first — the email is the interruption,
+ * the log is the record.
+ */
+function whop_alert(string $kind, string $headline, string $detail, array $context = []): array
+{
+    $kind = trim($kind);
+    $now  = time();
+
+    whop_log('alert:' . $kind, $headline . ' — ' . $detail);
+
+    if (!defined('ADMIN_EMAIL') || trim((string)ADMIN_EMAIL) === '') {
+        return ['sent' => false, 'reason' => 'no ADMIN_EMAIL is configured, so this reached the log only'];
+    }
+
+    $allowed = whop_alert_allowed($kind, $context, $now);
+    if (!$allowed['ok']) {
+        return ['sent' => false, 'reason' => $allowed['reason']];
+    }
+
+    $facts = [];
+    foreach ((array)($context['facts'] ?? []) as $label => $value) {
+        $facts[(string)$label] = (string)$value;
+    }
+
+    $rows = '';
+    foreach ($facts as $label => $value) {
+        $rows .= '<tr><td style="padding:4px 10px;color:#64748b;">' . htmlspecialchars($label) . '</td>'
+               . '<td style="padding:4px 10px;">' . htmlspecialchars(whop_redact($value)) . '</td></tr>';
+    }
+
+    $text = $headline . "\n\n" . whop_redact($detail) . "\n\n";
+    foreach ($facts as $label => $value) {
+        $text .= $label . ': ' . whop_redact($value) . "\n";
+    }
+    $text .= "\nWhat to do\n" . whop_alert_action($kind) . "\n";
+
+    $html = '<h3 style="margin:0;font-family:sans-serif;">' . htmlspecialchars($headline) . '</h3>'
+          . '<p style="font-family:sans-serif;font-size:13px;color:#334155;">' . htmlspecialchars(whop_redact($detail)) . '</p>'
+          . '<table style="font-family:monospace;font-size:13px;border-collapse:collapse;">' . $rows . '</table>'
+          . '<p style="font-family:sans-serif;font-size:13px;background:#f8fafc;border-left:3px solid #0f7a45;padding:12px;border-radius:6px;">'
+          . '<b>What to do.</b> ' . htmlspecialchars(whop_alert_action($kind)) . '</p>'
+          . '<p style="font-family:sans-serif;font-size:12px;color:#94a3b8;">Sent by the payment handler. '
+          . 'The delivery ledger, the current configuration and a test delivery are on '
+          . '<a href="' . htmlspecialchars(whop_admin_url()) . '">Admin → Payments</a>. '
+          . 'Repeats of the same delivery are not emailed again, and a kind of alert is capped at '
+          . whop_alert_budget($kind) . ' an hour so a burst cannot bury this one.</p>';
+
+    try {
+        if (!function_exists('send_email')) {
+            require_once __DIR__ . '/mailer.php';
+        }
+        if (!function_exists('send_email')) {
+            return ['sent' => false, 'reason' => 'the mailer is not available'];
+        }
+
+        $subject = '[Utiligo] Payment: ' . substr(preg_replace('/\s+/', ' ', $headline) ?? $headline, 0, 90);
+        $sent    = send_email((string)ADMIN_EMAIL, $subject, $html, $text, 'Utiligo Admin');
+
+        if ($sent) {
+            whop_alert_record($kind, (string)$allowed['key'], $now);
+        }
+
+        return ['sent' => (bool)$sent, 'reason' => $sent ? 'sent' : 'the mail server refused it'];
+    } catch (\Throwable $e) {
+        // An alert that raises becomes the incident it was reporting.
+        whop_log('alert:' . $kind, 'could not email the administrator: ' . $e->getMessage());
+
+        return ['sent' => false, 'reason' => 'the alert itself raised: ' . $e->getMessage()];
+    }
+}
+
+/** The admin Payments page, absolute so it is clickable from a mail client. */
+function whop_admin_url(): string
+{
+    $base = defined('APP_BASE_URL') ? trim((string)APP_BASE_URL) : '';
+    if ($base === '') {
+        $base = 'https://utiligo.ca';
+    }
+
+    return rtrim($base, '/') . '/admin/payments.php';
 }

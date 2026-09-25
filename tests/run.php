@@ -99,6 +99,14 @@ $defaults = [
     // to keep being exercised, and the test that proves production refuses it
     // reads the page's source rather than its output.
     'TEST_PAYMENT_MODE'     => '1',
+    // The address a payment alert goes to. Without one whop_alert() can only log,
+    // and "a paying customer was left on free and nobody was told" is the whole
+    // failure being tested — so the suite configures it and reads the mail stub.
+    'UTILIGO_ADMIN_EMAIL'   => 'admin@utiligo.test',
+    // ...and its throttle state goes to tests/tmp for the same reason the error log
+    // does: the suite exercises the alert path repeatedly, and the mark files must
+    // not land in storage/ in a shared checkout.
+    'WHOP_ALERT_DIR'        => __DIR__ . '/tmp',
 ];
 foreach ($defaults as $key => $value) {
     if (getenv($key) === false || getenv($key) === '') {

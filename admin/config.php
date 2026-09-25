@@ -90,6 +90,16 @@ $fields = [
     ['WHOP_ENT_PLAN_ID',             'Whop plan id: Entrepreneur',      'string', 'Payments (Whop)',    'plan_... — must match the live plan in the Whop dashboard'],
     ['WHOP_PRO_CHECKOUT_URL',        'Pro checkout link',               'string', 'Payments (Whop)',    'Shareable link, used when the API key is absent or the API is down'],
     ['WHOP_ENT_CHECKOUT_URL',        'Entrepreneur checkout link',      'string', 'Payments (Whop)',    'Shareable link, used when the API key is absent or the API is down'],
+
+    // ── Alerts ─────────────────────────────────────────────────────
+    // The address a payment that could not be applied is emailed to, and the
+    // ceiling on how many of one kind of alert may be sent in an hour. Both are
+    // here because both are the difference between "nobody is told" and "the
+    // same customer is still on free in a week": an empty ADMIN_EMAIL means
+    // whop_alert() can only write to the log, which is the failure mode this
+    // whole mechanism exists to end.
+    ['ADMIN_EMAIL',                  'Alert email address',             'string', 'Alerts',              'Where payment alerts and fatal-error reports are emailed'],
+    ['WHOP_ALERT_MAX_PER_HOUR',      'Max alerts per kind per hour',    'int',    'Alerts',              'The ceiling on a burst — 3 by default. A kind of alert above it is logged, not emailed.'],
 ];
 
 // ---------------------------------------------------------------
@@ -309,6 +319,7 @@ if (!$_whopReport['can_accept_payments'] || !$_whopReport['can_create_checkout']
       'Google API'          => 'map-location-dot',
       'Brevo'               => 'envelope-open-text',
       'Payments (Whop)'     => 'credit-card',
+      'Alerts'              => 'bell',
   ];
 
   foreach ($sections as $section => $section_fields):

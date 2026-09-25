@@ -162,6 +162,27 @@ later real event cannot undo the fix.
 SELECT * FROM whop_events WHERE status = 'failed' ORDER BY id DESC;
 ```
 
+## 3b. Alerts — the half that is not about the plan
+
+A payment that cannot be applied is invisible from the only side that would
+notice: the customer sees "Free", assumes the plan is coming, and says nothing. So
+the four failures that cost money send one email each to **`ADMIN_EMAIL`**
+(*Config Editor → Alerts* — an empty address means the alert reaches the log file
+and nobody else):
+
+| Alert | What it means | Throttle |
+|---|---|---|
+| *could not be attached to any account* | A verified payment with no metadata match, no known member and no unique verified email. The customer has paid. | once per delivery |
+| *for a plan this deployment does not sell* | A paid payment whose plan id maps to no tier — a renamed plan, or another product sharing the webhook. | once per delivery |
+| *could not be written* | The account was identified and the database refused the write; Whop has been asked to retry. | once per delivery |
+| *deliveries are being refused* | Every webhook is failing signature verification — a rotated or mismatched secret, or forgery. Nothing can be applied until it is fixed. | once per six hours |
+
+The throttle is on purpose and it is the difference between an alert and noise:
+Whop retries a failed delivery for about three days, so "once per delivery" is one
+email rather than a hundred, and a burst of bad payments is capped at
+`WHOP_ALERT_MAX_PER_HOUR` (3) per kind per hour before it is only logged. State
+lives in `storage/whop_alert_*` — delete those files to re-arm an alert.
+
 ## 4. Payment safety, and why each rule exists
 
 These are enforced in code and pinned by `tests/cases/test_whop.php`:

@@ -189,6 +189,15 @@ if (!defined('WHOP_API_BASE'))        define('WHOP_API_BASE',        getenv('WHO
 // refused as a replay. Whop's own SDKs use five minutes.
 if (!defined('WHOP_WEBHOOK_TOLERANCE')) define('WHOP_WEBHOOK_TOLERANCE', (int)(getenv('WHOP_WEBHOOK_TOLERANCE') ?: 300));
 
+// Where the payment alerts keep their throttle state (one small file per alert
+// already sent, plus the hourly counter), and how many of one kind may be emailed
+// in an hour. The state is a file rather than a table because it is bookkeeping
+// with no recovery value: if it is lost, the worst that happens is one extra
+// email. The test suite points this at tests/tmp so a run cannot litter
+// storage/ in a shared checkout — the same reason UTILIGO_PHP_ERROR_LOG exists.
+if (!defined('WHOP_ALERT_DIR'))          define('WHOP_ALERT_DIR', getenv('WHOP_ALERT_DIR') ?: __DIR__ . '/storage');
+if (!defined('WHOP_ALERT_MAX_PER_HOUR')) define('WHOP_ALERT_MAX_PER_HOUR', (int)(getenv('WHOP_ALERT_MAX_PER_HOUR') ?: 3));
+
 // Manual activation — the billing page's card form, which grants a plan with no
 // payment behind it. It defaults to OFF, and it should: this is a payments
 // product, and a flag that "makes any 12-digit card number work" shipping as ON

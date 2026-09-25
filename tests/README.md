@@ -94,7 +94,7 @@ executed.
 | `test_auto_search.php` | saved searches that run themselves: the cadence gate, what an automated run asks for, delivery of the digest, and the failures it survives |
 | `test_support.php` | support tickets end to end: the model's rules, the ticket endpoint, attachment access control and the admin inbox |
 | `test_session.php` | the two ways a signed-in visitor gets turned away, both of which were live 500s |
-| `test_whop.php` | the whole Whop payment path: signature attacks, replay, out-of-order delivery, identity rules, the idempotency ledger, checkout creation, and what the billing page is allowed to sell |
+| `test_whop.php` | the whole Whop payment path: signature attacks, replay, out-of-order delivery, identity rules, the idempotency ledger, checkout creation, what the billing page is allowed to sell, and the alerts that fire when a payment cannot be applied (asserted through the mail stub, including the per-delivery throttle and the hourly burst cap) |
 
 Mail is replaced by `tests/lib/mail_stub.php`, reached by `MAIL_API_BASE` — the
 same arrangement as Stripe, and for the same reason. Before that variable existed
