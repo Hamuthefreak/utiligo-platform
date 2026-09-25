@@ -16,10 +16,19 @@ The two live plans, already the defaults in `config.php`:
 | Pro | `plan_F1oV5alSzN82W` | $21.99/mo | https://whop.com/checkout/plan_F1oV5alSzN82W |
 | Entrepreneur | `plan_AHQpUK6syZ5Pu` | $49.99/mo | https://whop.com/checkout/plan_AHQpUK6syZ5Pu |
 
-The site sells through those links **with no configuration at all** — the buttons
-fall back to them when the API key is absent. What the API key adds is the
-metadata that says *which account* is buying, and the webhook is what turns a
-payment into a plan.
+The buttons fall back to those links when the API key is absent, so a pricing
+button is never an error page. What the API key adds is the metadata that says
+*which account* is buying; what turns a payment into a plan is the webhook.
+
+**Until `WHOP_WEBHOOK_SECRET` is set, checkout refuses to start.** That is
+deliberate. Without the secret every delivery is refused with a 401, so a sale
+would take the customer's money and leave them on the free plan while Whop
+retried a webhook nobody could verify for three days. A customer we did not sell
+to is a lost sale; a customer who paid and got nothing is a refund. The refusal is
+`whop_can_accept_payments()` in `includes/whop.php`, it is asserted in
+`tests/cases/test_whop.php` ("a signed-in customer … is redirected rather than
+sent to pay"), and Admin → Payments is where the person who can fix it is told
+what is missing.
 
 ---
 
@@ -44,6 +53,27 @@ payment into a plan.
 
 ## 2. On the server
 
+There are two ways to get the three values onto the live site. The first is the
+one to use.
+
+### 2a. Admin → Config Editor → Payments (Whop) — no FTP, no redeploy
+
+Log in as an admin, open **Admin → Settings → Config Editor**, scroll to
+**Payments (Whop)**, paste the three values and save. They are written to
+`storage/config_overrides.php`, which `config.php` loads **before** anything else,
+so they take effect on the next request and survive every deploy: that file is not
+in the repository (it is git-ignored), so the FTP deploy never touches it.
+
+Two details that matter:
+
+* Both secrets are **write-only in the form**: the page never echoes them back, so
+  a blank field means "keep what is already saved" rather than "delete it". Saving
+  the page to change a plan limit cannot wipe your API key.
+* The section is grouped with a readiness banner at the top of the Config Editor,
+  and the same facts are laid out on **Admin → Payments**.
+
+### 2b. By hand in `config.php` — if you would rather not use the admin form
+
 `config.php` is **excluded from the FTP deploy**, so the live copy is not the one
 in this repository and nothing below reaches production by pushing.
 
@@ -60,11 +90,27 @@ Also confirm `APP_ENV` is `production` there (it is the default). That is what
 keeps the billing page's development card form off the live site, and it is not
 optional — see "Payment safety" below.
 
-Without the API key the pricing buttons still work, they just sell through the
-shareable links, and the webhook has to identify the buyer by the email they paid
-with (which has to be verified on their account).
+Without the webhook secret, checkout is refused and the billing page says so.
+Without the API key, checkout still works but sells through the shareable links,
+and the webhook then has to identify the buyer by the email they paid with (which
+has to be verified on their account).
 
 ## 3. Verify it, without waiting for a customer
+
+**Admin → Payments** is the console for this, and it does the checks for you:
+
+| Button | What it proves |
+|---|---|
+| Create a test checkout | The API key, the account id and the plan id all work — it sends the *same* request the Subscribe button sends and reports what Whop answers. Charges nothing. |
+| Sign and verify a sample | The secret is readable, the key derivation agrees, the envelope parses and the decision table answers. It signs a payment for a plan we do not sell, so the correct answer is `verified` then `ignored` — anything that granted a plan here is a bug. |
+| Deliver a signed test event to our own endpoint | The endpoint is reachable and accepts a delivery — the one thing the offline check cannot prove. Same shape, so the worst a mistake can do is write one `ignored` ledger row. |
+
+Below the buttons are the deliveries themselves, the account(s) with a Whop
+membership but no paid plan (each with a **Grant** that goes through the same
+entitlement writer as the webhook), and the exact endpoint URL, event names and
+API version to register in the Whop dashboard.
+
+The same checks by hand, if you prefer a terminal:
 
 ```bash
 # 1. The endpoint exists and refuses an unsigned POST. Expect 405 then 401.
@@ -103,7 +149,12 @@ Then look at what happened, in this order:
 A `failed` row that says **"could not identify the account"** is a real payment
 attached to nobody: the customer paid and is still on free. Whop retries for about
 three days, which self-heals the common cause (their email was unverified at the
-time). If it has not resolved, fix the account and re-apply by hand:
+time). If it has not resolved, fix the account from **Admin → Payments**: the
+"Subscribed at Whop, still on Free here" list is built from our own columns, and
+Grant applies the plan the customer is paying for through
+`entitlement_grant_from_whop()` — the same writer the webhook uses, with the
+membership id already on file, so the ordering clock moves with the plan and a
+later real event cannot undo the fix.
 
 ```sql
 -- Then resend the event from Whop's dashboard; the row is left open on purpose so
@@ -136,7 +187,13 @@ These are enforced in code and pinned by `tests/cases/test_whop.php`:
   id, then a *unique verified* email. A payment is never what confirms an email,
   and an ambiguous match is refused rather than guessed.
 - **Secrets never leave the server.** No config value is echoed into a page, an
-  attribute or a log line; logged messages are redacted.
+  attribute or a log line; logged messages are redacted, and `whop_config_report()`
+  answers the admin pages with a boolean and a length rather than a masked preview,
+  because a masked value is still a value in a response body.
+- **No sale we cannot honour.** Checkout refuses while the deployment has no webhook
+  secret (`whop_can_accept_payments()`), because every delivery would be refused and
+  a paying customer would stay on free. The refusal is shown on the billing page
+  before the plan cards and in place of the button.
 
 **Manual activation is off.** The billing page used to render a card form under a
 banner reading "any 12-digit number works, no real charge" — in a real browser that

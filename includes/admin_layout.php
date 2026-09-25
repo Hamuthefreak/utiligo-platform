@@ -122,6 +122,11 @@ $_supportUnread = support_unread_admin();
     <a href="/admin/email.php" class="nav-link admin-item <?= $adminPage==='email' ? 'active' : '' ?>">
       <i class="fa-solid fa-envelope"></i> Email Blast
     </a>
+    <?php /* Money sits next to the people it belongs to: this is where an operator
+             looks after a paying customer whose plan did not land. */ ?>
+    <a href="/admin/payments.php" class="nav-link admin-item <?= $adminPage==='payments' ? 'active' : '' ?>">
+      <i class="fa-solid fa-credit-card"></i> Payments
+    </a>
     <a href="/admin/settings.php" class="nav-link admin-item <?= $adminPage==='settings' ? 'active' : '' ?>">
       <i class="fa-solid fa-sliders"></i> Settings
     </a>

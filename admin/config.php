@@ -2,9 +2,13 @@
 require_once __DIR__ . '/../config.php';
 require_once __DIR__ . '/../userdb.php';
 require_once __DIR__ . '/../includes/admin_auth.php';
+// For whop_config_report(): the readiness strip above the form, and the same
+// values admin/payments.php lists one link away.
+require_once __DIR__ . '/../includes/whop.php';
 
 require_admin();
 $admin = $GLOBALS['admin_user'];
+$_whopReport = whop_config_report();
 
 $overrides_file = __DIR__ . '/../storage/config_overrides.php';
 $saved      = false;
@@ -12,7 +16,11 @@ $save_error = '';
 
 // ---------------------------------------------------------------
 // All editable keys: [constant, label, type, section, hint]
-// type: int | float | bool | intm1 (int, -1 = unlimited)
+// type: int | float | bool | intm1 | string | secret
+//
+// 'secret' is a string that must never be rendered back into the page: the input
+// is always empty and blank means "keep what is already saved". It is how the Whop
+// keys below are editable from here at all — see the write loop for the rule.
 // ---------------------------------------------------------------
 $fields = [
     ['FREE_LEAD_LIMIT',              'Free lead limit',                 'int',   'Free Plan Limits',    'Max leads a free user can access'],
@@ -63,6 +71,25 @@ $fields = [
     ['BREVO_LIST_ALL_USERS',         'Brevo list ID: all users',        'int',   'Brevo',               ''],
     ['BREVO_LIST_PRO_USERS',         'Brevo list ID: pro users',        'int',   'Brevo',               ''],
     ['BREVO_LIST_FREE_USERS',        'Brevo list ID: free users',       'int',   'Brevo',               ''],
+
+    // ── Payments (Whop) ────────────────────────────────────────────
+    // Written here because config.php is EXCLUDED from the FTP deploy (it holds
+    // the database password), so anything added to it by hand on the server is an
+    // out-of-band edit that the next deploy cannot help with. These fields write
+    // storage/config_overrides.php instead, which config.php loads FIRST — so the
+    // four values that make card payments work can be set from this form, take
+    // effect on the next request, and never need an FTP client or a redeploy.
+    //
+    // The two secrets are 'secret' type: the form never echoes them and a blank
+    // field keeps the saved value, so re-saving this page to change a plan limit
+    // cannot wipe the API key.
+    ['WHOP_API_KEY',                 'Whop API key',                    'secret', 'Payments (Whop)',    'company_... — creates the checkout and attaches the buyer to it'],
+    ['WHOP_WEBHOOK_SECRET',          'Whop webhook secret',             'secret', 'Payments (Whop)',    'ws_... — the only thing that proves an event is really Whop\'s. Checkout is refused without it'],
+    ['WHOP_ACCOUNT_ID',              'Whop account id',                 'string', 'Payments (Whop)',    'biz_... — the business that owns the plans'],
+    ['WHOP_PRO_PLAN_ID',             'Whop plan id: Pro',               'string', 'Payments (Whop)',    'plan_... — must match the live plan in the Whop dashboard'],
+    ['WHOP_ENT_PLAN_ID',             'Whop plan id: Entrepreneur',      'string', 'Payments (Whop)',    'plan_... — must match the live plan in the Whop dashboard'],
+    ['WHOP_PRO_CHECKOUT_URL',        'Pro checkout link',               'string', 'Payments (Whop)',    'Shareable link, used when the API key is absent or the API is down'],
+    ['WHOP_ENT_CHECKOUT_URL',        'Entrepreneur checkout link',      'string', 'Payments (Whop)',    'Shareable link, used when the API key is absent or the API is down'],
 ];
 
 // ---------------------------------------------------------------
@@ -82,6 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
         $editing_keys_set = array_flip($editing_keys);
 
         $preserved_lines = [];
+        $existing_managed = [];   // key => verbatim define() line, for 'secret' fields
         if (is_file($overrides_file)) {
             $existing = @file_get_contents($overrides_file);
             if (is_string($existing)) {
@@ -92,6 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
                         $key = $match[1];
                         if (!isset($editing_keys_set[$key])) {
                             $preserved_lines[] = trim($match[0]);
+                        } else {
+                            $existing_managed[$key] = trim($match[0]);
                         }
                     }
                 }
@@ -138,6 +168,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
                     // keys are added in the future.
                     $sval    = addcslashes((string)$raw, "'\\");
                     $lines[] = "define('$key', '$sval');";
+                    break;
+                case 'secret':
+                    // A secret is never rendered back into the form, so a blank
+                    // field cannot mean "delete this key" — it has to mean "leave
+                    // it alone". Writing an empty define() here instead would be the
+                    // quietest way to break payments: save the page to change a
+                    // plan limit, and the API key is silently gone.
+                    //
+                    // So a blank secret re-emits the line that is already in the
+                    // file, byte for byte. Newlines and stray whitespace are
+                    // stripped from a pasted value because that is the mistake a
+                    // paste actually makes, and it is the one that produces a
+                    // signature nobody can verify.
+                    $clean = trim((string)$raw);
+                    if ($clean === '') {
+                        if (isset($existing_managed[$key])) {
+                            $lines[] = $existing_managed[$key];
+                        }
+                        break;   // nothing saved yet and nothing typed: write no define at all
+                    }
+                    $clean   = preg_replace('/\s+/', '', $clean);
+                    $lines[] = "define('$key', '" . addcslashes($clean, "'\\") . "');";
                     break;
                 default: // int
                     $ival    = max(0, (int)$raw);
@@ -197,6 +249,34 @@ require_once __DIR__ . '/../includes/admin_layout.php';
   </div>
 </div>
 
+<?php
+/* The one setting on this page that has a checklist of its own, one link away: a
+   key can be saved and still be wrong, and "saved" is not the thing an operator
+   needs to know before they take a customer's money. */
+if (!$_whopReport['can_accept_payments'] || !$_whopReport['can_create_checkout']): ?>
+<div class="flex items-start gap-3 bg-amber-500/[.07] border border-amber-500/20 rounded-2xl px-5 py-4 mb-6 text-sm">
+  <i class="fa-solid fa-triangle-exclamation text-amber-400 mt-0.5 shrink-0"></i>
+  <div class="flex-1">
+    <p class="text-amber-300 font-semibold">Card payments are not fully configured</p>
+    <ul class="text-amber-200/70 text-xs mt-1.5 space-y-1 list-disc list-inside">
+      <?php foreach (array_slice($_whopReport['blocking'], 0, 3) as $why): ?>
+        <li><?= htmlspecialchars($why) ?></li>
+      <?php endforeach; ?>
+    </ul>
+    <a href="/admin/payments.php" class="inline-flex items-center gap-1.5 text-amber-300 hover:text-amber-200 font-semibold text-xs mt-2.5">
+      Open the Payments page <i class="fa-solid fa-arrow-right text-[10px]"></i>
+    </a>
+  </div>
+</div>
+<?php else: ?>
+<div class="flex items-center gap-3 bg-emerald-500/[.07] border border-emerald-500/20 rounded-2xl px-5 py-3 mb-6 text-sm">
+  <i class="fa-solid fa-circle-check text-emerald-400 shrink-0"></i>
+  <span class="text-emerald-300 font-semibold">Card payments are live</span>
+  <span class="text-emerald-200/60 text-xs">Whop is configured, checkouts carry the buyer's account, and webhooks can be verified.</span>
+  <a href="/admin/payments.php" class="ml-auto text-xs text-emerald-300/80 hover:text-emerald-200 font-semibold shrink-0">Payments page &rarr;</a>
+</div>
+<?php endif; ?>
+
 <?php if ($saved): ?>
 <div class="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl px-5 py-4 mb-6 text-sm">
   <i class="fa-solid fa-circle-check"></i>
@@ -228,6 +308,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       'Security'            => 'shield-halved',
       'Google API'          => 'map-location-dot',
       'Brevo'               => 'envelope-open-text',
+      'Payments (Whop)'     => 'credit-card',
   ];
 
   foreach ($sections as $section => $section_fields):
@@ -274,6 +355,26 @@ require_once __DIR__ . '/../includes/admin_layout.php';
           <input type="text" autocomplete="off" spellcheck="false"
                  name="cfg[<?= $key ?>]" value="<?= htmlspecialchars((string)$cur) ?>"
                  class="w-full bg-slate-900/70 border border-white/10 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white rounded-xl px-3 py-2.5 text-sm outline-none transition font-mono">
+
+        <?php elseif ($type === 'secret'):
+          /* Never echoes the stored value — not even into an empty input's
+             placeholder, which is where a "helpful" preview usually leaks it. What
+             the field does say is whether a value is already saved and how long it
+             is, which is the one thing worth knowing when re-pasting a key. */
+          $isSet  = defined($key) && (string)constant($key) !== '' && !str_starts_with((string)constant($key), 'YOUR_');
+          $seclen = $isSet ? strlen((string)constant($key)) : 0;
+        ?>
+          <input type="password" autocomplete="new-password" spellcheck="false"
+                 name="cfg[<?= $key ?>]" value=""
+                 placeholder="<?= $isSet
+                     ? '•••••••••••• saved (' . $seclen . ' characters) — leave blank to keep'
+                     : 'not set — paste the value from the Whop dashboard' ?>"
+                 class="w-full bg-slate-900/70 border border-white/10 focus:border-purple-500/50 focus:ring-2 focus:ring-purple-500/10 text-white rounded-xl px-3 py-2.5 text-sm outline-none transition font-mono">
+          <?php if ($isSet): ?>
+            <p class="text-[11px] text-emerald-500/80 mt-1"><i class="fa-solid fa-lock mr-1"></i>Saved. Typing here replaces it; leaving it blank keeps it.</p>
+          <?php else: ?>
+            <p class="text-[11px] text-amber-500/80 mt-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>Not set yet.</p>
+          <?php endif; ?>
 
         <?php else: ?>
           <input type="number" step="1" <?= $type === 'int' ? 'min="0"' : 'min="-1"' ?>
