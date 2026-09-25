@@ -113,7 +113,7 @@ function preload_user_limit_overrides(int $user_id): void
 // silently drifted from the real values (PRO_SITE_LIMIT was 50 here and 20 in
 // plan_limits.php).  Do NOT reintroduce local copies — and never hardcode a
 // plan limit or price in a page or script; read it from these constants (or
-// the plan_*() helpers below) so the Admin > Config Editor keeps working.
+// the plan_*() helpers below) so the Admin > Settings page keeps working.
 require_once __DIR__ . '/plan_limits.php';
 
 /**
@@ -331,7 +331,7 @@ function require_pro(): void { require_paid(); }
 // Numeric gates (export daily count) honor the existing per-user override
 // table because user_limit_override() is int-typed.  String-typed gates
 // (sources / formats / enrich providers) come from plan_limits.php
-// constants (editable via Admin > Config Editor under the new keys) but
+// constants (editable via Admin > Settings under the new keys) but
 // are NOT routed through per-user overrides for now: the override table
 // stores ints only (see line ~57 cast) and admins are unlikely to want
 // per-user source lists.  Per-row scanning still happens; the table can

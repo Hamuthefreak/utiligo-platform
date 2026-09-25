@@ -3,7 +3,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/includes/auth.php';
 require_once __DIR__ . '/includes/functions.php';
 
-// Plan limits and prices are admin-editable (Admin > Config Editor writes
+// Plan limits and prices are admin-editable (Admin > Settings writes
 // storage/config_overrides.php, loaded by config.php before these constants).
 // Read them straight from the constants — the `defined() ? : default` guards
 // that used to sit here drifted from the real values (Pro was advertised as

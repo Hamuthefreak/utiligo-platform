@@ -13,7 +13,7 @@
  *   - 1 outbound HTTP req per second to any non-billed upstream (enforced
  *     by _enrich_http_wait/_enrich_http_mark in lead_enrichment.php).
  *   - max 50 leads per run (so a tight cron never blows the budget) —
- *     override via ENRICH_BATCH_SIZE in admin/config.php if needed.
+ *     override via ENRICH_BATCH_SIZE (env, config.php or the override file).
  *
  * Multi-process safety:
  *   No row locks. The provider functions are pure (no shared mutable

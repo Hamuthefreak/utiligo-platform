@@ -95,6 +95,7 @@ executed.
 | `test_support.php` | support tickets end to end: the model's rules, the ticket endpoint, attachment access control and the admin inbox |
 | `test_session.php` | the two ways a signed-in visitor gets turned away, both of which were live 500s |
 | `test_whop.php` | the whole Whop payment path: signature attacks, replay, out-of-order delivery, identity rules, the idempotency ledger, checkout creation, what the billing page is allowed to sell, and the alerts that fire when a payment cannot be applied (asserted through the mail stub, including the per-delivery throttle and the hourly burst cap) |
+| `test_admin_settings.php` | the admin settings page: that the credential guard in `.htaccess` refuses the root files without also refusing `/admin/config.php`, that one page writes the overrides file and the old one only redirects, and the write-only secret round trip — a pasted secret is saved, a blank field re-emits the stored line byte for byte, and a secret that only came from the environment is never written as empty |
 
 Mail is replaced by `tests/lib/mail_stub.php`, reached by `MAIL_API_BASE` — the
 same arrangement as Stripe, and for the same reason. Before that variable existed

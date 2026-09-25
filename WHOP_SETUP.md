@@ -56,10 +56,10 @@ what is missing.
 There are two ways to get the three values onto the live site. The first is the
 one to use.
 
-### 2a. Admin → Config Editor → Payments (Whop) — no FTP, no redeploy
+### 2a. Admin → Settings → Payments (Whop) — no FTP, no redeploy
 
-Log in as an admin, open **Admin → Settings → Config Editor**, scroll to
-**Payments (Whop)**, paste the three values and save. They are written to
+Log in as an admin, open **Admin → Settings**, scroll to **Payments (Whop)**,
+paste the three values and save. They are written to
 `storage/config_overrides.php`, which `config.php` loads **before** anything else,
 so they take effect on the next request and survive every deploy: that file is not
 in the repository (it is git-ignored), so the FTP deploy never touches it.
@@ -69,8 +69,14 @@ Two details that matter:
 * Both secrets are **write-only in the form**: the page never echoes them back, so
   a blank field means "keep what is already saved" rather than "delete it". Saving
   the page to change a plan limit cannot wipe your API key.
-* The section is grouped with a readiness banner at the top of the Config Editor,
-  and the same facts are laid out on **Admin → Payments**.
+* The section is grouped with a readiness banner at the top of the page, and the
+  same facts are laid out on **Admin → Payments**. The endpoint URL, the two event
+  names and the API version to register in Whop are on the Settings page too, next
+  to the field the signing secret goes in.
+
+`BREVO_API_KEY` is editable the same way, under **Brevo** on that page — without
+it `send_email()` falls back to PHP's `mail()`, which shared hosting usually
+disables, and the alerts in §3b would be written to the log and never delivered.
 
 ### 2b. By hand in `config.php` — if you would rather not use the admin form
 
@@ -108,7 +114,8 @@ has to be verified on their account).
 Below the buttons are the deliveries themselves, the account(s) with a Whop
 membership but no paid plan (each with a **Grant** that goes through the same
 entitlement writer as the webhook), and the exact endpoint URL, event names and
-API version to register in the Whop dashboard.
+API version to register in the Whop dashboard — the same block is on
+**Admin → Settings**, one scroll above the field the signing secret goes in.
 
 The same checks by hand, if you prefer a terminal:
 
@@ -167,8 +174,9 @@ SELECT * FROM whop_events WHERE status = 'failed' ORDER BY id DESC;
 A payment that cannot be applied is invisible from the only side that would
 notice: the customer sees "Free", assumes the plan is coming, and says nothing. So
 the four failures that cost money send one email each to **`ADMIN_EMAIL`**
-(*Config Editor → Alerts* — an empty address means the alert reaches the log file
-and nobody else):
+(*Settings → Alerts*, which also says whether an alert could be delivered at all —
+an empty address, or an address with no mail API key, means the alert reaches the
+log file and nobody else):
 
 | Alert | What it means | Throttle |
 |---|---|---|

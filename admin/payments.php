@@ -445,13 +445,13 @@ $_alertWorks  = $_alertTo !== '' && $_alertMailer;
       <span class="font-semibold text-amber-300">Nothing can be delivered.</span>
       <code>ADMIN_EMAIL</code> is set to <?= htmlspecialchars($_alertTo) ?>, but there is no mail API key, so
       <code>send_email()</code> falls back to PHP's own mail function, which shared hosting usually disables —
-      the alert would be written to <code>storage/php_errors.log</code> and never arrive. Set
-      <code>BREVO_API_KEY</code> in the deployed <code>config.php</code>.
+      the alert would be written to <code>storage/php_errors.log</code> and never arrive. Paste a Brevo key under
+      <a href="/admin/settings.php" class="underline">Settings → Brevo</a>.
     <?php else: ?>
       <span class="font-semibold text-amber-300">Nothing is emailed.</span>
       <code>ADMIN_EMAIL</code> is empty, so a payment that could not be applied would reach
       <code>storage/php_errors.log</code> and nobody else. Set it under
-      <a href="/admin/config.php" class="underline">Config Editor → Alerts</a>.
+      <a href="/admin/settings.php" class="underline">Settings → Alerts</a>.
     <?php endif; ?>
   </div>
 </div>
@@ -469,8 +469,8 @@ $_alertWorks  = $_alertTo !== '' && $_alertMailer;
       </li>
     <?php endforeach; ?>
   </ul>
-  <a href="/admin/config.php" class="inline-flex items-center gap-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 px-4 py-2 rounded-xl font-semibold text-xs mt-4 transition">
-    <i class="fa-solid fa-key"></i> Set the values in the Config Editor
+  <a href="/admin/settings.php" class="inline-flex items-center gap-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 px-4 py-2 rounded-xl font-semibold text-xs mt-4 transition">
+    <i class="fa-solid fa-key"></i> Set the values in Settings
   </a>
 </div>
 <?php endif; ?>
@@ -642,8 +642,8 @@ $_alertWorks  = $_alertTo !== '' && $_alertMailer;
       <p class="text-slate-500 mb-1.5">Signing secret</p>
       <p class="text-slate-400 leading-relaxed">
         Whop shows the secret once, when the webhook is created, and signs nothing without it. Paste it into
-        <code class="text-slate-200">WHOP_WEBHOOK_SECRET</code> in the
-        <a href="/admin/config.php" class="text-slate-200 underline">Config Editor</a> — that writes
+        <code class="text-slate-200">WHOP_WEBHOOK_SECRET</code> in
+        <a href="/admin/settings.php" class="text-slate-200 underline">Settings → Payments (Whop)</a> — that writes
         <code class="text-slate-200">storage/config_overrides.php</code>, which is loaded before every other
         setting, so it does not need a redeploy and it survives one (config.php itself is excluded from the
         FTP deploy, which is why a value pasted there by hand is the value that goes missing).
