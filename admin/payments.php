@@ -418,6 +418,44 @@ require_once __DIR__ . '/../includes/admin_layout.php';
   <?php endforeach; ?>
 </div>
 
+<?php
+/* WHERE A PROBLEM WOULD BE REPORTED, SHOWN NEXT TO THE THING THAT CAN BREAK.
+   Every failure this page lists is silent from the customer's side — they just
+   paid, so they assume the plan is coming — which makes the alert address part of
+   the payment configuration rather than a general setting. An empty ADMIN_EMAIL
+   means the alert exists only as a log line, and that is worth saying out loud
+   before anyone relies on it. */
+$_alertTo = defined('ADMIN_EMAIL') ? trim((string)ADMIN_EMAIL) : '';
+// An address is only half of it: with no mail API key, send_email() falls through
+// to PHP's mail(), which is usually disabled on shared hosting — so the alert would
+// be written and never delivered, which looks exactly like nothing being wrong.
+$_alertMailer = defined('BREVO_API_KEY') && BREVO_API_KEY !== '' && BREVO_API_KEY !== 'YOUR_BREVO_API_KEY';
+$_alertWorks  = $_alertTo !== '' && $_alertMailer;
+?>
+<div class="flex items-start gap-3 rounded-2xl px-5 py-3.5 mb-8 text-sm border <?= $_alertWorks ? 'bg-white/[.02] border-white/5' : 'bg-amber-500/[.06] border-amber-500/20' ?>">
+  <i class="fa-solid <?= $_alertWorks ? 'fa-bell text-slate-400' : 'fa-bell-slash text-amber-400' ?> mt-0.5 shrink-0"></i>
+  <div class="text-xs leading-relaxed <?= $_alertWorks ? 'text-slate-400' : 'text-amber-200/80' ?>">
+    <?php if ($_alertWorks): ?>
+      <span class="font-semibold text-slate-300">Alerts are emailed to <?= htmlspecialchars($_alertTo) ?>.</span>
+      A payment that could not be attached to an account, a payment for a plan we do not sell, and a delivery we
+      cannot verify each send one email — once per delivery, and at most
+      <?= (int)(defined('WHOP_ALERT_MAX_PER_HOUR') ? WHOP_ALERT_MAX_PER_HOUR : 3) ?> of a kind per hour, with
+      the line in <code>storage/php_errors.log</code> either way.
+    <?php elseif ($_alertTo !== ''): ?>
+      <span class="font-semibold text-amber-300">Nothing can be delivered.</span>
+      <code>ADMIN_EMAIL</code> is set to <?= htmlspecialchars($_alertTo) ?>, but there is no mail API key, so
+      <code>send_email()</code> falls back to PHP's own mail function, which shared hosting usually disables —
+      the alert would be written to <code>storage/php_errors.log</code> and never arrive. Set
+      <code>BREVO_API_KEY</code> in the deployed <code>config.php</code>.
+    <?php else: ?>
+      <span class="font-semibold text-amber-300">Nothing is emailed.</span>
+      <code>ADMIN_EMAIL</code> is empty, so a payment that could not be applied would reach
+      <code>storage/php_errors.log</code> and nobody else. Set it under
+      <a href="/admin/config.php" class="underline">Config Editor → Alerts</a>.
+    <?php endif; ?>
+  </div>
+</div>
+
 <?php if ($report['blocking']): ?>
 <div class="bg-amber-500/[.06] border border-amber-500/20 rounded-2xl p-6 mb-8">
   <div class="flex items-center gap-2 mb-3">

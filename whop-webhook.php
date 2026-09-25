@@ -37,6 +37,12 @@
  * failing" email are exactly how that gets noticed. Answering 200 to something we
  * refused would hide it.
  *
+ * It is also the only failure here that produces NO ledger row — nothing verified
+ * means nothing recorded — so it is the one case where a log line is all there
+ * would be. whop_alert() sends the administrator one email per six hours while it
+ * is happening, which is what turns "the secret was rotated last Tuesday" from a
+ * support ticket into a notification.
+ *
  * WHY 500 FOR A FAILED WRITE, AND 200 FOR EVERYTHING ELSE
  * ──────────────────────────────────────────────────────
  * Whop's retry schedule is the recovery mechanism for a transient database
@@ -80,7 +86,30 @@ if (!$verify['ok']) {
     // The reason is logged (it names a header or the clock, never a secret) and
     // NOT returned: a caller who fails verification learns nothing about whether
     // the id, the timestamp or the signature was wrong.
-    whop_log('webhook', 'refused a delivery from ' . ($_SERVER['REMOTE_ADDR'] ?? 'unknown') . ': ' . $verify['reason']);
+    $from = (string)($_SERVER['REMOTE_ADDR'] ?? 'unknown');
+    whop_log('webhook', 'refused a delivery from ' . $from . ': ' . $verify['reason']);
+
+    /* AND TELL SOMEBODY, BECAUSE THIS IS NOT ALWAYS AN ATTACK.
+     *
+     * A signature that does not verify is either somebody forging events or the
+     * secret here not being the one Whop signs with — and the second case means
+     * every payment is being lost right now, silently, exactly like the outage
+     * this endpoint shipped with. The alert is throttled by the condition rather
+     * than by the delivery (see whop_alert_policy), so a rotated secret produces
+     * one email every six hours and a flood of forgeries cannot bury it.
+     *
+     * This happens before the payload is read, so the alert carries only what was
+     * observed at the door: the reason and where it came from. */
+    whop_alert('signature_refused',
+        'Deliveries from Whop are being refused',
+        'signature verification failed: ' . $verify['reason'],
+        ['facts' => [
+            'Reason'     => $verify['reason'],
+            'Remote address' => $from,
+            'User agent' => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120),
+            'Whop delivery id' => (string)($headers['id'] ?? ''),
+        ]]);
+
     http_response_code(401);
     echo json_encode(['ok' => false, 'error' => 'signature verification failed']);
     exit;

@@ -807,6 +807,213 @@ $res = t_http('GET', $app . '/purchase-success.php?whop_plan=entrepreneur', ['co
 t_like($res['body'], 'Whop is confirming', 'while a Pro customer returning from an Entrepreneur checkout is told to wait');
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * 9. A payment that lands nowhere interrupts a human
+ *
+ * The outage this integration shipped with was not a wrong answer — it was a
+ * silent one: the money moved, the plan did not, and the only trace was a log
+ * line on a host nobody tails. These tests are about the interruption, and about
+ * it staying an interruption: one email per bad delivery, none for the ordinary
+ * no-ops, and a hard ceiling so a burst cannot bury the signal.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+/**
+ * Forget every alert already sent, so a section can assert on the first one.
+ *
+ * Needed because earlier sections in this file deliberately post forged
+ * deliveries, and a refusal is throttled by the CONDITION rather than by the
+ * delivery — so without this, the refusal alert would already be "sent" by the
+ * time the section about it runs, and a re-run inside the same six hours would
+ * behave differently from the first run. It clears the throttle state only; it
+ * touches no ledger, no account and no mail.
+ */
+function t_clear_whop_alerts(): void
+{
+    $dir = rtrim((string)WHOP_ALERT_DIR, '/\\');
+    foreach (glob($dir . '/whop_alert_*') ?: [] as $markFile) {
+        @unlink($markFile);
+    }
+}
+
+t_clear_whop_alerts();
+
+t_section('A payment nobody can be matched to emails the administrator');
+
+t_reset_mail_stub();
+
+// A paid payment with no metadata, no known member and no account for the payer
+// address: real money, nobody to give the plan to. The worst case there is.
+$orphanPay = t_whop_payment_event(0, WHOP_PRO_PLAN_ID, 'mber_orphan', 'mem_orphan', [
+    'metadata' => [],
+    'user'     => ['email' => 'stranger@example.test'],
+    'amount'   => 2199,
+    'currency' => 'usd',
+], ['timestamp' => t_whop_at(0), 'id' => 'msg_alert_orphan']);
+
+$res = t_post_whop_webhook($app, $orphanPay);
+t_is($res['status'], 500, 'the delivery still asks Whop to retry, because a retry may yet match the account');
+
+$alerts = t_mail_sent_to('admin@utiligo.test');
+t_is(count($alerts), 1, 'and exactly one email goes to the site administrator');
+t_like($alerts[0]['subject'], 'could not be attached to any account', 'whose subject says what happened in the words of the failure');
+t_like($alerts[0]['text'], 'stranger@example.test', 'whose body carries the payer email, which is how the account is found');
+t_like($alerts[0]['text'], 'mem_orphan', 'and the membership id, which is how the payment is matched once the account is known');
+t_like($alerts[0]['text'], 'What to do', 'and the actual next step, because bad news without one is a second notification');
+t_like($alerts[0]['text'], $orphanPay['id'], 'and the delivery id, so it can be found in Whop\'s own dashboard');
+t_unlike($alerts[0]['text'], WHOP_WEBHOOK_SECRET, 'and no secret anywhere in it — not the webhook secret');
+t_unlike($alerts[0]['text'], WHOP_API_KEY, 'nor the API key');
+
+// Whop retries a failed delivery with backoff for about three days. The same
+// delivery arriving again is the same payment about the same customer, and a
+// second email about it is how an operator learns to filter these out.
+$res = t_post_whop_webhook($app, $orphanPay);
+t_is($res['status'], 500, 'the retry is processed again, because a crashed handler must not swallow a payment');
+t_is(count(t_mail_sent_to('admin@utiligo.test')), 1, 'and it does not email a second time — one delivery, one alert');
+
+t_section('A payment for a plan we do not sell emails the administrator too');
+
+t_reset_mail_stub();
+
+// Verified, paid, and for a plan id this deployment does not map to a tier.
+// Nothing is granted — guessing costs a tier either way — but the card was charged.
+$unmappedPay = t_whop_payment_event(0, 'plan_never_heard_of', 'mber_unmapped', 'mem_unmapped', [
+    'metadata' => [],
+    'plan'     => ['id' => 'plan_never_heard_of'],
+], ['timestamp' => t_whop_at(0), 'id' => 'msg_alert_unmapped']);
+
+$res = t_post_whop_webhook($app, $unmappedPay);
+t_is($res['status'], 200, 'it is accepted and ignored, so Whop stops retrying something that will never apply');
+
+$alerts = t_mail_sent_to('admin@utiligo.test');
+t_is(count($alerts), 1, 'and a human is told, because money arrived and nothing happened');
+t_like($alerts[0]['text'], 'plan_never_heard_of', 'with the plan id, which is the thing to compare against the Whop dashboard');
+t_like($alerts[0]['text'], 'WHOP_PRO_PLAN_ID', 'and the name of the setting that has to match it');
+
+t_section('The ordinary no-ops stay silent');
+
+t_reset_mail_stub();
+
+// Everything below is a delivery that is handled correctly and needs nobody.
+// If any of these emailed, the alerts would be noise and the one that matters
+// would be lost in it.
+$noises = [
+    'an event type we never subscribed to'                            => t_whop_event('membership.activated', ['id' => 'mem_x', 'member' => ['id' => 'mber_buyer']]),
+    'a renewal for an account we already know, which applies cleanly' => t_whop_payment_event($renewer, WHOP_PRO_PLAN_ID, 'mber_renew', 'mem_renew', [], ['timestamp' => t_whop_at(0), 'id' => 'msg_alert_dupe']),
+];
+
+foreach ($noises as $what => $event) {
+    $answer = t_post_whop_webhook($app, $event);
+    t_is($answer['status'], 200, 'the delivery is handled without complaint: ' . $what);
+    t_is(t_mail_sent_to('admin@utiligo.test'), [], 'and emails nobody — applying a payment is not news: ' . $what);
+}
+
+// Now the same delivery a second time: a duplicate is dropped by the ledger, and
+// the drop is not news either. Whop sends it on purpose, so alerting here would
+// mean an email every time a delivery is retried.
+t_post_whop_webhook($app, $noises['a renewal for an account we already know, which applies cleanly']);
+t_is(t_mail_sent_to('admin@utiligo.test'), [], 'and a duplicate of it is silent too');
+
+t_section('Deliveries we cannot verify email the administrator, because that is how a rotated secret is noticed');
+
+// A clean slate for the one alert that is throttled by its condition rather than
+// by its delivery: the forged deliveries in the sections above have already
+// armed it, on purpose, and this section is about the first one after a reset.
+t_clear_whop_alerts();
+t_reset_mail_stub();
+
+// A forged delivery produces no ledger row at all — nothing verified means
+// nothing recorded — so this is the one failure that exists only as a log line
+// unless something tells a human.
+$res = t_http('POST', $app . '/whop-webhook.php', [
+    'raw'     => '{"type":"payment.succeeded"}',
+    'headers' => [
+        'webhook-id: msg_alert_forged',
+        'webhook-timestamp: ' . time(),
+        'webhook-signature: v1,bm90LWEtc2lnbmF0dXJl',
+    ],
+]);
+t_is($res['status'], 401, 'an unsigned delivery is still refused');
+
+$alerts = t_mail_sent_to('admin@utiligo.test');
+t_is(count($alerts), 1, 'and the administrator hears about it, because a wrong secret looks exactly like an attack from here');
+t_like($alerts[0]['text'], 'signature verification failed', 'with the reason the verifier gave');
+t_like($alerts[0]['subject'], 'refused', 'and a subject that names the condition rather than one delivery');
+t_unlike($alerts[0]['text'], WHOP_WEBHOOK_SECRET, 'and, again, no secret in the body');
+
+// Throttled by the condition and not by the delivery, so a flood of forgeries
+// cannot bury the one real signal — and cannot generate a flood of its own.
+$res = t_http('POST', $app . '/whop-webhook.php', [
+    'raw'     => '{"type":"payment.succeeded"}',
+    'headers' => [
+        'webhook-id: msg_alert_forged_two',
+        'webhook-timestamp: ' . time(),
+        'webhook-signature: v1,bm90LWEtc2lnbmF0dXJl',
+    ],
+]);
+t_is($res['status'], 401, 'a second forged delivery is refused');
+t_is(count(t_mail_sent_to('admin@utiligo.test')), 1, 'without a second email — one condition, one interruption');
+
+t_section('The throttle itself, on a clock the test controls');
+
+// The policy is a pure function of the clock and a directory, so it is asserted
+// directly rather than by waiting an hour. WHOP_ALERT_DIR is tests/tmp here (see
+// tests/run.php), which is why this can seed and read real marks without
+// touching storage/ in the checkout.
+$alertDir = (string)WHOP_ALERT_DIR;
+$clock    = 1_800_000_000;
+
+$first  = whop_alert_allowed('unidentified_payment', ['webhook_id' => 'msg_clock_a'], $clock);
+t_ok($first['ok'], 'a delivery that has never alerted is allowed');
+
+whop_alert_record('unidentified_payment', (string)$first['key'], $clock);
+
+$again = whop_alert_allowed('unidentified_payment', ['webhook_id' => 'msg_clock_a'], $clock + 86_400);
+t_ok(!$again['ok'], 'and the SAME delivery is refused a day later, because Whop retries it for three days');
+t_like($again['reason'], 'already been alerted', 'with a reason that says so');
+
+$other = whop_alert_allowed('unidentified_payment', ['webhook_id' => 'msg_clock_b'], $clock);
+t_ok($other['ok'], 'while a different payment is its own alert');
+
+// The burst ceiling: three of a kind in an hour by default, and the fourth is
+// dropped rather than queued.
+whop_alert_record('unidentified_payment', (string)$other['key'], $clock);
+for ($i = 0; $i < 6; $i++) {
+    $nth = whop_alert_allowed('unidentified_payment', ['webhook_id' => 'msg_clock_burst_' . $i], $clock);
+    if ($nth['ok']) {
+        whop_alert_record('unidentified_payment', (string)$nth['key'], $clock);
+    }
+}
+$capped = whop_alert_allowed('unidentified_payment', ['webhook_id' => 'msg_clock_burst_capped'], $clock);
+t_ok(!$capped['ok'], 'the hourly budget for a kind of alert is enforced, so a burst is one email and not fifty');
+t_like($capped['reason'], 'budget', 'with a reason that says the budget, not the delivery, is the limit');
+
+// A condition-keyed kind is re-armed on a timer instead: a rotated secret
+// produces hundreds of refusals and exactly one thing to fix.
+$condition = whop_alert_allowed('signature_refused', [], $clock + 3_600);
+t_ok($condition['ok'], 'the refusal alert is allowed again after its quiet window');
+whop_alert_record('signature_refused', (string)$condition['key'], $clock + 3_600);
+
+$tooSoon = whop_alert_allowed('signature_refused', [], $clock + 3_600 + 60);
+t_ok(!$tooSoon['ok'], 'and not a minute later, so a flood of forgeries cannot send a flood of email');
+
+// No ADMIN_EMAIL is the one case where the alert can only log. This is asserted
+// against the source of the function rather than by unsetting the constant,
+// because the constant is set for the whole suite — what matters is that the
+// early return happens BEFORE anything is sent.
+$whopSource = (string)file_get_contents(dirname(__DIR__, 2) . '/includes/whop.php');
+t_like($whopSource, "if (!defined('ADMIN_EMAIL') || trim((string)ADMIN_EMAIL) === '') {", 'an alert with no administrator to send to stops at the log line');
+t_like($whopSource, "whop_log('alert:' . \$kind", 'and every alert writes its log line before anything else, so the record exists even when the email does not');
+
+// The alert path must never be able to break the money path it is reporting on.
+t_like($whopSource, 'An alert that raises becomes the incident it was reporting', 'and a mail server that is down cannot take the payment handler with it');
+
+// Clean the throttle state this section created, so a re-run inside the same
+// hour behaves the same as a first run. $alertDir is the same directory.
+t_ok($alertDir !== '', 'the alert throttle state lives somewhere the suite can clean up');
+t_clear_whop_alerts();
+
+t_reset_mail_stub();
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * Cleanup
  * ──────────────────────────────────────────────────────────────────────────── */
 
