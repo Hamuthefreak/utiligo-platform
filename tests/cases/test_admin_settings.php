@@ -145,8 +145,13 @@ t_section('The page can tell "saved" from "saved and actually loaded"');
 
 t_like($settings, 'config_overrides_mismatch', 'the settings page asks whether the file it writes is being loaded');
 t_like($settings, 'Loaded by config.php', 'and says so next to the file and writability facts, not in a log');
-t_like($settings, "require_once __DIR__ . '/storage/config_overrides.php';",
-    'and prints the line config.php has to have, because that line is the fix');
+// The fix is one line, and it is one definition of that line: the page prints it and
+// the repair inserts it, so the sentence an operator copies and the bytes that get
+// written cannot drift apart.
+t_is(config_overrides_loader_line(), "require_once __DIR__ . '/storage/config_overrides.php';",
+    'the line config.php has to have is defined once');
+t_like($settings, 'config_overrides_loader_line()',
+    'and the page prints that line rather than a second copy of it, because that line is the fix');
 t_like($settings, 'config_overrides_file()', 'the path comes from one definition rather than two files spelling it out');
 t_like($read('includes/whop.php'), 'is not being loaded by config.php',
     'the payments page reports it as a blocker — that is the page an operator reads when it says "not set"');
@@ -195,6 +200,122 @@ t_is(config_overrides_mismatch(t_tmp_dir() . '/does_not_exist.php')['read'], fal
 @unlink($probeFile);
 @unlink($probeOk);
 @unlink($probeDrift);
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 2c. Which file, can it be written, and repairing the reader
+ *
+ * §2b answers "is what the file states actually in effect". The three questions an
+ * operator asks after that, all of which used to be unanswerable from the page:
+ *
+ *   1. WHERE is the file? A shared host keeps one htdocs/ per domain, so a file
+ *      manager can be open on a second copy of the site — and then the saved values
+ *      are really in the file, and really not in the listing being looked at. The
+ *      strip prints the absolute path, and a canary written into the same folder
+ *      settles it in one glance.
+ *   2. CAN this server write at all? A storage/ that refuses the write is the other
+ *      way "I saved it and it is not there" happens, and it has its own fix.
+ *   3. WHAT does config.php say? Not the running constants — the file itself. The
+ *      comparison in §2b needs something saved to compare against; this one works on
+ *      the first day, when nothing has been saved yet.
+ *
+ * And the repair, which is the part that has to be careful: it edits the one file on
+ * the server that is excluded from the FTP deploy, so it refuses more than it does.
+ * Each refusal below is asserted, because a repair that "usually works" on config.php
+ * is a repair that can take the whole site down.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+t_section('The page says which file it writes, proves it can, and can repair the reader');
+
+t_like($settings, 'config_overrides_reader_status', 'the page asks the installation what its own config.php says');
+t_like($settings, 'config_overrides_write_probe', 'and can write a canary next to the overrides file');
+t_like($settings, 'config_overrides_repair_reader', 'and can insert the missing require into config.php');
+t_like($settings, 'Where this page writes', 'and explains the test on the page itself, not in a wiki');
+t_like($settings, "header('Cache-Control: no-store')",
+    'and is never cached, so a stale form cannot post the field list it had last month');
+t_like($settings, "htmlspecialchars(\$overrides_file)", 'the absolute path it writes to is printed, not just the file name');
+t_like($settings, "htmlspecialchars(\$reader['file'])", 'and so is the config.php that has to load it, so the two can be compared in FTP');
+t_ok(str_contains($settings, 'name="test_write"') && str_contains($settings, 'name="repair_reader"'),
+    'both actions are their own POST, so neither can happen by loading a page');
+t_is(substr_count($settings, "admin_csrf_verify('settings'"), 3,
+    'and both check the same CSRF slot as the save — one verify per action, no shortcuts');
+// The trap this page walked into: admin_csrf_token() rotates the slot, so a page with
+// two forms that each call it holds two tokens and one valid one. The small action
+// button is then refused while the big Save beside it works — a bug that looks like
+// "the button does nothing". One call per render, reused by every form.
+t_is(substr_count($settings, "admin_csrf_token('settings')"), 1,
+    'and the page issues exactly one token per render, which all of its forms reuse');
+t_ok(strpos($settings, "admin_csrf_token('settings')") > strpos($settings, "admin_csrf_verify('settings'"),
+    'issued after the POST handling rather than before it, which would rotate the token being verified');
+
+// The reader's status, and the shape that makes it worth having: a loader BELOW the
+// first define() is the same as no loader, because the first definition wins.
+$cfgDir = t_tmp_dir() . '/reader_probe';
+@mkdir($cfgDir, 0777, true);
+$cfgFile = $cfgDir . '/config.php';
+
+file_put_contents($cfgFile, "<?php\n\ndefine('DB_HOST', 'sql1.example');\n");
+$reader = config_overrides_reader_status($cfgFile);
+t_is($reader['exists'], true, 'a config.php that never learned about the overrides is found');
+t_is($reader['mentions'], false, 'and reported as not mentioning them');
+t_is($reader['first_define_line'], 3, 'with the line of its first define(), so a loader that comes too late can be named');
+
+file_put_contents($cfgFile, "<?php\n\ndefine('DB_HOST', 'sql1.example');\nrequire_once __DIR__ . '/storage/config_overrides.php';\n");
+$reader = config_overrides_reader_status($cfgFile);
+t_is($reader['mentions'], true, 'a config.php that mentions them is seen to');
+t_is($reader['above_defines'], false, 'but a mention below the first define() does not count as loading them');
+
+$refused = config_overrides_repair_reader($cfgFile);
+t_is($refused['ok'], false, 'and the repair refuses a file that already mentions them rather than adding a second loader');
+t_like($refused['message'], 'already mentions', 'saying why, so nobody retries it wondering if it worked');
+
+// The case it is for: a config.php from before the overrides existed.
+$original = "<?php\n\nerror_reporting(E_ALL);\n\ndefine('DB_HOST', 'sql1.example');\n\ndefine('DB_PASS', 'p@ss;word');\n";
+$body     = substr($original, 6);   // everything after the opening tag
+@mkdir($cfgDir . '/storage', 0777, true);   // where the repair keeps its backup
+file_put_contents($cfgFile, $original);
+$repaired = config_overrides_repair_reader($cfgFile);
+t_is($repaired['ok'], true, 'a config.php that cannot load anything is repaired');
+$after = (string)file_get_contents($cfgFile);
+t_like($after, "require_once __DIR__ . '/storage/config_overrides.php';", 'the missing require is now in it');
+t_ok(strpos($after, 'config_overrides') < strpos($after, "define('DB_HOST'"),
+    'and it sits above every definition, which is the only place it works');
+t_is(substr($after, -strlen($body)), $body, 'the rest of the file is still there byte for byte — a repair, not a rewrite');
+t_is(substr_count($after, "define('DB_PASS', 'p@ss;word');"), 1,
+    'including the database password, which is why this file is excluded from the deploy');
+t_is(config_overrides_reader_status($cfgFile)['above_defines'], true, 'and the reader now reports it as loading them');
+t_is(is_file((string)$repaired['backup']), true, 'with a backup kept before anything was replaced');
+t_is((string)file_get_contents((string)$repaired['backup']), $original, 'holding exactly the file that was there before');
+if (!empty($repaired['backup'])) {
+    @unlink((string)$repaired['backup']);
+}
+
+$noRoom = t_tmp_dir() . '/reader_no_backup/config.php';
+@mkdir(dirname($noRoom), 0777, true);
+file_put_contents($noRoom, "<?php\n\ndefine('DB_HOST', 'sql1.example');\n");
+$noBackup = config_overrides_repair_reader($noRoom);
+t_is($noBackup['ok'], false, 'with nowhere to keep a backup the repair refuses rather than editing without one');
+t_is((string)file_get_contents($noRoom), "<?php\n\ndefine('DB_HOST', 'sql1.example');\n", 'and config.php is byte for byte as it was');
+
+$missing = config_overrides_repair_reader(t_tmp_dir() . '/no_such_config.php');
+t_is($missing['ok'], false, 'a server with no config.php gets an explanation rather than a new file');
+t_like($missing['message'], 'was not found', 'saying which path it looked at');
+t_is(config_overrides_reader_status(t_tmp_dir() . '/no_such_config.php')['mentions'], null,
+    'and the reader reports a missing config.php as missing, rather than guessing about it');
+
+@unlink($cfgFile);
+@unlink($noRoom);
+
+// The canary: it has to land next to the overrides file and say how many bytes it
+// wrote, because "the file is not in my listing" is the finding it exists to produce.
+$probeDir = t_tmp_dir() . '/write_probe';
+@mkdir($probeDir, 0777, true);
+$probe = config_overrides_write_probe($probeDir);
+t_ok($probe['bytes'] !== false && $probe['bytes'] > 0, 'the write test reports the bytes it wrote');
+t_is(basename((string)$probe['file']), '_utiligo_write_test.php',
+    'into a file beside the overrides, named so it cannot be mistaken for one');
+t_is(is_file((string)$probe['file']), true, 'and it is really there afterwards, which is what the operator is asked to check');
+t_is($probe['error'], '', 'with nothing to report');
+@unlink((string)$probe['file']);
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * 3. Saving the page — the secret round trip
@@ -368,6 +489,19 @@ try {
     preg_match('/Loaded by config\.php:.{0,160}?yes ✓ \d+ setting/s', $strip['body'], $ovOk);
     t_ok($ovOk !== [], 'and the page reports the overrides file as loaded, with a count of what it states');
     t_unlike($strip['body'], 'Saved — and not loaded', 'rather than written and ignored');
+
+    // And it names WHERE, which is the half of "I saved it and it is not there" that
+    // the page used to leave the operator to guess: an addon domain's own htdocs/
+    // next to the primary one looks exactly like a failed save from a file manager.
+    preg_match('/File: <code>(.*?)<\/code>/s', $strip['body'], $shownPath);
+    t_ok($shownPath !== [] && str_ends_with(str_replace('\\', '/', $shownPath[1]), '/storage/config_overrides.php'),
+        'and prints the absolute path it writes to — the path an operator has to open in FTP');
+    t_ok($shownPath !== [] && strlen($shownPath[1]) > strlen('storage/config_overrides.php') + 8,
+        'as a full path, because the file name alone is the same on every copy of the site');
+    t_like($strip['body'], 'loads it ✓',
+        'and reports this installation\'s config.php as loading it, which is why the saved values are in effect');
+    t_ok(preg_match('/Last written:.{0,140}?[\d,]+ bytes/s', $strip['body']) === 1,
+        'and how large the file is and when it was last written');
 } finally {
     $restore();
 }

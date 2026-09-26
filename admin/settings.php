@@ -42,6 +42,18 @@ $overrides_file = config_overrides_file();
 // Set by the redirect a successful save answers with, never by the POST itself.
 $saved      = isset($_GET['saved']);
 $save_error = '';
+$write_test = null;   // set by the write test below
+$repair     = null;   // set by the config.php repair below
+
+/* Not cacheable, deliberately.
+
+   This page's field list changes as the platform gains settings, and a browser that
+   keeps an old copy of the page keeps an old `cfg[...]` names — a Save from a cached
+   form posts a field list from last month and writes exactly the keys that were
+   editable then. The failure looks like "the values I typed never arrived", which is
+   the bug this page has already been chasing once; the fix is to never hand the
+   browser a stale form in the first place. */
+header('Cache-Control: no-store');
 
 // ---------------------------------------------------------------
 // All editable keys: [constant, label, type, section, hint]
@@ -270,6 +282,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
     }
 }
 
+// ---------------------------------------------------------------
+// WRITE TEST — "is storage/ writable, and is this the folder you are looking at?"
+// ---------------------------------------------------------------
+// The two ways a save can look like it did nothing are a storage/ that refuses the
+// write and a file manager open on a second copy of the site (a shared host has one
+// htdocs/ per domain). A canary file plus the absolute path separates them.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_write'])) {
+    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null)) {
+        $save_error = 'Invalid or expired security token. Please refresh and try again.';
+    } else {
+        $write_test = config_overrides_write_probe();
+    }
+}
+
+// ---------------------------------------------------------------
+// REPAIR THE READER — the one step the deploy cannot do for this server
+// ---------------------------------------------------------------
+// config.php is excluded from the FTP deploy, so a stale copy of it is the one thing
+// no push can fix; see config_overrides_repair_reader() for what keeps that edit safe.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repair_reader'])) {
+    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null)) {
+        $save_error = 'Invalid or expired security token. Please refresh and try again.';
+    } else {
+        $repair = config_overrides_repair_reader();
+    }
+}
+
 function _cfg_val(string $key, string $type): mixed {
     if (!defined($key)) return ($type === 'bool' ? false : '');
     $v = constant($key);
@@ -300,6 +339,18 @@ $places_pct = $places_limit > 0 ? (int)round(min(100, $places_used * 100 / $plac
 $_alertTo    = defined('ADMIN_EMAIL') ? trim((string)ADMIN_EMAIL) : '';
 $_alertMailer = defined('BREVO_API_KEY') && BREVO_API_KEY !== '' && BREVO_API_KEY !== 'YOUR_BREVO_API_KEY';
 $_alertWorks = $_alertTo !== '' && $_alertMailer;
+
+/* ONE TOKEN FOR EVERY FORM ON THIS PAGE.
+
+   admin_csrf_token() rotates the slot: each call stores a new random token in the
+   session and returns it. So a page carrying two forms that each call it has two
+   different tokens on it and one valid one — the first form posted, usually the small
+   action button that was added later, is refused with "invalid or expired security
+   token" while the big Save next to it works. That is how a second form breaks the
+   first, and it is why the token is issued once here, in the render phase, and every
+   form below reuses it. It is deliberately NOT issued before the POST handling above:
+   doing that would rotate the token this request is about to verify. */
+$csrf = admin_csrf_token('settings');
 
 $pageTitle = 'Settings — Admin — Utiligo';
 $adminPage = 'settings';
@@ -337,6 +388,27 @@ require_once __DIR__ . '/../includes/admin_layout.php';
         <span class="text-red-400 font-semibold">no ✗ <?= count($ovState['mismatched']) ?> of <?= (int)$ovState['stated'] ?> ignored</span>
       <?php endif; ?>
     </p>
+    <?php $reader = config_overrides_reader_status(); ?>
+    <p>config.php:
+      <?php if (!$reader['exists']): ?>
+        <span class="text-red-400 font-semibold">not found ✗</span>
+      <?php elseif (!$reader['mentions']): ?>
+        <span class="text-red-400 font-semibold">does not load it ✗</span>
+      <?php elseif (!$reader['above_defines']): ?>
+        <span class="text-amber-400 font-semibold">loads it after define() ✗</span>
+      <?php else: ?>
+        <span class="text-emerald-400 font-semibold">loads it ✓</span>
+      <?php endif; ?>
+    </p>
+    <p>Last written:
+      <?php if ($ovState['read'] && ($ovSize = @filesize($overrides_file)) !== false): ?>
+        <span class="text-slate-400 font-semibold"><?= number_format((int)$ovSize) ?> bytes<?= ($ovTime = @filemtime($overrides_file)) ? ' — ' . date('H:i:s', (int)$ovTime) : '' ?></span>
+      <?php else: ?>
+        <span class="text-slate-500 font-semibold">never — nothing saved yet</span>
+      <?php endif; ?>
+    </p>
+    <p class="mt-1 text-[11px] text-slate-500 break-all">File: <code><?= htmlspecialchars($overrides_file) ?></code></p>
+    <p class="text-[11px] text-slate-500 break-all">Config: <code><?= htmlspecialchars($reader['file']) ?></code></p>
   </div>
 </div>
 
@@ -363,15 +435,104 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       <code>storage/config_overrides.php</code> states <?= (int)$ovState['stated'] ?> setting(s) and this request is
       running with something else for <?= count($ovState['mismatched']) ?> of them:
       <code><?= htmlspecialchars(implode(', ', array_slice($ovState['mismatched'], 0, 6))) ?></code><?= count($ovState['mismatched']) > 6 ? ' and ' . (count($ovState['mismatched']) - 6) . ' more' : '' ?>.
-      That file is loaded by the first few lines of <code>config.php</code>, which is excluded from the FTP deploy —
-      so check that the copy on this server still has
-      <code>require_once __DIR__ . '/storage/config_overrides.php';</code> before any other definition, and that
-      nothing defines these keys above it. Until that is true, every value saved here is written and then ignored,
-      and the Payments page will keep reporting them as missing.
+      The file is loaded by the first few lines of <code>config.php</code> — the full path is in the panel above —
+      and config.php is excluded from the FTP deploy, so the copy on this server can be older than this page and
+      never have learned about the overrides at all. The panel says whether that copy mentions them and whether the
+      mention comes before its first definition; until both are true, every value saved here is written and then
+      ignored, and the Payments page will keep reporting them as missing.
     </p>
+    <?php if ($reader['exists'] && !$reader['mentions']): ?>
+      <form method="POST" action="/admin/settings.php" class="mt-3">
+        <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+        <input type="hidden" name="repair_reader" value="1">
+        <button type="submit"
+                class="inline-flex items-center gap-2 bg-red-500/15 hover:bg-red-500/25 border border-red-400/30 text-red-100 px-4 py-2 rounded-xl font-semibold text-xs transition">
+          <i class="fa-solid fa-screwdriver-wrench"></i> Insert the require into config.php for me
+        </button>
+      </form>
+      <p class="mt-2 text-[11px] text-red-200/60 leading-relaxed">
+        That writes <code><?= htmlspecialchars(config_overrides_loader_line()) ?></code> after <code>&lt;?php</code>,
+        keeps a dated backup in <code>storage/</code> first, and refuses if the result would not parse. The rest of
+        config.php is left byte for byte as it is — including the database credentials it was excluded from the
+        deploy to protect.
+      </p>
+    <?php elseif ($reader['exists'] && $reader['mentions']): ?>
+      <p class="mt-1.5 text-[11px] text-red-200/60 leading-relaxed">
+        This config.php does mention the overrides, but not before its first definition
+        <?= $reader['first_define_line'] ? '(line ' . (int)$reader['first_define_line'] . ')' : '' ?> — move that
+        <code>require_once</code> to the top of the file by hand; a definition that runs first wins, so a loader below
+        it changes nothing.
+      </p>
+    <?php else: ?>
+      <p class="mt-1.5 text-[11px] text-red-200/60 leading-relaxed">
+        <code>config.php</code> was not found next to this page, so it cannot be repaired from here — restore it
+        (with <code><?= htmlspecialchars(config_overrides_loader_line()) ?></code> near the top) in your host's file
+        manager.
+      </p>
+    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>
+
+<?php if ($repair !== null): ?>
+<div class="flex items-start gap-3 <?= $repair['ok']
+    ? 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300'
+    : 'bg-amber-500/[.07] border-amber-500/20 text-amber-300' ?> border rounded-2xl px-5 py-4 mb-6 text-sm">
+  <i class="fa-solid <?= $repair['ok'] ? 'fa-circle-check' : 'fa-triangle-exclamation' ?> mt-0.5 shrink-0"></i>
+  <div class="flex-1">
+    <p class="font-semibold"><?= $repair['ok'] ? 'config.php repaired' : 'config.php was not changed' ?></p>
+    <p class="mt-1 text-xs leading-relaxed opacity-80"><?= htmlspecialchars($repair['message']) ?></p>
+    <?php if (!empty($repair['backup'])): ?>
+      <p class="mt-1.5 text-[11px] opacity-70 break-all">Backup kept at <code><?= htmlspecialchars($repair['backup']) ?></code></p>
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php
+/* WHERE THIS PAGE WRITES, AND PROOF THAT IT CAN.
+
+   "I saved it and the file on the server is still empty" has two causes that look
+   identical in a file listing: a storage/ that refuses the write, and a file manager
+   open on a second copy of the site — shared hosting keeps one htdocs/ per domain, and
+   only one of them serves this URL. The strip above names the exact path this page
+   writes to; this button drops a canary in the same folder and reports the bytes, so
+   "it is not there" can only mean the listing is the wrong folder. */ ?>
+<div class="flex items-start justify-between gap-5 flex-wrap bg-white/[0.02] border border-white/5 rounded-2xl px-5 py-4 mb-6 text-xs">
+  <div class="flex-1 min-w-[18rem]">
+    <p class="text-slate-300 font-semibold">Where this page writes — and proof that it can</p>
+    <p class="text-slate-500 mt-1 leading-relaxed">
+      Every section here is saved to the one file named above and nowhere else. If your file manager shows that file
+      without the values you saved, it is open on a different copy of the site: this test writes a small file into the
+      same folder and tells you the bytes and the full path, so the two cannot disagree.
+    </p>
+    <?php if ($write_test !== null): ?>
+      <?php if ($write_test['bytes'] !== false): ?>
+        <p class="mt-1.5 text-emerald-400 leading-relaxed">
+          <i class="fa-solid fa-circle-check mr-1"></i>
+          Wrote <?= (int)$write_test['bytes'] ?> bytes to <code class="break-all"><?= htmlspecialchars($write_test['file']) ?></code>
+          at <?= date('H:i:s', (int)$write_test['mtime']) ?>. Open that exact path in your file manager: if the file is
+          not there, you are looking at a different copy of the site, and the save below will never appear in it.
+        </p>
+      <?php else: ?>
+        <p class="mt-1.5 text-red-400 leading-relaxed">
+          <i class="fa-solid fa-circle-exclamation mr-1"></i>
+          Could not write <code class="break-all"><?= htmlspecialchars($write_test['file']) ?></code> —
+          <?= htmlspecialchars($write_test['error']) ?>. Nothing on this page can be saved until
+          <code>storage/</code> accepts writes; give it permission 775 in your host's file manager.
+        </p>
+      <?php endif; ?>
+    <?php endif; ?>
+  </div>
+  <form method="POST" action="/admin/settings.php" class="shrink-0">
+    <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+    <input type="hidden" name="test_write" value="1">
+    <button type="submit"
+            class="inline-flex items-center gap-2 bg-white/[.06] hover:bg-white/[.12] border border-white/10 text-slate-200 px-4 py-2 rounded-xl font-semibold transition">
+      <i class="fa-solid fa-vial"></i> Write test file
+    </button>
+  </form>
+</div>
 
 <?php if ($saved): ?>
 <div class="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl px-5 py-4 mb-6 text-sm">
@@ -510,7 +671,7 @@ if (!$_whopReport['can_accept_payments'] || !$_whopReport['can_create_checkout']
 </div>
 
 <form method="POST" action="/admin/settings.php">
-  <input type="hidden" name="csrf_token" value="<?= admin_csrf_token('settings') ?>">
+  <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
   <input type="hidden" name="save_config" value="1">
 
   <?php
