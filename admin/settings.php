@@ -45,6 +45,17 @@ $save_error = '';
 $write_test = null;   // set by the write test below
 $repair     = null;   // set by the config.php repair below
 
+/* SIX HOURS FOR THIS PAGE'S TOKEN, WHERE THE APP'S DEFAULT IS ONE.
+
+   The fields here are filled from two other dashboards — the Whop API key and webhook
+   secret out of Whop's, the Brevo key out of Brevo's — and an operator who opens this
+   page first and then goes looking for a key comes back to a form that expired while
+   they were away. That refusal is correct and nearly invisible: the save does nothing
+   and says so in one line above the fold. A window long enough for the errand removes
+   the failure without weakening anything, because the token is still bound to the
+   session and consumed by the save that uses it. */
+$csrfTtl = 6 * 3600;
+
 /* Not cacheable, deliberately.
 
    This page's field list changes as the platform gains settings, and a browser that
@@ -155,8 +166,13 @@ $fields = [
 // SAVE
 // ---------------------------------------------------------------
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
-    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null)) {
-        $save_error = 'Invalid or expired security token. Please refresh and try again.';
+    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null, $csrfTtl)) {
+        // Refused, and nothing written. Recorded on the log, because this is the one
+        // failure that leaves no trace anywhere else: the file manager shows the file
+        // exactly as it was, and the next report is "it didn't work" with nothing to
+        // look at. The page issues a fresh token as it renders, so trying again works.
+        $save_error = 'Invalid or expired security token — nothing was saved. This page has just issued a new one: press Save All Changes again.';
+        config_overrides_audit('save', 'result=not-written csrf=REFUSED');
     } else {
         // Build the list of keys we're ABOUT to write so we can preserve
         // any define() calls already in the file that we do NOT manage
@@ -250,7 +266,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
             }
         }
         $php = implode("\n", $lines) . "\n";
-        if (@file_put_contents($overrides_file, $php) !== false) {
+
+        // Which secret fields came back filled — NAMES ONLY. This is the line that
+        // answers "did what I pasted actually reach the app?", and naming a key rather
+        // than a value is what lets this log be shown and pasted around (see
+        // config_overrides_audit()).
+        $filled = [];
+        foreach ($fields as [$key, , $type]) {
+            if ($type === 'secret' && trim((string)($_POST['cfg'][$key] ?? '')) !== '') {
+                $filled[] = $key;
+            }
+        }
+
+        $write = config_overrides_write($overrides_file, $php);
+        config_overrides_audit('save',
+            'result=' . ($write['ok'] ? 'written' : 'FAILED')
+            . ' bytes=' . (int)$write['bytes']
+            . ' stated=' . substr_count($php, "\ndefine('")
+            . ' filled=' . ($filled ? implode(',', $filled) : 'none')
+            . ($write['ok']
+                ? ' via=' . $write['via']
+                : ' error="' . preg_replace('/\s+/', ' ', $write['error']) . '"')
+            . ' file=' . $overrides_file);
+
+        if ($write['ok']) {
             if (function_exists('opcache_invalidate')) {
                 opcache_invalidate($overrides_file, true);
                 opcache_invalidate(__DIR__ . '/../includes/plan_limits.php', true);
@@ -277,7 +316,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
             header('Location: /admin/settings.php?saved=1');
             exit;
         } else {
-            $save_error = 'Could not write storage/config_overrides.php — check directory permissions (chmod 775 storage/ or 664 on the file).';
+            // PHP's own reason, not a guess about permissions: this page cannot see the
+            // operator's file manager, and "check directory permissions" is advice for
+            // the one cause out of four that a write failure usually has.
+            $save_error = 'Nothing was saved: storage/config_overrides.php could not be written ('
+                . ($write['error'] !== '' ? $write['error'] : 'the write was refused without a reason')
+                . '). The attempt is recorded in ' . config_overrides_log_file()
+                . ' — if that line is there, this is the right folder and the file or the folder is what needs'
+                . ' a different permission; if it is not, the file manager is open on a different copy of the site.';
         }
     }
 }
@@ -289,10 +335,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
 // write and a file manager open on a second copy of the site (a shared host has one
 // htdocs/ per domain). A canary file plus the absolute path separates them.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_write'])) {
-    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null)) {
-        $save_error = 'Invalid or expired security token. Please refresh and try again.';
+    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null, $csrfTtl)) {
+        $save_error = 'Invalid or expired security token — nothing was done. This page has just issued a new one: press the button again.';
+        config_overrides_audit('write-test', 'result=not-run csrf=REFUSED');
     } else {
         $write_test = config_overrides_write_probe();
+        config_overrides_audit('write-test',
+            'result=' . ($write_test['bytes'] === false ? 'FAILED' : 'written')
+            . ' bytes=' . (int)$write_test['bytes'] . ' file=' . $write_test['file']
+            . ($write_test['bytes'] === false ? ' error="' . preg_replace('/\s+/', ' ', $write_test['error']) . '"' : ''));
     }
 }
 
@@ -302,14 +353,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_write'])) {
 // config.php is excluded from the FTP deploy, so a stale copy of it is the one thing
 // no push can fix; see config_overrides_repair_reader() for what keeps that edit safe.
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['repair_reader'])) {
-    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null)) {
-        $save_error = 'Invalid or expired security token. Please refresh and try again.';
+    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null, $csrfTtl)) {
+        $save_error = 'Invalid or expired security token — nothing was changed. This page has just issued a new one: press the button again.';
+        config_overrides_audit('repair', 'result=not-run csrf=REFUSED');
     } else {
         $repair = config_overrides_repair_reader();
+        config_overrides_audit('repair', 'result=' . ($repair['ok'] ? 'written' : 'refused')
+            . ($repair['backup'] ? ' backup=' . $repair['backup'] : ''));
     }
 }
 
-function _cfg_val(string $key, string $type): mixed {
+/** Whether a key has a real value — the overrides file first, then the constant. */
+function _cfg_is_set(string $key): bool
+{
+    $value = config_overrides_setting($key);
+    if ($value === null) {
+        $value = defined($key) ? (string)constant($key) : '';
+    }
+    $value = trim((string)$value);
+
+    return $value !== '' && !str_starts_with($value, 'YOUR_');
+}
+
+/**
+ * One field's current value, for the form.
+ *
+ * The overrides file comes first, for the same reason whop_setting() reads it first: on
+ * a server whose config.php predates that file, the constant says one thing (usually
+ * "unset") and the value the operator just saved says another. Showing the constant is
+ * how "Settings saved" came to be printed next to "not set — paste the value here",
+ * which reads as "this page is not editing the config" and is how it was reported.
+ */
+function _cfg_val(string $key, string $type): mixed
+{
+    $stated = config_overrides_setting($key);
+    if ($stated !== null) {
+        if ($type === 'bool')  return in_array(strtolower($stated), ['1', 'true'], true);
+        if ($type === 'float') return is_numeric($stated) ? (float)$stated : 0.0;
+        if ($type === 'int' || $type === 'intm1') return is_numeric($stated) ? (int)$stated : 0;
+        return $stated;
+    }
+
     if (!defined($key)) return ($type === 'bool' ? false : '');
     $v = constant($key);
     if ($type === 'bool')   return (bool)$v;
@@ -352,6 +436,23 @@ $_alertWorks = $_alertTo !== '' && $_alertMailer;
    doing that would rotate the token this request is about to verify. */
 $csrf = admin_csrf_token('settings');
 
+// The two questions the strip answers and the log line below needs, asked once here
+// rather than inside the markup: what is printed and what is recorded cannot then
+// disagree. $readAtUse is the payment keys, which the payment code reads out of this
+// file itself — see whop_self_read_keys().
+$ovState = config_overrides_mismatch($overrides_file, whop_self_read_keys());
+$reader  = config_overrides_reader_status();
+
+/* ONE LINE PER LOAD, IN THE FOLDER THE OPERATOR IS ALREADY LOOKING AT.
+
+   "I hit Save and nothing happened" has four causes that look identical from a browser:
+   the POST never arrived, the token was refused, the write was refused, or the file
+   manager is open on a second copy of the site. A page load that IS in the log with no
+   `save` line after it is what separates the first of those from the rest, so the load
+   is logged too. Names and counts only — never a value (see config_overrides_audit()). */
+config_overrides_audit('load', 'fields=' . count($fields)
+    . ' reader=' . (!empty($reader['above_defines']) ? 'loads' : 'NOT-loading'));
+
 $pageTitle = 'Settings — Admin — Utiligo';
 $adminPage = 'settings';
 require_once __DIR__ . '/../includes/admin_layout.php';
@@ -378,17 +479,17 @@ require_once __DIR__ . '/../includes/admin_layout.php';
           ? '<span class="text-emerald-400 font-semibold">yes ✓</span>'
           : '<span class="text-red-400 font-semibold">no — chmod 664 storage/</span>' ?>
     </p>
-    <?php $ovState = config_overrides_mismatch($overrides_file); ?>
     <p>Loaded by config.php:
       <?php if (!$ovState['read']): ?>
         <span class="text-slate-500 font-semibold">nothing to load yet</span>
       <?php elseif (!$ovState['mismatched']): ?>
         <span class="text-emerald-400 font-semibold">yes ✓ <?= (int)$ovState['stated'] ?> setting(s)</span>
+      <?php elseif (!$ovState['ignored']): ?>
+        <span class="text-emerald-400 font-semibold">no — but all <?= (int)$ovState['stated'] ?> of them are read straight from the file ✓</span>
       <?php else: ?>
-        <span class="text-red-400 font-semibold">no ✗ <?= count($ovState['mismatched']) ?> of <?= (int)$ovState['stated'] ?> ignored</span>
+        <span class="text-red-400 font-semibold">no ✗ <?= count($ovState['ignored']) ?> of <?= (int)$ovState['stated'] ?> ignored</span>
       <?php endif; ?>
     </p>
-    <?php $reader = config_overrides_reader_status(); ?>
     <p>config.php:
       <?php if (!$reader['exists']): ?>
         <span class="text-red-400 font-semibold">not found ✗</span>
@@ -409,36 +510,38 @@ require_once __DIR__ . '/../includes/admin_layout.php';
     </p>
     <p class="mt-1 text-[11px] text-slate-500 break-all">File: <code><?= htmlspecialchars($overrides_file) ?></code></p>
     <p class="text-[11px] text-slate-500 break-all">Config: <code><?= htmlspecialchars($reader['file']) ?></code></p>
+    <p class="text-[11px] text-slate-500 break-all">Attempts: <code><?= htmlspecialchars(config_overrides_log_file()) ?></code> — one line per load and per save, key names only, never a value.</p>
   </div>
 </div>
 
-<?php if ($ovState['mismatched']): ?>
+<?php if ($ovState['ignored']): ?>
 <?php /*
-   SAVED, AND NOT BEING READ.
+   SAVED, AND NOT BEING READ — for the settings config.php defines itself.
 
    The line above says the file is present and writable, which is what an operator
-   checks first — and it can be both of those and still take no effect, because the
-   only thing that makes it matter is a `require_once` at the top of config.php, and
-   config.php is EXCLUDED from the FTP deploy. The copy on a live server is edited by
-   hand, so it can be an older one that never learned about this file. The result is
-   the worst shape a failure can have: every save succeeds, every screen keeps saying
-   "not set", and nothing connects the two.
+   checks first — and it can be both of those and still take no effect, because the only
+   thing that makes it matter is a `require_once` at the top of config.php, and config.php
+   is EXCLUDED from the FTP deploy. The copy on a live server is edited by hand, so it can
+   be an older one that never learned about this file.
 
-   So the page names it, along with the keys it can see being ignored — names only,
-   never values (see includes/config_overrides.php).
+   Which of the saved settings that costs is no longer all of them: plan_limits.php and
+   the payment code both read the overrides file themselves, so their keys are in effect
+   either way. What is left is the keys config.php defines itself — the alert address,
+   the Brevo keys, the feature flags, the rate limits — and those are the ones this card
+   names. Names only, never values (see includes/config_overrides.php).
 */ ?>
 <div class="flex items-start gap-3 bg-red-500/10 border border-red-400/25 text-red-200 rounded-2xl px-5 py-4 mb-6 text-sm">
   <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
   <div class="flex-1">
-    <p class="font-semibold text-red-300">Saved — and not loaded: nothing this page writes is taking effect.</p>
+    <p class="font-semibold text-red-300">Saved — and not loaded: <?= count($ovState['ignored']) ?> of <?= (int)$ovState['stated'] ?> setting(s) are being ignored.</p>
     <p class="mt-1.5 text-xs leading-relaxed text-red-200/80">
       <code>storage/config_overrides.php</code> states <?= (int)$ovState['stated'] ?> setting(s) and this request is
-      running with something else for <?= count($ovState['mismatched']) ?> of them:
-      <code><?= htmlspecialchars(implode(', ', array_slice($ovState['mismatched'], 0, 6))) ?></code><?= count($ovState['mismatched']) > 6 ? ' and ' . (count($ovState['mismatched']) - 6) . ' more' : '' ?>.
-      The file is loaded by the first few lines of <code>config.php</code> — the full path is in the panel above,
-      and the card below says whether that copy loads it, and writes the line for you when it does not. Until it
-      does, every value saved here is written and then ignored, and the Payments page will keep reporting them as
-      missing.
+      running with something else for <?= count($ovState['ignored']) ?> of them:
+      <code><?= htmlspecialchars(implode(', ', array_slice($ovState['ignored'], 0, 6))) ?></code><?= count($ovState['ignored']) > 6 ? ' and ' . (count($ovState['ignored']) - 6) . ' more' : '' ?>.
+      Those are the settings <code>config.php</code> defines itself, and its own <code>define()</code>s run above the
+      file — the full path is in the panel above, and the card below says whether this copy loads it, and writes the
+      line for you when it does not. The plan limits and the payment keys are not in that list: both are read
+      straight out of the file, which is why they keep working on a server whose config.php is older than this page.
     </p>
   </div>
 </div>
@@ -488,7 +591,10 @@ if (!$reader['above_defines']): ?>
       <p class="mt-1.5 text-xs leading-relaxed text-red-200/80">
         The copy of <code>config.php</code> on this server does not mention the overrides file at all. It is excluded
         from the FTP deploy — it is where the database credentials live — so a copy that predates this page stays
-        that way however often this page is saved, and every value saved here is written and then ignored.
+        that way however often this page is saved, and the settings it defines itself are written and then ignored.
+        The plan limits still apply (<code>plan_limits.php</code> reads the file itself) and so do the payment keys
+        (the payment code reads them straight out of it) — but the alert address, the feature flags and the rate
+        limits wait for this line.
       </p>
       <form method="POST" action="/admin/settings.php" class="mt-3">
         <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
@@ -719,8 +825,11 @@ if (!$_whopReport['can_accept_payments'] || !$_whopReport['can_create_checkout']
   ];
   foreach ($sections as $section => $section_fields):
       $icon = $section_icons[$section] ?? 'sliders';
+      // A stable id per section, so a link can land on the fields it is about — the
+      // Payments page points at #payments-whop rather than at the top of a long form.
+      $anchor = strtolower(trim((string)preg_replace('/[^A-Za-z0-9]+/', '-', $section), '-'));
   ?>
-  <div class="bg-white/[0.03] hover:bg-white/[0.045] border border-white/5 hover:border-white/10 rounded-2xl p-6 mb-4 transition-all">
+  <div id="<?= htmlspecialchars($anchor) ?>" class="bg-white/[0.03] hover:bg-white/[0.045] border border-white/5 hover:border-white/10 rounded-2xl p-6 mb-4 transition-all">
     <div class="flex items-center gap-2 mb-5">
       <div class="w-7 h-7 rounded-lg bg-purple-500/15 flex items-center justify-center shrink-0">
         <i class="fa-solid fa-<?= $icon ?> text-purple-400 text-xs"></i>
@@ -764,8 +873,13 @@ if (!$_whopReport['can_accept_payments'] || !$_whopReport['can_create_checkout']
              placeholder, which is where a "helpful" preview usually leaks it. What
              the field does say is whether a value is already saved and how long it
              is, which is the one thing worth knowing when re-pasting a key. */
-          $isSet  = defined($key) && (string)constant($key) !== '' && !str_starts_with((string)constant($key), 'YOUR_');
-          $seclen = $isSet ? strlen((string)constant($key)) : 0;
+          // The file first, then the constant: on a server whose config.php predates the
+          // overrides file, the constant is the placeholder and the file is what was saved.
+          $isSet  = _cfg_is_set($key);
+          $seclen = $isSet
+              ? strlen((string)(config_overrides_setting($key)
+                  ?? (defined($key) ? (string)constant($key) : '')))
+              : 0;
         ?>
           <input type="password" autocomplete="new-password" spellcheck="false"
                  name="cfg[<?= $key ?>]" value=""

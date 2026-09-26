@@ -75,14 +75,66 @@ require_once __DIR__ . '/config_overrides.php';
  * nothing tries to authenticate with the literal string "YOUR_WHOP_API_KEY".
  * ═══════════════════════════════════════════════════════════════════════════ */
 
-/** A real configuration value, or '' when it is missing or still a placeholder. */
+/**
+ * The keys this file reads out of storage/config_overrides.php itself.
+ *
+ * WHY THESE EIGHT KEYS ARE READ FROM THE FILE AND NOT FROM A CONSTANT
+ * ───────────────────────────────────────────────────────────────────
+ * Every other setting on the admin page arrives as a constant: config.php loads
+ * storage/config_overrides.php in its first few lines, so the file's define()s win over
+ * everything config.php defines later. That arrangement has one hole, and it is the hole
+ * this product kept falling into: config.php is EXCLUDED from the FTP deploy, because it
+ * holds the database credentials. The copy on a live server is edited by hand, so it can
+ * be older than the code — and an older copy does not load the overrides file at all.
+ * Then every value saved on the settings page is written and then ignored: "saved" on the
+ * page that saved it, "not set" on the page that reports it, and a file that looks right
+ * in the operator's FTP client, because it is right. The settings page can repair that
+ * copy (it has a button for exactly this), but a repair is a click that can be missed,
+ * and the failure it repairs is silent from the operator's side.
+ *
+ * So for these keys the payment code does not wait for that click: it reads the value out
+ * of the file the settings page writes, and a value the file states wins. That is the
+ * same precedence config.php's loader gives the file, applied where a stale config.php
+ * would otherwise quietly break payments — a checkout that cannot say who is paying, a
+ * webhook secret nothing can verify against, a customer charged for a plan nobody can
+ * grant. The alternative is what shipped first, and it is how the webhook secret came to
+ * be set in the repository, absent from the live process, and reported as "not set" by
+ * the very page that had just been used to save it.
+ *
+ * @see config_overrides_mismatch()  which reports the split, so the strip can say which
+ *                                   saved settings a stale config.php is still ignoring
+ * @return list<string>
+ */
+function whop_self_read_keys(): array
+{
+    return [
+        'WHOP_API_KEY',
+        'WHOP_WEBHOOK_SECRET',
+        'WHOP_ACCOUNT_ID',
+        'WHOP_PRO_PLAN_ID',
+        'WHOP_ENT_PLAN_ID',
+        'WHOP_PRO_CHECKOUT_URL',
+        'WHOP_ENT_CHECKOUT_URL',
+        'WHOP_API_BASE',
+    ];
+}
+
+/**
+ * A real configuration value, or '' when it is missing or still a placeholder.
+ *
+ * The overrides file is consulted first — see whop_self_read_keys() for why a value the
+ * settings page saved is the value in use even on a server whose config.php is older than
+ * that page. A key the file says nothing about falls back to the constant, and the YOUR_*
+ * placeholders config.php ships are still not values.
+ */
 function whop_setting(string $constant): string
 {
-    if (!defined($constant)) {
+    $stated = config_overrides_setting($constant);
+    if ($stated === null && !defined($constant)) {
         return '';
     }
 
-    $value = trim((string)constant($constant));
+    $value = trim($stated ?? (string)constant($constant));
     if ($value === '' || str_starts_with($value, 'YOUR_')) {
         return '';
     }
@@ -107,7 +159,12 @@ function whop_account_id(): string
 
 function whop_api_base(): string
 {
-    $base = defined('WHOP_API_BASE') ? trim((string)WHOP_API_BASE) : '';
+    // Same rule as whop_setting(): a value saved on the settings page is the one in use,
+    // even where the running config.php predates the file it was saved into.
+    $base = config_overrides_setting('WHOP_API_BASE')
+         ?? (defined('WHOP_API_BASE') ? trim((string)WHOP_API_BASE) : '');
+    $base = trim($base);
+
     return rtrim($base === '' ? 'https://api.whop.com' : $base, '/');
 }
 
@@ -206,21 +263,24 @@ function whop_config_report(): array
     /*
      * THE BLOCKER THAT IS NOT A MISSING VALUE.
      *
-     * Every sentence above assumes the file that holds these values is being read.
-     * If it is not, then a key reported as "not set" may have been pasted in weeks
-     * ago, and the person reading this page is looking at the wrong problem — the
-     * one failure on this page where doing what it says changes nothing. It is
-     * reported by KEY NAME only, and only when the file disagrees with the running
-     * process; see includes/config_overrides.php for how that is established.
+     * Every sentence above assumes the file that holds these values is being read. For
+     * the payment keys that worry is gone — whop_setting() reads them out of the file
+     * itself, see whop_self_read_keys() — but the same file holds settings this page does
+     * not own: the alert address, the Brevo keys, the feature flags, the rate limits, all
+     * of them defined by config.php itself. On a server whose config.php predates the
+     * overrides file those are saved and then ignored, and the operator who just saved
+     * them is looking at the wrong problem. Reported by KEY NAME only, and only for the
+     * keys nothing reads from the file; see includes/config_overrides.php.
      */
-    $ovState = config_overrides_mismatch();
-    if ($ovState['mismatched'] !== []) {
-        $ignored = count($ovState['mismatched']);
-        $named   = implode(', ', array_slice($ovState['mismatched'], 0, 6))
+    $ovState = config_overrides_mismatch(null, whop_self_read_keys());
+    if ($ovState['ignored'] !== []) {
+        $ignored = count($ovState['ignored']);
+        $named   = implode(', ', array_slice($ovState['ignored'], 0, 6))
                  . ($ignored > 6 ? ' and ' . ($ignored - 6) . ' more' : '');
         $blocking[] = 'storage/config_overrides.php is not being loaded by config.php, so '
-            . $ignored . ' saved setting(s) are being ignored (' . $named . '). Until the require_once at the top of'
-            . ' config.php is restored, no value saved on the settings page can change anything here.';
+            . $ignored . ' saved setting(s) are still on their previous values (' . $named . '). The payment keys'
+            . ' this page reports are read straight out of that file, so they are in effect; the require_once at the'
+            . ' top of config.php has to be restored before the rest of what was saved there is.';
     }
 
     return [

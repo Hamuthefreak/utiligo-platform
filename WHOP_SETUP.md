@@ -74,6 +74,21 @@ Two details that matter:
   names and the API version to register in Whop are on the Settings page too, next
   to the field the signing secret goes in.
 
+**If a save seems to do nothing, open `storage/config_overrides.log`.** The settings
+page appends one line per page load and one per save — the outcome, the byte count, the
+names of the secret fields that came back filled, and PHP's own reason when a write is
+refused. Key names only, never a value. A `load` line with no `save` after it means the
+form never reached the server at all; a `save result=FAILED` line carries the reason; no
+lines at all means the file manager is open on a different copy of the site (the absolute
+path this page writes to is printed on the page itself, above the form).
+
+The payment keys are read **straight out of `storage/config_overrides.php`** by the
+payment code, so a value saved here takes effect even on a server whose `config.php`
+predates this file and never learned to load it — the readiness banner on
+**Admin → Payments** and the strip on **Admin → Settings** still say which saved settings
+are being ignored, and the settings page can insert the missing `require_once` into that
+`config.php` for you.
+
 `BREVO_API_KEY` is editable the same way, under **Brevo** on that page — without
 it `send_email()` falls back to PHP's `mail()`, which shared hosting usually
 disables, and the alerts in §3b would be written to the log and never delivered.

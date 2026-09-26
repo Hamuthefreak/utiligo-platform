@@ -54,6 +54,12 @@ jobs:
             *.zip
             storage/error_log.txt
             storage/error_log.txt.*.bak
+            # The settings page's own record of what it saved, in the folder an
+            # operator checks in FTP. It only ever exists on the server, and a deploy
+            # that uploaded a local copy would overwrite the evidence a live failure
+            # is diagnosed from.
+            storage/config_overrides.log
+            storage/config_overrides.log.*
             config.php
 
           # Print every file being transferred (useful for debugging)
