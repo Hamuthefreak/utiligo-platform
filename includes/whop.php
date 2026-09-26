@@ -60,6 +60,10 @@
 
 require_once __DIR__ . '/plans.php';
 require_once __DIR__ . '/entitlements.php';
+// Is the file that holds these values being loaded at all? See the blocking entry
+// in whop_config_report() — a value that was saved and is being ignored looks
+// exactly like a value nobody entered.
+require_once __DIR__ . '/config_overrides.php';
 
 /* ═══════════════════════════════════════════════════════════════════════════
  * 1. CONFIG
@@ -197,6 +201,26 @@ function whop_config_report(): array
     }
     if (whop_account_id() === '') {
         $blocking[] = 'WHOP_ACCOUNT_ID is not set, so a checkout configuration cannot be created and every purchase falls back to the shareable plan link.';
+    }
+
+    /*
+     * THE BLOCKER THAT IS NOT A MISSING VALUE.
+     *
+     * Every sentence above assumes the file that holds these values is being read.
+     * If it is not, then a key reported as "not set" may have been pasted in weeks
+     * ago, and the person reading this page is looking at the wrong problem — the
+     * one failure on this page where doing what it says changes nothing. It is
+     * reported by KEY NAME only, and only when the file disagrees with the running
+     * process; see includes/config_overrides.php for how that is established.
+     */
+    $ovState = config_overrides_mismatch();
+    if ($ovState['mismatched'] !== []) {
+        $ignored = count($ovState['mismatched']);
+        $named   = implode(', ', array_slice($ovState['mismatched'], 0, 6))
+                 . ($ignored > 6 ? ' and ' . ($ignored - 6) . ' more' : '');
+        $blocking[] = 'storage/config_overrides.php is not being loaded by config.php, so '
+            . $ignored . ' saved setting(s) are being ignored (' . $named . '). Until the require_once at the top of'
+            . ' config.php is restored, no value saved on the settings page can change anything here.';
     }
 
     return [
