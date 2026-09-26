@@ -3,8 +3,10 @@
  *
  * Four jobs, all of them things CSS cannot do on its own:
  *
- *   1. Fade-and-rise the sections that carry [data-reveal] as they scroll in.
- *   2. Count a [data-count] figure up when it first enters the viewport.
+ *   1. Fade the sections that carry [data-reveal] as they scroll in. Opacity
+ *      only, and not at all on a touch device.
+ *   2. Count a [data-count] figure up when it first enters the viewport, on the
+ *      same terms: a phone shows the number, it does not watch it arrive.
  *   3. Keep the sticky nav's appearance in step with the scroll position.
  *   4. Hand revenue_calc.js a `utlTween()` so a slider drag counts rather than
  *      snapping between values.
@@ -13,12 +15,35 @@
  * additive: if it never runs, nothing is hidden (the reveal gate lives in the
  * inline script in <head>, not here) and every number is already in the markup
  * at its final value. Nothing on any page depends on this file having loaded.
+ *
+ * The one judgement it makes is `liteMotion` below. A phone is not a small
+ * desktop: it gets the page, with no entrance animations at all.
  */
 (function () {
   'use strict';
 
   var reduceMotion = window.matchMedia
     && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /**
+   * Is this a device that should be shown content rather than choreography?
+   *
+   * True for a coarse pointer (a finger), for a narrow window, and for anyone who
+   * has asked their system for less motion. The same test is made twice more — by
+   * the pre-paint gate in includes/appearance.php, which must not hide anything on
+   * such a device before this file has even parsed, and by the `LITE MOTION` block
+   * in theme.css, which is what catches a viewport that changes under it. Three
+   * copies of one condition is not ideal; they are kept identical on purpose,
+   * because the failure mode of them disagreeing is a section that stays at
+   * opacity 0.
+   */
+  var liteMotion = !!reduceMotion || (function () {
+    var m = window.matchMedia;
+    if (!m) return false;            // ancient engine: the CSS fail-safes cover it
+    try {
+      return m('(pointer: coarse)').matches || m('(max-width: 640px)').matches;
+    } catch (e) { return false; }
+  })();
 
   /* ── 1 + 2. Reveal and count-up ─────────────────────────────────────
      One observer for both. IntersectionObserver is used rather than a
@@ -29,25 +54,20 @@
 
      Everything unobserves itself once it has fired: these are one-shot
      entrances, and re-animating on scroll-up is the thing that makes a
-     site feel like a slideshow instead of a page. */
-  function observeAll() {
-    /* Groups stagger their own children (a card grid, a feature row) so a
-       three-up does not pop as one block. Each child's delay is written
-       straight into --d, which is what the reveal transition reads — no
-       nth-child bookkeeping in the stylesheet, and it survives the markup
-       being reordered.
+     site feel like a slideshow instead of a page.
 
-       This runs BEFORE the target query below, because a child that is only
-       given [data-reveal] here would otherwise never be observed and would
-       stay at opacity 0 forever. */
-    Array.prototype.forEach.call(document.querySelectorAll('[data-reveal-group]'), function (group) {
-      Array.prototype.forEach.call(group.children, function (child, i) {
-        child.classList.add('utl-reveal');
-        if (!child.style.getPropertyValue('--d')) {
-          child.style.setProperty('--d', (i * 70) + 'ms');
-        }
+     ON A TOUCH DEVICE THERE IS NOTHING TO DO HERE. The numbers are already in
+     the markup at their final value and nothing is hidden, so this only walks
+     the counts to their text and returns: no classes written, no observer
+     created, no per-frame counter started on a device that is already busy
+     compositing a scroll. */
+  function observeAll() {
+    if (liteMotion) {
+      Array.prototype.forEach.call(document.querySelectorAll('[data-count]'), function (el) {
+        finishCounts(el);
       });
-    });
+      return;
+    }
 
     /* Both hooks are honoured. `utl-reveal` is the class the stylesheet
        animates; `data-reveal` is the markup-friendly alias for it, and it is
@@ -56,7 +76,13 @@
        *stylesheet* reads sitting at opacity 0 with nothing observing it: the
        hero rendered as an empty glass box. If you add a third spelling of this
        later, add it here too, because this line is the single place the two
-       names are reconciled. */
+       names are reconciled.
+
+       The stagger is gone. `[data-reveal-group]` used to add the class to each
+       child and write a 70ms-per-child delay into --d, which on a nine-card
+       grid meant the last card arrived 630ms after the first and every one of
+       them was a transition the browser had to keep running. One fade, at the
+       same moment, for everything. */
     Array.prototype.forEach.call(document.querySelectorAll('[data-reveal]'), function (el) {
       el.classList.add('utl-reveal');
     });

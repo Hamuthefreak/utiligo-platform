@@ -198,7 +198,7 @@ $firstName = htmlspecialchars(explode(' ', trim($user['full_name']))[0]);
   .pulse-ring::before{
     content:'';position:absolute;inset:-8px;border-radius:50%;
     border:2px solid var(--accent-a45, rgba(127,227,168,.4));
-    animation:pulse-ring 2s ease-out infinite;
+    animation:pulse-ring 2s ease-out 2;  /* twice, then it stops — see the lite-motion note in theme.css */
   }
 
   /* Color preview swatch */

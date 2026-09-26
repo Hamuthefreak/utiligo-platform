@@ -81,8 +81,9 @@
   --card-bot:    rgba(255,255,255,.028);
   --sheen:       rgba(255,255,255,.16);
 
-  /* The two drifting colour fields behind everything. Kept as tokens so the light
-     theme can make them faint enough to sit under black text. */
+  /* The three colour fields behind everything. Kept as tokens so the light theme
+     can make them faint enough to sit under black text. They are held still — see
+     the note on body::before for why the drift had to go. */
   --aurora-a:    var(--accent-a08, rgba(127,227,168,.07));
   --aurora-b:    rgba(96,142,255,.07);
   --aurora-c:    var(--accent-a05, rgba(127,227,168,.05));
@@ -134,7 +135,6 @@
   --glass-sat:     160%;
   --glass-bright:  1.05;
   --spec-op:       .12;
-  --spec-dur:      13s;
   --glass-radius:  var(--r-card);
 
   --lift:        0 1px 0 rgba(255,255,255,.04) inset,
@@ -151,7 +151,7 @@
   --accent-ink:  #04150c;
 
   /* The accent as a triplet, which is what lets the accent tint something other
-     than a flat fill — a shadow, a range track, the drifting background. This is
+     than a flat fill — a shadow, a range track, the background field. This is
      the line that makes "choose your accent" mean the whole UI moves and not just
      the buttons: every one of the alphas below is computed from this triplet, and
      the stylesheets were rewritten to use them instead of a green literal.
@@ -264,7 +264,6 @@
   --glass-sat:     190%;
   --glass-bright:  1.08;
   --spec-op:       .22;
-  --spec-dur:      9s;
   --glass-radius:  18px;
 
   --blur-card:   26px;
@@ -352,7 +351,6 @@
   --glass-sat:     130%;
   --glass-bright:  1.02;
   --spec-op:       .30;
-  --spec-dur:      15s;
   --glass-radius:  16px;
 
   --blur-card:   18px;
@@ -385,7 +383,7 @@
 
    One hue, chosen by the visitor, that reaches everything: the button fill,
    the active row, the focus ring, the range track, and — through the alpha
-   scale on :root — the shadows and the drifting background. That is why the
+   scale on :root — the shadows and the background field. That is why the
    scale exists at all: "choose an accent" has to mean the UI moves, not just
    the buttons.
 
@@ -480,11 +478,20 @@ body, body.bg-slate-950, body.bg-slate-900 {
   -webkit-font-smoothing: antialiased;
 }
 
-/* Two slow-drifting colour fields. Kept at 4-7% so they read as the room
-   being lit from somewhere rather than as a coloured shape on the page:
-   at this opacity you notice the depth and not the colour. `fixed` so
-   they hold still while the page scrolls under them — a background that
-   scrolls with the content immediately looks like a wallpaper. */
+/* Three colour fields, held still. Kept at 4-7% so they read as the room being
+   lit from somewhere rather than as a coloured shape on the page: at this opacity
+   you notice the depth and not the colour. `fixed` so they hold while the page
+   scrolls under them — a background that scrolls with the content immediately
+   looks like a wallpaper.
+
+   THEY USED TO DRIFT, AND THAT WAS THE MOST EXPENSIVE THING IN THIS FILE. This
+   layer covers the whole viewport and every glass panel on the page is
+   backdrop-filtered *through* it, so while it moved the browser had to re-blur
+   every one of those panels on every frame — the material's cost multiplied by
+   the number of panels, forever, on a surface the visitor is looking at. On a
+   phone it is also a full-screen composited raster held in video memory for the
+   whole visit. A lit room is worth having; a room that breathes is not worth a
+   framerate. */
 body::before {
   content: '';
   position: fixed;
@@ -495,12 +502,6 @@ body::before {
     radial-gradient(46rem 32rem at 18% -6%,  var(--aurora-a), transparent 62%),
     radial-gradient(40rem 30rem at 88% 8%,   var(--aurora-b), transparent 60%),
     radial-gradient(52rem 34rem at 62% 104%, var(--aurora-c), transparent 64%);
-  animation: utl-drift 34s var(--ease) infinite alternate;
-}
-@keyframes utl-drift {
-  0%   { transform: translate3d(0,0,0)        scale(1);    }
-  50%  { transform: translate3d(-1.6%,1.4%,0) scale(1.05); }
-  100% { transform: translate3d(1.8%,-1.2%,0) scale(1.02); }
 }
 
 /* ── The wordmark ─────────────────────────────────────────────────────
@@ -819,8 +820,10 @@ select.rounded-full, textarea.rounded-full,
   box-shadow: var(--lift), inset 0 1px 0 var(--sheen);
   backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
   -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(var(--glass-sat)) brightness(var(--glass-bright));
+  /* No `border-radius` here on purpose: the shape used to open a couple of
+     pixels on hover, and animating a radius on a backdrop-filtered element
+     re-blurs the surface for the whole transition. */
   transition: transform 240ms var(--ease),
-              border-radius 340ms var(--ease-out),
               box-shadow 240ms var(--ease),
               background-color 240ms var(--ease);
 }
@@ -852,10 +855,17 @@ select.rounded-full, textarea.rounded-full,
   z-index: 1;
 }
 
-/* The specular band. A wide diagonal smear of light that spends most of its
-   cycle off the surface: the pause is what makes it read as a reflection
-   crossing at intervals rather than as a shimmer that never stops — a highlight
-   that is always on is not a highlight, it is a gradient. */
+/* The specular band: the sweep of light that crosses a surface when you point at
+   it. One shot, on hover, and only where there is a pointer to hover with.
+
+   WHAT THIS REPLACED. The band used to be on a loop — `utl-spec 13s infinite` on
+   every glass surface in the product (79 of them) — and each one of those is a
+   repaint of that element on every frame for as long as the page is open, because
+   an animated background-position is not something the compositor can take over.
+   Nothing was arriving: the light moved at 4% opacity, always, which is not a
+   reflection but a screensaver, and it is the first thing a phone GPU drops frames
+   on. Now the band sits at opacity 0 — invisible, and free — until a pointer is on
+   the surface, and then it crosses once. */
 .utl-card::before,
 .glass::before,
 .utl-glass::before {
@@ -872,28 +882,26 @@ select.rounded-full, textarea.rounded-full,
   background-size: 240% 100%;
   background-position: 135% 0;
   opacity: 0;
-  animation: utl-spec var(--spec-dur) var(--ease-in-out, ease) infinite;
   z-index: 2;
 }
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  .utl-card:hover::before,
+  .glass:hover::before,
+  .utl-glass:hover::before {
+    animation: utl-spec 1.5s var(--ease-in-out, ease) 1;
+  }
+}
 @keyframes utl-spec {
-  0%   { background-position: 135% 0; opacity: 0; }
-  9%   { opacity: 1; }
-  40%  { background-position: -35% 0; opacity: 1; }
-  54%  { opacity: 0; }
-  100% { background-position: 135% 0; opacity: 0; }
+  0%   { background-position: 135% 0;  opacity: 0; }
+  14%  { opacity: 1; }
+  100% { background-position: -55% 0; opacity: 0; }
 }
 
-/* Pointed at, the material gets thicker and the light crosses faster — the two
-   cues together are what makes it feel like a surface responding rather than a
-   style toggling. The shape also stretches: the radius opens a couple of pixels,
-   which reads as the drop relaxing under your hand. */
-.utl-card:hover,
-.glass:hover,
-.utl-glass:hover { --spec-dur: 3.2s; }
+/* Pointed at, the material gets thicker. The shape used to stretch as well, and
+   that is gone with the rest of the per-frame work — see the transition above. */
 .utl-glass--float:hover,
 .utl-glass.is-pressable:hover {
   transform: translateY(-2px) scale(1.002);
-  border-radius: calc(var(--glass-radius) + 3px);
   box-shadow: var(--lift), 0 26px 60px -34px var(--accent-glow), inset 0 1px 0 var(--sheen);
 }
 
@@ -908,8 +916,9 @@ select.rounded-full, textarea.rounded-full,
 
 /* The displacement filter is a full-surface resample, and it is the one part of
    the material a phone GPU notices, so the warp is desktop-only. Everything that
-   makes it glass — the blur, the fill, the rim, the travelling light — is still
-   there on a phone; only the bend is not. */
+   makes it glass — the blur, the fill, the rim — is still there on a phone; only
+   the bend is not, and the specular (which is hover-bound, so a touch device never
+   sees it anyway) is unaffected. */
 /* ── THE WARP ─────────────────────────────────────────────────────────────
    The refraction layer: the backdrop is displaced by the SVG noise field, which
    is what bends what is behind the panel instead of merely blurring it. It is
@@ -1015,8 +1024,12 @@ select.rounded-full, textarea.rounded-full,
               border-radius 320ms var(--ease-out),
               box-shadow var(--dur) var(--ease),
               background-color var(--dur) var(--ease);
-  will-change: transform;
 }
+/* No `will-change: transform` here, deliberately. It was on every link-card, and
+   a standing will-change promotes all of them to their own composited layer for
+   the life of the page — layer memory and a compositor that has to consider each
+   one on every frame — to save a raster on a 200ms hover. It is the kind of hint
+   that costs more than the thing it accelerates. */
 .utl-lift:hover {
   transform: translateY(-3px);
   box-shadow: var(--lift), 0 22px 50px -30px var(--accent-glow);
@@ -1415,25 +1428,11 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
   transition: background-color 260ms var(--ease), border-color 260ms var(--ease),
               box-shadow 260ms var(--ease), padding 260ms var(--ease);
 }
-/* The same travelling highlight as a panel, on the one surface the visitor looks
-   at on every page. Behind the links by paint order (z-index: -1 inside the
-   bar's own stacking context) rather than across them — light on a surface
-   passes under what is printed on it, not over. */
-.utl-nav::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background: linear-gradient(104deg,
-    transparent 34%,
-    rgba(255,255,255,calc(var(--spec-op) * .7)) 48%,
-    transparent 62%);
-  background-size: 220% 100%;
-  background-position: 135% 0;
-  opacity: 0;
-  animation: utl-spec var(--spec-dur) var(--ease-in-out, ease) infinite;
-}
+/* The nav had a copy of the travelling highlight, sweeping across the one
+   surface a visitor looks at on every page. It is gone: of everything on this
+   list a permanent backdrop-filtered bar with a light moving across it is the
+   most expensive thing to keep animating, and a search bar that shimmers while
+   somebody is typing in it is decoration arguing with the page. */
 /* Once the page has moved, the bar darkens and grows a shadow so the
    content sliding under it reads as *under* it. */
 .utl-nav.is-scrolled {
@@ -1465,33 +1464,54 @@ input[type="checkbox"], input[type="radio"] { accent-color: var(--accent); }
    MOTION
    ═══════════════════════════════════════════════════════════════════ */
 
-/* Reveal-on-scroll. The `js-reveal` gate is set by a one-line inline
-   script in <head>, before first paint: without it an element that never
-   gets its observer would stay invisible forever, which is a bug that
-   only shows up on the one visitor whose JS failed. */
+/* Reveal-on-scroll: one fade, 220ms, and nothing else.
+
+   The `js-reveal` gate is set by a one-line inline script in <head>, before the
+   first paint: without it an element that never gets its observer would stay
+   invisible forever, which is a bug that only shows up on the one visitor whose
+   JS failed.
+
+   TWO THINGS IT NO LONGER DOES, both of them measured against a section that is
+   a screen tall. It no longer rises 16px — movement is what made a page of these
+   feel like it was being thrown at the reader, and a transform on an element that
+   also carries a backdrop-filter re-blurs that element for the whole transition.
+   Opacity alone is composited, so it costs the compositor a blend and nothing
+   else. And it no longer staggers a grid's children (`transition-delay: var(--d)`
+   is gone): a nine-card grid used to take 630ms to finish arriving, which is
+   longer than anybody spends looking at it, and every one of those cards was a
+   separate transition the phone had to keep on the books. */
 .js-reveal .utl-reveal {
   opacity: 0;
-  transform: translateY(16px);
-  transition: opacity 640ms var(--ease-out), transform 640ms var(--ease-out);
-  transition-delay: var(--d, 0ms);
+  transition: opacity 220ms var(--ease-out);
 }
-.js-reveal .utl-reveal.is-in { opacity: 1; transform: none; }
-/* Children of a staggered group come up in sequence rather than together;
-   ui-theme.js writes the per-child delay into --d when it wires the group. */
+.js-reveal .utl-reveal.is-in { opacity: 1; }
+
+/* ── LITE MOTION ──────────────────────────────────────────────────────────
+   What a touch device gets: the page, without the choreography.
+
+   `pointer: coarse` is the real test and the width is kept beside it for the
+   narrow desktop window (see the warp, which uses the same pair). On a phone
+   every one of these is a cost paid on a GPU that is also decoding images and
+   compositing a scroll, and the reveal in particular is a fade that nobody has
+   ever asked for on the device they are holding — it is the first thing to go.
+
+   ui-theme.js makes the same judgement before it hides anything, and
+   includes/appearance.php makes it before it sets the gate, so on a phone there
+   is normally nothing hidden to reveal. This rule is what happens when the
+   viewport changes under it — a window dragged narrow, a tablet turned — and it
+   is also what makes the decision readable in one place. */
+@media (pointer: coarse), (max-width: 640px) {
+  .js-reveal .utl-reveal { opacity: 1 !important; transition: none !important; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   html { scroll-behavior: auto; }
-  .js-reveal .utl-reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
-  body::before { animation: none; }
+  .js-reveal .utl-reveal { opacity: 1 !important; transition: none !important; }
   .utl-lift:hover, .utl-btn:hover { transform: none; }
   .utl-pulse { animation: none; }
-  /* The specular stops *off the surface*, not mid-sweep: a band frozen halfway
-     across a panel is a permanent bright smear, which is worse than no motion
-     at all. */
-  .utl-card::before, .glass::before, .utl-glass::before, .utl-nav::after {
-    animation: none !important;
-    opacity: 0 !important;
-  }
+  /* Everything else that moves is either one-shot or hover-bound now (see the
+     specular band, whose own media query asks for no-preference before it will
+     start), so this is the belt to that pair of braces. */
   * { animation-duration: .01ms !important; transition-duration: .01ms !important; }
 }
 

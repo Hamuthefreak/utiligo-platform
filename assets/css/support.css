@@ -236,22 +236,11 @@
   mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   mask-composite: exclude;
 }
-.sp-panel::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 2;
-  background: linear-gradient(112deg,
-    transparent 30%,
-    rgba(255, 255, 255, var(--spec-op, .12)) 46%,
-    transparent 64%);
-  background-size: 240% 100%;
-  background-position: 135% 0;
-  opacity: 0;
-  animation: utl-spec var(--spec-dur, 13s) ease-in-out infinite;
-}
+/* The panel carried a copy of theme.css's travelling highlight, on a loop. It is
+   gone with the rest of them: this panel sits open over a page somebody is reading,
+   and a light crossing it forever is the most expensive decoration in the product
+   and the one most likely to be read as a loading state. The panel keeps its blur,
+   its rim and its fill — only the sweep is missing. */
 .sp-panel[hidden] { display: none; }
 
 .sp-head {

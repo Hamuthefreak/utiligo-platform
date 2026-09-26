@@ -112,9 +112,12 @@ require_once __DIR__ . '/includes/header.php';
      .utl-card   a glass panel with a hairline top edge and a real shadow
      .utl-lift   the card is a link: it rises 3px and its edge warms to the
                  accent, in 200ms, on one shared easing curve
-     data-reveal sections arrive with a 16px rise as they enter the viewport
-     data-reveal-group  the children of a grid arrive in sequence
+     data-reveal a section fades in, by opacity alone, as it enters the viewport
      data-count  a figure counts up the first time it is scrolled into view
+
+   Neither of the last two runs on a phone: ui-theme.js decides once whether
+   this is a device that should be shown content or choreography, and a touch
+   device gets the page with nothing hidden and no counting.
 
    The two exceptions, both deliberate: the revenue calculator is the one
    panel that is *framed* rather than lifted (it is the page's centrepiece and
@@ -126,12 +129,12 @@ require_once __DIR__ . '/includes/header.php';
 <section class="utl-hero max-w-6xl mx-auto px-4 sm:px-6 pt-10 sm:pt-16">
   <div class="utl-card px-6 py-16 sm:px-12 sm:py-24 text-center">
     <span class="utl-eyebrow is-accent utl-reveal">For Freelancers &amp; Agencies</span>
-    <h1 class="utl-display mt-7 mb-7 utl-reveal" style="--d:70ms">
+    <h1 class="utl-display mt-7 mb-7 utl-reveal">
       Find Clients. Build Websites. <span class="whitespace-nowrap"><span class="underline decoration-white/20">Get Paid.</span></span>
     </h1>
-    <p class="utl-lede max-w-2xl mx-auto mb-5 utl-reveal" style="--d:140ms">Utiligo finds local businesses without a website, then generates a professional site for them in 60 seconds. No lock-in &mdash; export a clean ZIP anytime.</p>
-    <p class="text-sm utl-body max-w-2xl mx-auto mb-11 utl-reveal" style="--d:180ms">Lead generation for freelancers &amp; agencies: search any city and industry for businesses with no website of their own &mdash; then pitch them a site you build in under a minute.</p>
-    <div class="utl-reveal" style="--d:220ms">
+    <p class="utl-lede max-w-2xl mx-auto mb-5 utl-reveal">Utiligo finds local businesses without a website, then generates a professional site for them in 60 seconds. No lock-in &mdash; export a clean ZIP anytime.</p>
+    <p class="text-sm utl-body max-w-2xl mx-auto mb-11 utl-reveal">Lead generation for freelancers &amp; agencies: search any city and industry for businesses with no website of their own &mdash; then pitch them a site you build in under a minute.</p>
+    <div class="utl-reveal">
       <a href="/register.php" class="utl-btn utl-btn--primary utl-btn--lg">Start Finding Clients Free &rarr;</a>
     </div>
   </div>
@@ -139,7 +142,7 @@ require_once __DIR__ . '/includes/header.php';
 
 <!-- LEAD GENERATION BENEFITS -->
 <section id="leadgen" class="max-w-6xl mx-auto px-4 sm:px-6 py-10 md:py-16">
-  <div class="grid md:grid-cols-3 gap-5" data-reveal-group>
+  <div class="grid md:grid-cols-3 gap-5">
     <div class="utl-card utl-lift p-7">
       <span class="utl-icon-tile text-xl mb-5"><i class="fa-solid fa-shop"></i></span>
       <h3 class="font-semibold mb-2">Local businesses without a website</h3>
@@ -175,7 +178,7 @@ require_once __DIR__ . '/includes/header.php';
     <span class="utl-eyebrow">Unique to Utiligo</span>
     <h2 class="utl-h2 mt-4">See What You Could Earn</h2>
   </div>
-  <div class="utl-card p-7 sm:p-11 utl-reveal" style="--d:80ms">
+  <div class="utl-card p-7 sm:p-11 utl-reveal">
     <div class="mb-9">
       <label class="flex justify-between items-baseline text-sm mb-3" for="sitesSlider">
         <span class="utl-body">Websites sold per month</span>
@@ -226,7 +229,7 @@ require_once __DIR__ . '/includes/header.php';
     <span class="utl-eyebrow">The Process</span>
     <h2 class="utl-h2 mt-4">From Search to Sale in 3 Steps</h2>
   </div>
-  <div class="grid md:grid-cols-3 gap-10 md:gap-8" data-reveal-group>
+  <div class="grid md:grid-cols-3 gap-10 md:gap-8">
     <div class="text-center">
       <div class="utl-step mb-5">1</div>
       <h3 class="font-semibold text-lg mb-2">Find the Gaps</h3>
@@ -251,7 +254,7 @@ require_once __DIR__ . '/includes/header.php';
     <span class="utl-eyebrow">Real Results</span>
     <h2 class="utl-h2 mt-4">People Are Already Winning With This</h2>
   </div>
-  <div class="grid md:grid-cols-3 gap-5" data-reveal-group>
+  <div class="grid md:grid-cols-3 gap-5">
     <?php foreach ([
       ['J','Jordan M.','Freelance Web Designer','Found 12 leads in my first search, closed 2 within a week. This basically does the prospecting for you.'],
       ['P','Priya S.','Digital Agency Owner','The site generation is insanely fast. I close deals same day now — show the preview, they say yes, done.'],
@@ -274,7 +277,7 @@ require_once __DIR__ . '/includes/header.php';
   <div class="text-center mb-14 utl-reveal">
     <h2 class="utl-h2">Everything You Need. Nothing You Don&rsquo;t.</h2>
   </div>
-  <div class="grid md:grid-cols-3 gap-5" data-reveal-group>
+  <div class="grid md:grid-cols-3 gap-5">
     <?php foreach ([
       ['fa-magnifying-glass', 'AI Lead Finder',        'Search any city, any industry. Find businesses with no website in seconds.'],
       ['fa-bolt',             '60-Second Site Builder', 'Enter business info, get a complete, deployable website instantly.'],
@@ -329,7 +332,7 @@ require_once __DIR__ . '/includes/header.php';
              - focus-visible is preserved exactly: the CTA takes a ring, and
                the card takes a ring on focus-within, so tabbing through the
                page shows you where you are. */ ?>
-  <div class="grid md:grid-cols-3 gap-5 items-stretch" data-reveal-group>
+  <div class="grid md:grid-cols-3 gap-5 items-stretch">
 
     <!-- FREE -->
     <div class="relative flex flex-col utl-card utl-lift p-8 focus-within:border-white/40">
@@ -405,7 +408,7 @@ require_once __DIR__ . '/includes/header.php';
     <span class="utl-eyebrow">Questions</span>
     <h2 class="utl-h2 mt-4">Frequently Asked Questions</h2>
   </div>
-  <div class="space-y-3" data-reveal-group>
+  <div class="space-y-3">
     <?php foreach ($faqs as [$q,$a]): ?>
     <details class="utl-card p-5 group">
       <summary class="cursor-pointer font-semibold text-sm flex justify-between items-center list-none">

@@ -101,7 +101,10 @@
   inset: -8px;
   border-radius: 50%;
   border: 1px solid var(--hair-2);
-  animation: ob-pulse-ring 2s ease-in-out 0.7s infinite;
+  /* Twice, then stop. A ring that pulses forever is a repaint on a loop for as long
+     as the dialog is open — and it is the dialog somebody is reading, so the pulse
+     is competing with the text. */
+  animation: ob-pulse-ring 2s ease-in-out 0.7s 2;
 }
 .ob-logo-ring::after {
   content: '';
@@ -109,7 +112,7 @@
   inset: -18px;
   border-radius: 50%;
   border: 1px solid var(--hair);
-  animation: ob-pulse-ring 2s ease-in-out 1s infinite;
+  animation: ob-pulse-ring 2s ease-in-out 1s 2;
 }
 .ob-logo-icon {
   font-size: 2rem;
