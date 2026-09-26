@@ -125,11 +125,21 @@ function admin_csrf_token(string $form): string
     return $token;
 }
 
-function admin_csrf_verify(string $form, ?string $token): bool
+/**
+ * Verify a token, and decide how long a form may sit on screen before it goes stale.
+ *
+ * $ttlSeconds is a parameter because one hour is the wrong answer for the settings page:
+ * the values on it are copied out of two other dashboards, so the operator leaves the
+ * form open while they go and find a key. The refusal that follows is correct and reads
+ * as "the save did nothing" — see admin/settings.php, which asks for six hours. Every
+ * other caller keeps the default, and the token is still bound to the session, to one
+ * form, and consumed by the save that uses it.
+ */
+function admin_csrf_verify(string $form, ?string $token, int $ttlSeconds = 3600): bool
 {
     $stored = $_SESSION['admin_csrf'][$form] ?? null;
     if (!$stored || !$token) return false;
-    if (time() - $stored['ts'] > 3600) {
+    if (time() - $stored['ts'] > $ttlSeconds) {
         unset($_SESSION['admin_csrf'][$form]);
         return false;
     }

@@ -115,15 +115,55 @@ function config_overrides_defines(?string $path = null): array
 }
 
 /**
- * The keys the file states that the running process disagrees with.
+ * The value the overrides FILE states for one key, or null when it states nothing.
  *
- * `mismatched` non-empty means the file is there and is not being loaded. An empty
- * `mismatched` with `read` true means the two agree, which is the state every save
- * has to end in for the values to mean anything.
+ * config_overrides_defines() answers for the whole file; this is that answer for one
+ * key, in the shape a caller can act on. null means "the file has no opinion", which is
+ * a different fact from "the file says the empty string", and the difference is the
+ * whole point: a reader that prefers the file has to fall back to the constant when the
+ * file says nothing, and honour the file — an empty value included — when it does.
  *
- * @return array{file: string, read: bool, stated: int, mismatched: list<string>}
+ * Parsed at most once per file per process, and the parse is keyed by the file's size and
+ * modification time rather than by its path: a long-lived process — the test suite, a
+ * worker that outlives a request — must not keep answering with the file it read before
+ * the settings page rewrote it. A stat costs nothing beside the read and the parse it
+ * saves.
  */
-function config_overrides_mismatch(?string $path = null): array
+function config_overrides_setting(string $key, ?string $path = null): ?string
+{
+    static $files = [];
+
+    $path  = $path ?? config_overrides_file();
+    $stamp = is_file($path) ? ((int)@filemtime($path) . ':' . (int)@filesize($path)) : 'missing';
+    if (!isset($files[$path]) || $files[$path]['stamp'] !== $stamp) {
+        $files[$path] = ['stamp' => $stamp, 'defines' => config_overrides_defines($path)];
+    }
+    if (!array_key_exists($key, $files[$path]['defines'])) {
+        return null;
+    }
+
+    return config_overrides_canonical($files[$path]['defines'][$key]);
+}
+
+/**
+ * The keys the file states that the running process disagrees with — and which of those
+ * nothing reads.
+ *
+ * `mismatched` non-empty means the file is there and the constants are not what it says.
+ * An empty `mismatched` with `read` true means the two agree, which is the state every
+ * save has to end in for every value to mean anything.
+ *
+ * `ignored` is the half an operator acts on: the same list, minus the keys the caller
+ * resolves out of the file at the point of use. A caller that reads a key itself passes
+ * it in $read_at_use, because "the constant disagrees" and "the value is being ignored"
+ * stopped being the same sentence once the payment code started reading its keys straight
+ * out of the file (see whop_self_read_keys()): a stale config.php cannot ignore those,
+ * while everything config.php defines itself it still can.
+ *
+ * @param list<string> $read_at_use keys the calling code reads from the file itself
+ * @return array{file: string, read: bool, stated: int, mismatched: list<string>, ignored: list<string>}
+ */
+function config_overrides_mismatch(?string $path = null, array $read_at_use = []): array
 {
     $path   = $path ?? config_overrides_file();
     $stated = config_overrides_defines($path);
@@ -146,6 +186,7 @@ function config_overrides_mismatch(?string $path = null): array
         'read'       => is_file($path),
         'stated'     => count($stated),
         'mismatched' => $names,
+        'ignored'    => array_values(array_diff($names, $read_at_use)),
     ];
 }
 
@@ -248,6 +289,126 @@ function config_overrides_write_probe(?string $dir = null): array
         'bytes' => $written === false ? false : (int)$written,
         'mtime' => $written === false ? 0 : (int)@filemtime($file),
         'error' => $written === false ? (string)($last['message'] ?? 'file_put_contents() returned false') : '',
+    ];
+}
+
+/**
+ * Where save attempts are recorded: beside the file they are about.
+ *
+ * It exists for the complaint this page keeps getting — "I saved it and nothing changed"
+ * — which has four causes that look identical from a browser: the POST never arrived, the
+ * security token was refused, the write was refused, or the operator's file manager is
+ * open on a different copy of the site. One line per attempt, in the folder they are
+ * already looking at, separates all four without anyone having to guess.
+ */
+function config_overrides_log_file(?string $dir = null): string
+{
+    return ($dir ?? dirname(config_overrides_file())) . '/config_overrides.log';
+}
+
+/** PHP's own reason, for an operator who has to know which permission is wrong. */
+function config_overrides_last_error(string $fallback): string
+{
+    $last = error_get_last();
+
+    return is_array($last) && !empty($last['message']) ? (string)$last['message'] : $fallback;
+}
+
+/**
+ * One line about one attempt — and never a value.
+ *
+ * KEY NAMES, COUNTS AND PATHS ONLY. Not a value, not a prefix, not a length: this file
+ * holds the payment keys and the database password, and a log pasted into a support
+ * thread is exactly where those would end up. Same rule as the readiness strip.
+ *
+ * Best effort, deliberately. A storage/ that refuses this write refuses the save too, and
+ * the page says what happened; a log that cannot be written must not become a second
+ * unexplained failure.
+ */
+function config_overrides_audit(string $event, string $detail = '', ?string $dir = null): void
+{
+    $file = config_overrides_log_file($dir);
+
+    // Bounded: this is appended to on every load of the settings page, and a host that
+    // truncates a runaway log truncates it at the wrong moment.
+    if (is_file($file) && ($size = (int)@filesize($file)) > 65536) {
+        $tail = (string)@file_get_contents($file, false, null, $size - 32768);
+        $cut  = strpos($tail, "\n");
+        @file_put_contents($file, $cut === false ? '' : substr($tail, $cut + 1));
+    }
+
+    @file_put_contents(
+        $file,
+        gmdate('Y-m-d\TH:i:s\Z') . ' ' . $event . ($detail !== '' ? ' ' . $detail : '') . "\n",
+        FILE_APPEND
+    );
+}
+
+/**
+ * Write the overrides file, and say precisely what happened when it could not.
+ *
+ * file_put_contents() on a path whose folder is missing fails with a warning nobody
+ * reads and a boolean, and the operator is then told to "check permissions" — which is
+ * one of several different things that can be wrong, and only one of them is a permission.
+ * So this tries what actually helps, in order:
+ *
+ *   • make the folder if it is not there (storage/ ships with the deploy; this is for the
+ *     hand-made copy of a site, where the folder often is not);
+ *   • write the file;
+ *   • if that is refused, write beside it and rename over it — a host that allows a file
+ *     to be created but not replaced answers to this and not to the first attempt;
+ *   • and report PHP's own reason, verbatim, because "Permission denied" is a fact an
+ *     operator can act on, where "check directory permissions" is advice.
+ *
+ * @return array{ok: bool, bytes: int, error: string, via: string, created_dir: bool, file: string}
+ */
+function config_overrides_write(string $path, string $php): array
+{
+    $dir     = dirname($path);
+    $madeDir = false;
+    if (!is_dir($dir)) {
+        $madeDir = (bool)@mkdir($dir, 0775, true);
+    }
+
+    if (function_exists('error_clear_last')) {
+        error_clear_last();
+    }
+    $bytes = @file_put_contents($path, $php);
+    $error = $bytes === false ? config_overrides_last_error('the file was refused with no reason given') : '';
+    $via   = 'file_put_contents';
+
+    if ($bytes === false) {
+        $tmp = $path . '.tmp-' . bin2hex(random_bytes(4));
+        if (function_exists('error_clear_last')) {
+            error_clear_last();
+        }
+        $wrote = @file_put_contents($tmp, $php);
+        if ($wrote === false) {
+            $error .= ' — and writing a temporary file beside it: '
+                . config_overrides_last_error('that was refused too');
+            @unlink($tmp);
+        } elseif (!@rename($tmp, $path)) {
+            $error .= ' — and replacing the file with it: '
+                . config_overrides_last_error('rename() was refused');
+            @unlink($tmp);
+        } else {
+            $bytes = $wrote;
+            $error = '';
+            $via   = 'a temporary file, renamed over it';
+        }
+    }
+
+    if ($bytes !== false && function_exists('opcache_invalidate')) {
+        opcache_invalidate($path, true);
+    }
+
+    return [
+        'ok'          => $bytes !== false,
+        'bytes'       => $bytes === false ? 0 : (int)$bytes,
+        'error'       => $error,
+        'via'         => $via,
+        'created_dir' => $madeDir,
+        'file'        => $path,
     ];
 }
 

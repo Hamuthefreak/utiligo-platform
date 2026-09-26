@@ -107,6 +107,82 @@ t_is(whop_setting('WHOP_TEST_PLACEHOLDER'), '', 'a YOUR_* placeholder counts as 
 t_is(whop_setting('WHOP_TEST_NOT_DEFINED_ANYWHERE'), '', 'and so does a constant that does not exist');
 t_is(whop_setting('WHOP_PRO_PLAN_ID'), WHOP_PRO_PLAN_ID, 'a real value comes through trimmed');
 
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 1b. A value saved on the settings page governs payments, even where the running
+ *     config.php cannot load it
+ *
+ * THE FAILURE, IN ONE SENTENCE
+ * ────────────────────────────
+ * config.php is EXCLUDED from the FTP deploy, because it holds the database
+ * credentials. The copy on a live server is edited by hand, so it can be older than the
+ * code — and a copy that old never learned to load storage/config_overrides.php. Then
+ * every value saved on the admin settings page is written and ignored: the secret is in
+ * the file, the placeholder is in the running process, and the page that just saved it
+ * reports it as "not set".
+ *
+ * The constants cannot be replaced inside a running process, so this disagreement cannot
+ * be arranged with putenv(): it is arranged the way it happens on the server. The file
+ * states one secret and one plan id, THIS process was configured with others, and the
+ * payment code has to use the file's. The file is put back afterwards — the harness
+ * refuses to run with a stray one, and it decides the plan limits for every later case.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+t_section('A secret saved on the settings page is the one the webhook verifies with');
+
+t_is(whop_self_read_keys(), [
+    'WHOP_API_KEY', 'WHOP_WEBHOOK_SECRET', 'WHOP_ACCOUNT_ID',
+    'WHOP_PRO_PLAN_ID', 'WHOP_ENT_PLAN_ID',
+    'WHOP_PRO_CHECKOUT_URL', 'WHOP_ENT_CHECKOUT_URL', 'WHOP_API_BASE',
+], 'the keys the payment code reads out of the saved file are named in one place');
+
+$savedFile   = dirname(__DIR__, 2) . '/storage/config_overrides.php';
+$savedBefore = is_file($savedFile) ? (string)file_get_contents($savedFile) : null;
+$savedSecret = 'ws_saved_from_the_settings_page';
+$savedPlanId = 'plan_saved_from_the_settings_page';
+
+file_put_contents(
+    $savedFile,
+    "<?php\ndefine('WHOP_WEBHOOK_SECRET', '{$savedSecret}');\ndefine('WHOP_PRO_PLAN_ID', '{$savedPlanId}');\n"
+);
+
+try {
+    t_is(t_whop_secret(), WHOP_WEBHOOK_SECRET,
+        'this process is still running with the value it was configured with — which is the live failure');
+    t_is(whop_webhook_secret(), $savedSecret,
+        'and the secret the settings page saved is the one the endpoint verifies with');
+    t_is(whop_plan_id_for('pro'), $savedPlanId,
+        'and the plan id saved there is the one a payment for Pro is matched against');
+    t_is(whop_plan_for_id($savedPlanId), 'pro',
+        'so a delivery for it maps to Pro rather than to nothing');
+
+    $signedBody = json_encode(t_whop_payment_event(0, $savedPlanId, 'mber_from_file', 'mem_from_file'));
+    $signedAt   = time();
+
+    $accepted = whop_verify_webhook(
+        $signedBody,
+        t_whop_headers($signedBody, 'msg_from_file', $signedAt, $savedSecret),
+        '',
+        $signedAt
+    );
+    t_ok($accepted['ok'], 'a delivery signed with the saved secret is verified, so the payment can still be applied');
+
+    $stale = whop_verify_webhook(
+        $signedBody,
+        t_whop_headers($signedBody, 'msg_from_file', $signedAt, t_whop_secret()),
+        '',
+        $signedAt
+    );
+    t_is($stale['ok'], false, 'while one signed with the value config.php still holds is refused — which is the bug');
+} finally {
+    if ($savedBefore === null) {
+        @unlink($savedFile);
+    } else {
+        @file_put_contents($savedFile, $savedBefore);
+    }
+}
+
+t_is(whop_webhook_secret(), t_whop_secret(), 'and with no saved file in place, the configured value is used again');
+
 t_section('Where a customer is sent to pay, and to manage');
 
 t_is(whop_plan_link('pro'), WHOP_PRO_CHECKOUT_URL, 'the shareable Pro link is the configured one');

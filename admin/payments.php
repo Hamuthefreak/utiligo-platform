@@ -446,12 +446,12 @@ $_alertWorks  = $_alertTo !== '' && $_alertMailer;
       <code>ADMIN_EMAIL</code> is set to <?= htmlspecialchars($_alertTo) ?>, but there is no mail API key, so
       <code>send_email()</code> falls back to PHP's own mail function, which shared hosting usually disables —
       the alert would be written to <code>storage/php_errors.log</code> and never arrive. Paste a Brevo key under
-      <a href="/admin/settings.php" class="underline">Settings → Brevo</a>.
+      <a href="/admin/settings.php#brevo" class="underline">Settings → Brevo</a>.
     <?php else: ?>
       <span class="font-semibold text-amber-300">Nothing is emailed.</span>
       <code>ADMIN_EMAIL</code> is empty, so a payment that could not be applied would reach
       <code>storage/php_errors.log</code> and nobody else. Set it under
-      <a href="/admin/settings.php" class="underline">Settings → Alerts</a>.
+      <a href="/admin/settings.php#alerts" class="underline">Settings → Alerts</a>.
     <?php endif; ?>
   </div>
 </div>
@@ -469,7 +469,7 @@ $_alertWorks  = $_alertTo !== '' && $_alertMailer;
       </li>
     <?php endforeach; ?>
   </ul>
-  <a href="/admin/settings.php" class="inline-flex items-center gap-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 px-4 py-2 rounded-xl font-semibold text-xs mt-4 transition">
+  <a href="/admin/settings.php#payments-whop" class="inline-flex items-center gap-2 bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-200 px-4 py-2 rounded-xl font-semibold text-xs mt-4 transition">
     <i class="fa-solid fa-key"></i> Set the values in Settings
   </a>
 </div>

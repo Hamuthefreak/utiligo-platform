@@ -154,6 +154,13 @@ require_once __DIR__ . '/../includes/lead_activity_log.php';
 $trackedLog = dirname(__DIR__) . '/storage/php_errors.log';
 $trackedLogBefore = is_file($trackedLog) ? (int)filesize($trackedLog) : -1;
 
+// The settings page records every load and every save of its own, in storage/ beside the
+// file it writes: that record is the point of it, and it is the one thing an operator can
+// read in FTP when the page and the server disagree. It has no business outliving a test
+// run, though — an untracked file in storage/ is exactly what a deploy then carries.
+$overridesLog       = dirname(__DIR__) . '/storage/config_overrides.log';
+$overridesLogBefore = is_file($overridesLog);
+
 echo "\n\033[1mUtiligo payment-path tests\033[0m  (PHP " . PHP_VERSION . ")\n";
 echo "  user DB: " . USERDB_HOST . '/' . USERDB_NAME . "\n";
 
@@ -266,6 +273,21 @@ foreach ($files as $file) {
         $GLOBALS['t_failures'][] = $name . ' → uncaught ' . get_class($e) . ': ' . $e->getMessage();
     }
 }
+
+/* ── The run's own artifacts ─────────────────────────────────────────────────
+ *
+ * The settings page records every load and every save of its own, and the case that
+ * exercises it restores that record as carefully as it restores the file itself — which
+ * means a restore registered there runs AFTER the handler above. Shutdown functions run
+ * in the order they were registered, so this one has to be registered last, or the log a
+ * run created comes back a moment after it was deleted.
+ * ──────────────────────────────────────────────────────────────────────────── */
+register_shutdown_function(function () use ($overridesLog, $overridesLogBefore) {
+    // Deleted only if this run created it: a log a developer is looking at is theirs.
+    if (!$overridesLogBefore) {
+        @unlink($overridesLog);
+    }
+});
 
 /* ── Summary ───────────────────────────────────────────────────────────────── */
 echo "\n" . str_repeat('─', 72) . "\n";

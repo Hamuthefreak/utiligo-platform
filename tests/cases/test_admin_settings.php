@@ -197,6 +197,28 @@ t_is(config_overrides_mismatch($probeDrift)['mismatched'], ['APP_ENV'],
 t_is(config_overrides_mismatch(t_tmp_dir() . '/does_not_exist.php')['read'], false,
     'a machine with no overrides file yet is not reported as a broken one');
 
+// \"Is the constant what the file says\" and \"is this value being ignored\" stopped being
+// the same question once the payment code started reading its keys out of the file itself
+// (whop_self_read_keys()). The split is what lets the page say which saved settings a
+// stale config.php really costs the operator and which still apply.
+$split = config_overrides_mismatch($probeFile, ['UTILIGO_PROBE_BOOL']);
+t_is($split['mismatched'], ['UTILIGO_PROBE_QUOTE', 'UTILIGO_PROBE_BOOL', 'UTILIGO_PROBE_INT', 'UTILIGO_PROBE_FLOAT'],
+    'the mismatch list is still every key the file states and this process does not');
+t_is($split['ignored'], ['UTILIGO_PROBE_QUOTE', 'UTILIGO_PROBE_INT', 'UTILIGO_PROBE_FLOAT'],
+    'and a caller that reads one of them itself can say which of the rest are actually ignored');
+
+// And the read the payment code does: one key out of the file, without needing the
+// constant to agree — which is the only way a saved value can take effect on a server
+// whose config.php predates the file it was saved into.
+t_is(config_overrides_setting('APP_ENV', $probeFile), 'test', 'one key can be read back out of the file on its own');
+t_is(config_overrides_setting('UTILIGO_PROBE_BOOL', $probeFile), 'true',
+    'in one spelling for a boolean, so two readers cannot disagree about it');
+t_is(config_overrides_setting('UTILIGO_PROBE_INT', $probeFile), '-1', 'and -1 stays -1');
+t_is(config_overrides_setting('NOT_IN_THE_FILE', $probeFile), null,
+    'a key the file says nothing about answers null, which is not the same as an empty string');
+t_is(config_overrides_setting('ANY_KEY', t_tmp_dir() . '/does_not_exist.php'), null,
+    'and a machine with no file at all answers null rather than raising');
+
 @unlink($probeFile);
 @unlink($probeOk);
 @unlink($probeDrift);
@@ -319,6 +341,30 @@ t_is(is_file((string)$probe['file']), true, 'and it is really there afterwards, 
 t_is($probe['error'], '', 'with nothing to report');
 @unlink((string)$probe['file']);
 
+// config_overrides_write() is what the save now goes through, and it is the difference
+// between an operator being told "check permissions" and being told what PHP actually
+// objected to. Three cases: the folder is there, the folder is not there yet, and neither
+// a write nor a rename is possible.
+// A path no earlier run of this file can have made: the assertion below is that the
+// writer creates the folder, and a leftover from the last run would assert nothing.
+$madeDir = t_tmp_dir() . '/write_probe/' . bin2hex(random_bytes(4)) . '/nested/storage';
+$made    = config_overrides_write($madeDir . '/config_overrides.php', "<?php\ndefine('UTILIGO_WRITE_PROBE', 'yes');\n");
+t_is($made['ok'], true, 'the writer writes the overrides file');
+t_is($made['created_dir'], true, 'making the folder when the deploy did not leave one behind');
+t_ok($made['bytes'] > 0, 'and reports the bytes it wrote');
+t_is($made['error'], '', 'with nothing to report');
+t_like((string)file_get_contents($made['file']), 'UTILIGO_WRITE_PROBE', 'and the value is really in it');
+
+// The failure has to come with a reason. A directory where the file belongs refuses both
+// the write and the rename that follows it, on every platform this suite runs on.
+$blockedPath = t_tmp_dir() . '/write_blocked/config_overrides.php';
+@mkdir($blockedPath, 0777, true);
+$blocked = config_overrides_write($blockedPath, "<?php\n");
+t_is($blocked['ok'], false, 'a folder that refuses the file is reported as a failure');
+t_ok($blocked['error'] !== '', 'with PHP\'s own reason attached, so nobody is told to check a permission that is not the problem');
+t_like($blocked['error'], 'config_overrides.php', 'naming the path it could not write');
+t_is(glob($blockedPath . '.tmp-*') ?: [], [], 'and the temporary file the retry used is not left behind');
+
 /* ─────────────────────────────────────────────────────────────────────────────
  * 3. Saving the page — the secret round trip
  *
@@ -408,11 +454,22 @@ $saveThrough = static function (array $overrides) use ($app, $cookie): array {
 
 $overrides = $root . '/storage/config_overrides.php';
 $before    = is_file($overrides) ? (string)file_get_contents($overrides) : null;
-$restore   = static function () use ($overrides, $before): void {
+$logFile   = config_overrides_log_file();
+$logBefore = is_file($logFile) ? (string)file_get_contents($logFile) : null;
+$restore   = static function () use ($overrides, $before, $logFile, $logBefore): void {
     if ($before === null) {
         @unlink($overrides);
     } else {
         @file_put_contents($overrides, $before);
+    }
+
+    // The attempt log is written by the page itself, once per load and once per save.
+    // It is git-ignored and it belongs to the server, not to a test run: leaving it
+    // behind would put an untracked file in storage/ that the next deploy could carry.
+    if ($logBefore === null) {
+        @unlink($logFile);
+    } else {
+        @file_put_contents($logFile, $logBefore);
     }
 };
 register_shutdown_function($restore);
@@ -504,6 +561,28 @@ try {
         'and reports this installation\'s config.php as loading it, which is why the saved values are in effect');
     t_ok(preg_match('/Last written:.{0,140}?[\d,]+ bytes/s', $strip['body']) === 1,
         'and how large the file is and when it was last written');
+
+    /* EVERY LOAD AND EVERY SAVE IS ON THE RECORD, IN THE FOLDER AN OPERATOR IS ALREADY
+       LOOKING AT.
+
+       "I hit Save and nothing happened" has four causes that look identical from a
+       browser: the POST never arrived, the token was refused, the write was refused, or
+       the file manager is open on a second copy of the site. This is what tells them
+       apart from FTP, without a session on the server: a load line with no save line after
+       it means the POST never arrived, a save line with csrf=REFUSED means the token, a
+       FAILED line carries PHP's reason, and no lines at all means the wrong folder. The
+       line may name a key — that is how "did my paste reach the app" is answered — and it
+       may never carry a value. */
+    $log = is_file($logFile) ? (string)file_get_contents($logFile) : '';
+    t_ok($log !== '', 'the page keeps a record of what it saved, beside the file it saved to');
+    t_like($log, 'load fields=', 'a line per load, so a save that never arrived is visible as a load with nothing after it');
+    t_like($log, 'save result=written', 'a line per save that landed');
+    t_like($log, 'filled=WHOP_WEBHOOK_SECRET', 'naming the secret field that came back filled — the one fact that answers "did my paste reach the app"');
+    t_unlike($log, 'ws_typed_secret', 'and never the value of it');
+    t_unlike($log, (string)getenv('WHOP_WEBHOOK_SECRET'), 'nor the configured one, which this page also knows');
+
+    $strip = t_http('GET', $app . '/admin/settings.php', ['cookie' => $cookie]);
+    t_like($strip['body'], 'Attempts:', 'and the page prints where that record is, because the operator is looking at FTP and not at a console');
 } finally {
     $restore();
 }
