@@ -229,6 +229,8 @@ t_section('The page says which file it writes, proves it can, and can repair the
 t_like($settings, 'config_overrides_reader_status', 'the page asks the installation what its own config.php says');
 t_like($settings, 'config_overrides_write_probe', 'and can write a canary next to the overrides file');
 t_like($settings, 'config_overrides_repair_reader', 'and can insert the missing require into config.php');
+t_like($settings, "if (!\$reader['above_defines']): ?>",
+    'and offers the fix off the config.php file itself, so it is there before anything has been saved to compare');
 t_like($settings, 'Where this page writes', 'and explains the test on the page itself, not in a wiki');
 t_like($settings, "header('Cache-Control: no-store')",
     'and is never cached, so a stale form cannot post the field list it had last month');

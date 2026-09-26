@@ -435,41 +435,11 @@ require_once __DIR__ . '/../includes/admin_layout.php';
       <code>storage/config_overrides.php</code> states <?= (int)$ovState['stated'] ?> setting(s) and this request is
       running with something else for <?= count($ovState['mismatched']) ?> of them:
       <code><?= htmlspecialchars(implode(', ', array_slice($ovState['mismatched'], 0, 6))) ?></code><?= count($ovState['mismatched']) > 6 ? ' and ' . (count($ovState['mismatched']) - 6) . ' more' : '' ?>.
-      The file is loaded by the first few lines of <code>config.php</code> — the full path is in the panel above —
-      and config.php is excluded from the FTP deploy, so the copy on this server can be older than this page and
-      never have learned about the overrides at all. The panel says whether that copy mentions them and whether the
-      mention comes before its first definition; until both are true, every value saved here is written and then
-      ignored, and the Payments page will keep reporting them as missing.
+      The file is loaded by the first few lines of <code>config.php</code> — the full path is in the panel above,
+      and the card below says whether that copy loads it, and writes the line for you when it does not. Until it
+      does, every value saved here is written and then ignored, and the Payments page will keep reporting them as
+      missing.
     </p>
-    <?php if ($reader['exists'] && !$reader['mentions']): ?>
-      <form method="POST" action="/admin/settings.php" class="mt-3">
-        <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
-        <input type="hidden" name="repair_reader" value="1">
-        <button type="submit"
-                class="inline-flex items-center gap-2 bg-red-500/15 hover:bg-red-500/25 border border-red-400/30 text-red-100 px-4 py-2 rounded-xl font-semibold text-xs transition">
-          <i class="fa-solid fa-screwdriver-wrench"></i> Insert the require into config.php for me
-        </button>
-      </form>
-      <p class="mt-2 text-[11px] text-red-200/60 leading-relaxed">
-        That writes <code><?= htmlspecialchars(config_overrides_loader_line()) ?></code> after <code>&lt;?php</code>,
-        keeps a dated backup in <code>storage/</code> first, and refuses if the result would not parse. The rest of
-        config.php is left byte for byte as it is — including the database credentials it was excluded from the
-        deploy to protect.
-      </p>
-    <?php elseif ($reader['exists'] && $reader['mentions']): ?>
-      <p class="mt-1.5 text-[11px] text-red-200/60 leading-relaxed">
-        This config.php does mention the overrides, but not before its first definition
-        <?= $reader['first_define_line'] ? '(line ' . (int)$reader['first_define_line'] . ')' : '' ?> — move that
-        <code>require_once</code> to the top of the file by hand; a definition that runs first wins, so a loader below
-        it changes nothing.
-      </p>
-    <?php else: ?>
-      <p class="mt-1.5 text-[11px] text-red-200/60 leading-relaxed">
-        <code>config.php</code> was not found next to this page, so it cannot be repaired from here — restore it
-        (with <code><?= htmlspecialchars(config_overrides_loader_line()) ?></code> near the top) in your host's file
-        manager.
-      </p>
-    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>
@@ -484,6 +454,63 @@ require_once __DIR__ . '/../includes/admin_layout.php';
     <p class="mt-1 text-xs leading-relaxed opacity-80"><?= htmlspecialchars($repair['message']) ?></p>
     <?php if (!empty($repair['backup'])): ?>
       <p class="mt-1.5 text-[11px] opacity-70 break-all">Backup kept at <code><?= htmlspecialchars($repair['backup']) ?></code></p>
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
+<?php
+/* CONFIG.PHP IS NOT LOADING THE FILE — the half of this arrangement that no deploy can
+   fix.
+
+   config.php is excluded from the FTP deploy, so the copy on a live server is edited by
+   hand and can be older than this page: it may not mention the overrides at all, or
+   mention them BELOW its first define() — where they are ignored, because the first
+   definition wins. Driven by the file itself rather than by a comparison of values, so
+   it is right on the first day, before anything has been saved to compare: the same
+   reason an operator who has just pasted a key and still sees "not set" needs it.
+
+   The repair is offered only for the case it can actually fix (a file that never
+   mentions the overrides). Ordering cannot be repaired by inserting a second loader,
+   and a missing config.php cannot be repaired at all. */
+if (!$reader['above_defines']): ?>
+<div class="flex items-start gap-3 bg-red-500/10 border border-red-400/25 text-red-200 rounded-2xl px-5 py-4 mb-6 text-sm">
+  <i class="fa-solid fa-plug-circle-xmark mt-0.5 shrink-0"></i>
+  <div class="flex-1">
+    <p class="font-semibold text-red-300">config.php is not loading storage/config_overrides.php</p>
+    <?php if (!$reader['exists']): ?>
+      <p class="mt-1.5 text-xs leading-relaxed text-red-200/80">
+        There is no <code>config.php</code> next to this page, so nothing saved here can be read back. Restore it in
+        your host's file manager, with <code><?= htmlspecialchars(config_overrides_loader_line()) ?></code> near the
+        top of it.
+      </p>
+    <?php elseif (!$reader['mentions']): ?>
+      <p class="mt-1.5 text-xs leading-relaxed text-red-200/80">
+        The copy of <code>config.php</code> on this server does not mention the overrides file at all. It is excluded
+        from the FTP deploy — it is where the database credentials live — so a copy that predates this page stays
+        that way however often this page is saved, and every value saved here is written and then ignored.
+      </p>
+      <form method="POST" action="/admin/settings.php" class="mt-3">
+        <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+        <input type="hidden" name="repair_reader" value="1">
+        <button type="submit"
+                class="inline-flex items-center gap-2 bg-red-500/15 hover:bg-red-500/25 border border-red-400/30 text-red-100 px-4 py-2 rounded-xl font-semibold text-xs transition">
+          <i class="fa-solid fa-screwdriver-wrench"></i> Insert the require into config.php for me
+        </button>
+      </form>
+      <p class="mt-2 text-[11px] text-red-200/60 leading-relaxed">
+        That writes <code><?= htmlspecialchars(config_overrides_loader_line()) ?></code> after <code>&lt;?php</code>,
+        keeps a dated backup in <code>storage/</code> first, and refuses if the result would not parse. The rest of
+        config.php is left byte for byte as it is — including the database credentials it was excluded from the
+        deploy to protect.
+      </p>
+    <?php else: ?>
+      <p class="mt-1.5 text-xs leading-relaxed text-red-200/80">
+        It does mention the overrides, but below its first definition
+        <?= $reader['first_define_line'] ? '(line ' . (int)$reader['first_define_line'] . ')' : '' ?> — and the first
+        definition wins, so the values saved here are ignored. Move that <code>require_once</code> above every
+        <code>define()</code> in the file; the exact line to move is the one in the panel above.
+      </p>
     <?php endif; ?>
   </div>
 </div>
