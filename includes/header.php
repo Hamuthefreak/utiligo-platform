@@ -148,6 +148,13 @@ $_seo_ld = array_filter(array_merge([
   @keyframes utl-spin {
     to { transform: rotate(360deg); }
   }
+  /* The loader is hidden by opacity, not by removal — it comes back on the next
+     navigation — and an opacity of 0 does not stop an animation. So the spinner
+     that tells somebody work is happening was spinning forever, invisibly, on
+     every page of the product. It only runs while the loader is actually shown. */
+  #utl-loader:not(.visible) .utl-ring {
+    animation: none;
+  }
 
   #utl-loader .utl-brand {
     font-family: 'Space Grotesk', sans-serif;
@@ -157,8 +164,14 @@ $_seo_ld = array_filter(array_merge([
     color: var(--ink-3);
   }
 
-  body.page-ready > *:not(#utl-loader) {
-    animation: utl-fadein 0.22s ease forwards;
+  /* The page's entrance, on a device that can afford it. A touch device gets the
+     page with no entrance at all: this animates every direct child of <body> — the
+     nav, the main column, the footer — at the exact moment the visitor has asked
+     for something, on the hardware least able to spare it. */
+  @media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+    body.page-ready > *:not(#utl-loader) {
+      animation: utl-fadein 0.22s ease forwards;
+    }
   }
   @keyframes utl-fadein {
     from { opacity: 0; transform: translateY(6px); }

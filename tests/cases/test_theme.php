@@ -106,10 +106,9 @@ foreach ($shells as $shell => $hasInlineStyleBefore) {
 t_section('The reveal hook and the class it animates cannot drift apart');
 
 t_like($theme, '.js-reveal .utl-reveal', 'the stylesheet gates the animation on .utl-reveal');
-t_like($theme, 'body::before', 'and the canvas has its drifting layer');
+t_like($theme, 'body::before', 'and the canvas is still a lit layer');
 t_like($motion, "querySelectorAll('[data-reveal]')", 'the script reads the data-reveal attribute');
 t_like($motion, "classList.add('utl-reveal')", 'and adds the class the stylesheet reads');
-t_like($motion, "querySelectorAll('[data-reveal-group]')", 'grids stagger their children');
 t_like($motion, 'IntersectionObserver', 'the reveal is driven by an observer, not a scroll handler');
 t_like($motion, 'window.UtligoMotion', 'the tween the revenue slider uses is exported');
 t_like($read('assets/js/revenue_calc.js'), 'UtligoMotion', 'and the slider reads it rather than duplicating it');
@@ -119,6 +118,57 @@ t_like($read('assets/js/revenue_calc.js'), 'UtligoMotion', 'and the slider reads
 // show everything outright when it is set.
 t_like($motion, 'prefers-reduced-motion', 'ui-theme.js asks about reduced motion');
 t_like($theme, 'prefers-reduced-motion', 'and theme.css has the matching escape hatch');
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 2b. Nothing loops, and a touch device is shown the page and not the show
+ *
+ * WHY THIS IS A TEST AND NOT A PREFERENCE. The first version of this layer ran a
+ * specular sweep on every glass surface for as long as the page stayed open — 79
+ * of them, 13 seconds each — and drifted a full-viewport layer underneath them,
+ * which re-blurs every backdrop-filter on the page on every frame, forever. It
+ * also staggered a grid's children by 70ms apiece and hid every section until an
+ * observer fired, on a phone exactly as much as on a desktop. That is a slideshow
+ * running behind a scroll, and it was reported from the one place that matters:
+ * real devices dropping frames. The assertions below are the shape of the fix.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+// Comments are stripped before the "nothing loops" checks: the file explains what it
+// used to do and why, and a test that cannot tell a comment from a rule would forbid
+// documenting the reason. Section 8 applies the same rule to the @supports note.
+$theme_rules = (string)preg_replace('#/\*.*?\*/#s', '', $theme);
+
+t_section('Motion is one-shot or hover-bound — never a loop');
+
+t_unlike($theme_rules, 'infinite', 'no rule in theme.css animates forever');
+t_unlike($theme_rules, 'animation: utl-drift',
+    'and the canvas no longer drifts — a moving layer re-blurs every panel above it, every frame');
+t_like($theme, '@keyframes utl-spec', 'the specular band keeps its keyframes');
+t_like($theme, '(hover: hover) and (pointer: fine)', 'but only a pointer can start it');
+t_like($theme, 'animation: utl-spec 1.5s var(--ease-in-out, ease) 1;', 'and it crosses the surface once');
+t_like($theme, 'prefers-reduced-motion: no-preference', 'a system asking for less motion never starts it at all');
+t_unlike($theme_rules, '--spec-dur', 'the loop duration token went with the loop');
+t_like($theme, '--spec-op', 'the band still has a per-theme opacity, so Paper can turn it down');
+t_unlike($theme_rules, 'will-change',
+    'and no standing will-change, which would promote every card to a layer of its own');
+
+t_section('A touch device gets the page, with no entrance animation');
+
+// One condition, three copies, and all three have to agree: the pre-paint gate
+// (nothing may be hidden before the script has even parsed), ui-theme.js (no
+// observer, no counter), and the stylesheet (for a viewport resized afterwards).
+$boot = $read('includes/appearance.php');
+t_like($boot, '(pointer: coarse)', 'the pre-paint gate asks whether this is a touch device');
+t_like($boot, 'js-reveal', 'and only then sets the class that would hide a section');
+t_like($motion, 'liteMotion', 'ui-theme.js makes the same judgement before it wires anything');
+t_like($theme, '@media (pointer: coarse), (max-width: 640px)', 'and theme.css carries the same pair of conditions');
+t_like($theme, 'transition: none !important', 'where the reveal is switched off outright');
+
+// What the entrance is, on the device that still gets one.
+t_like($theme, 'transition: opacity 220ms var(--ease-out);', 'the reveal is one short fade');
+t_unlike($theme_rules, 'translateY(16px)', 'that no longer moves the content it fades in');
+t_unlike($theme_rules, 'transition-delay', 'and no longer queues a grid child behind the one before it');
+t_unlike($motion, "'--d'", 'the stagger machinery is gone from the script too');
+t_unlike($motion, "querySelectorAll('[data-reveal-group]')", 'and nothing reads the group attribute any more');
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * 3. ONE canvas, ONE accent
@@ -341,10 +391,10 @@ t_like($theme, 'padding: 1px;', 'exactly one pixel of it');
 t_like($theme, 'border-color: transparent !important', 'and the utility borders are retired so the box does not move');
 
 // The specular band: the one cue that tells an eye which has seen real glass that
-// this is a surface rather than a translucent colour.
+// this is a surface rather than a translucent colour. It is a hover response rather
+// than a loop now (see 2b), which is the only change the material itself has had.
 t_like($theme, '@keyframes utl-spec', 'the specular band has its own keyframes');
-t_like($theme, '@keyframes utl-spec', 'and it is the travelling highlight');
-t_like($theme, 'animation: utl-spec', 'which is bound to the surface');
+t_like($theme, 'animation: utl-spec', 'bound to the surface the pointer is on');
 t_like($theme, '--spec-op', 'at an opacity the theme controls, so Paper can switch it off');
 
 // The warp: an SVG displacement of the backdrop, which no CSS function can do.

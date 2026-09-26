@@ -139,6 +139,9 @@ if (can_use_call_scripts($_plan)): ?>
     animation: utl-spin 0.65s linear infinite;
   }
   @keyframes utl-spin { to { transform: rotate(360deg); } }
+  /* Hidden by opacity, not by removal, and an opacity of 0 does not stop an
+     animation — so this spinner only runs while the loader is on screen. */
+  #utl-loader:not(.visible) .utl-ring { animation: none; }
   .utl-brand {
     font-size: 0.8rem;
     font-weight: 700;

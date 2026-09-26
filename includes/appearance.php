@@ -161,6 +161,15 @@ function appearance_switcher_html(): string
  * It also sets the `js-reveal` gate, which has to happen pre-paint for the same
  * reason: theme.css hides [data-reveal] elements under that class, and a gate set
  * after the first paint hides content that was already visible.
+ *
+ * AND IT DECLINES TO SET THAT GATE ON A PHONE. A touch device gets the page with
+ * no entrance animation at all: hiding content first so it can be faded in is work
+ * done for nobody, on the device least able to spend it, and it is the one place
+ * where a wrong judgement leaves a blank screen. ui-theme.js makes the same test
+ * before it wires anything up, and the `LITE MOTION` block in theme.css is the
+ * third copy, for a viewport that changes size afterwards. The failure mode of
+ * them disagreeing is content stuck at opacity 0, which is why it fails closed:
+ * if we cannot ask the browser, the gate is not set and everything renders.
  */
 function appearance_bootstrap(): string
 {
@@ -169,7 +178,9 @@ function appearance_bootstrap(): string
         . 'try{var t=localStorage.getItem(K.store.theme),a=localStorage.getItem(K.store.accent);'
         . 'if(K.themes.indexOf(t)>-1)d.setAttribute("data-theme",t);'
         . 'if(K.accents.indexOf(a)>-1)d.setAttribute("data-accent",a);}catch(e){}'
-        . 'd.classList.add("js-reveal");'
+        . 'try{var m=window.matchMedia;'
+        . 'if(!m||!(m("(pointer: coarse)").matches||m("(max-width: 640px)").matches))d.classList.add("js-reveal");'
+        . '}catch(e){}'
         . '})();</script>';
 }
 
