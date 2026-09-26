@@ -30,13 +30,17 @@ require_once __DIR__ . '/../includes/admin_auth.php';
 // form, and an endpoint URL built from APP_BASE_URL rather than typed into a
 // template — a staging install must register its own address.
 require_once __DIR__ . '/../includes/whop.php';
+// Whether the file this page writes is being loaded at all — see the note above
+// the write loop, and includes/config_overrides.php for why it is worth asking.
+require_once __DIR__ . '/../includes/config_overrides.php';
 
 require_admin();
 $admin = $GLOBALS['admin_user'];
 $_whopReport = whop_config_report();
 
-$overrides_file = __DIR__ . '/../storage/config_overrides.php';
-$saved      = false;
+$overrides_file = config_overrides_file();
+// Set by the redirect a successful save answers with, never by the POST itself.
+$saved      = isset($_GET['saved']);
 $save_error = '';
 
 // ---------------------------------------------------------------
@@ -235,12 +239,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['save_config'])) {
         }
         $php = implode("\n", $lines) . "\n";
         if (@file_put_contents($overrides_file, $php) !== false) {
-            $saved = true;
             if (function_exists('opcache_invalidate')) {
                 opcache_invalidate($overrides_file, true);
                 opcache_invalidate(__DIR__ . '/../includes/plan_limits.php', true);
                 opcache_invalidate(__DIR__ . '/../config.php', true);
             }
+
+            /* A REDIRECT, NOT A RENDER.
+             *
+             * Everything this page displays — the values in the inputs, the "saved
+             * (n characters)" lines, the payments readiness banner — is read from
+             * constants that config.php defined at the top of THIS request, and a
+             * constant cannot be replaced inside the process that defined it. So a
+             * POST could only ever render the state it had read BEFORE the write:
+             * "Settings saved" above a banner still saying payments were not
+             * configured, and a "not set — paste the value here" placeholder next to
+             * the key that was just pasted. An operator reads that as "this page is
+             * not editing the config", which is exactly how it was reported.
+             *
+             * Sending the browser back for a fresh GET is the only honest answer:
+             * the request that writes the file is not the request that can describe
+             * it. It also stops a reload re-posting the whole form, which the old
+             * shape did (the browser's "resubmit?" prompt, and a second write on
+             * every refresh). */
+            header('Location: /admin/settings.php?saved=1');
+            exit;
         } else {
             $save_error = 'Could not write storage/config_overrides.php — check directory permissions (chmod 775 storage/ or 664 on the file).';
         }
@@ -304,8 +327,51 @@ require_once __DIR__ . '/../includes/admin_layout.php';
           ? '<span class="text-emerald-400 font-semibold">yes ✓</span>'
           : '<span class="text-red-400 font-semibold">no — chmod 664 storage/</span>' ?>
     </p>
+    <?php $ovState = config_overrides_mismatch($overrides_file); ?>
+    <p>Loaded by config.php:
+      <?php if (!$ovState['read']): ?>
+        <span class="text-slate-500 font-semibold">nothing to load yet</span>
+      <?php elseif (!$ovState['mismatched']): ?>
+        <span class="text-emerald-400 font-semibold">yes ✓ <?= (int)$ovState['stated'] ?> setting(s)</span>
+      <?php else: ?>
+        <span class="text-red-400 font-semibold">no ✗ <?= count($ovState['mismatched']) ?> of <?= (int)$ovState['stated'] ?> ignored</span>
+      <?php endif; ?>
+    </p>
   </div>
 </div>
+
+<?php if ($ovState['mismatched']): ?>
+<?php /*
+   SAVED, AND NOT BEING READ.
+
+   The line above says the file is present and writable, which is what an operator
+   checks first — and it can be both of those and still take no effect, because the
+   only thing that makes it matter is a `require_once` at the top of config.php, and
+   config.php is EXCLUDED from the FTP deploy. The copy on a live server is edited by
+   hand, so it can be an older one that never learned about this file. The result is
+   the worst shape a failure can have: every save succeeds, every screen keeps saying
+   "not set", and nothing connects the two.
+
+   So the page names it, along with the keys it can see being ignored — names only,
+   never values (see includes/config_overrides.php).
+*/ ?>
+<div class="flex items-start gap-3 bg-red-500/10 border border-red-400/25 text-red-200 rounded-2xl px-5 py-4 mb-6 text-sm">
+  <i class="fa-solid fa-circle-exclamation mt-0.5 shrink-0"></i>
+  <div class="flex-1">
+    <p class="font-semibold text-red-300">Saved — and not loaded: nothing this page writes is taking effect.</p>
+    <p class="mt-1.5 text-xs leading-relaxed text-red-200/80">
+      <code>storage/config_overrides.php</code> states <?= (int)$ovState['stated'] ?> setting(s) and this request is
+      running with something else for <?= count($ovState['mismatched']) ?> of them:
+      <code><?= htmlspecialchars(implode(', ', array_slice($ovState['mismatched'], 0, 6))) ?></code><?= count($ovState['mismatched']) > 6 ? ' and ' . (count($ovState['mismatched']) - 6) . ' more' : '' ?>.
+      That file is loaded by the first few lines of <code>config.php</code>, which is excluded from the FTP deploy —
+      so check that the copy on this server still has
+      <code>require_once __DIR__ . '/storage/config_overrides.php';</code> before any other definition, and that
+      nothing defines these keys above it. Until that is true, every value saved here is written and then ignored,
+      and the Payments page will keep reporting them as missing.
+    </p>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if ($saved): ?>
 <div class="flex items-center gap-3 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 rounded-2xl px-5 py-4 mb-6 text-sm">

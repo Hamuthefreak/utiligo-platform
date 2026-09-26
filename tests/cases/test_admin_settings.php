@@ -16,8 +16,15 @@
  *      "the pattern looks right" is exactly the claim that was wrong.
  *   2. Two pages wrote `storage/config_overrides.php` with two different lists of
  *      fields and one CSRF slot, so whatever saved last decided which keys were
- *      still editable. §2 pins down that there is one writer, and §3 does what a
+ *      still editable. §2 pins down that there is one writer, and §4 does what a
  *      static check cannot: saves the form for real.
+ *   3. A save answered with a RENDER of the state it had read before writing —
+ *      constants come from config.php at the top of a request and cannot be
+ *      replaced inside it — so an operator was told "saved" next to a banner still
+ *      saying payments were not configured. That reads as "the settings page is not
+ *      editing the config", which is how it was reported. §4 now asserts the page
+ *      you land on shows what you just saved, and §3 the check for the other way
+ *      the same complaint happens: a file that is written and never loaded.
  *
  * The built-in server the suite runs on ignores `.htaccess` entirely, so §3's
  * fetch of the old page proves the redirect and never could have proved the 403.
@@ -29,6 +36,9 @@ $read = static function (string $rel) use ($root): string {
     $p = $root . '/' . $rel;
     return is_file($p) ? (string)file_get_contents($p) : '';
 };
+
+// The check this file asserts in §3, and the one the page runs on itself.
+require_once $root . '/includes/config_overrides.php';
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * 1. The credential guard refuses the root files, not every file with that name
@@ -115,6 +125,76 @@ foreach ([$root . '/admin/*.php', $root . '/includes/*.php', $root . '/portal/*.
     }
 }
 t_is($linked, [], 'no page links to the retired URL any more');
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * 2b. Saved, and loaded — the other way "it is not editing the config" happens
+ *
+ * The settings page cannot make a value take effect on its own. The only thing
+ * that does is a `require_once` at the top of config.php, and config.php is
+ * EXCLUDED from the FTP deploy: the copy on a live server is edited by hand, so it
+ * can be an older one that never learned about the overrides file. Then every save
+ * writes a file nothing reads — "saved" on one screen and "not set" on the next.
+ *
+ * config_overrides_mismatch() is how the app tells those apart: the file states a
+ * value, and the running process has a different one (or none). The unit below
+ * pins the parser (the shapes the writer emits, including the two characters a
+ * hand-rolled one gets wrong) and both answers it can give.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+t_section('The page can tell "saved" from "saved and actually loaded"');
+
+t_like($settings, 'config_overrides_mismatch', 'the settings page asks whether the file it writes is being loaded');
+t_like($settings, 'Loaded by config.php', 'and says so next to the file and writability facts, not in a log');
+t_like($settings, "require_once __DIR__ . '/storage/config_overrides.php';",
+    'and prints the line config.php has to have, because that line is the fix');
+t_like($settings, 'config_overrides_file()', 'the path comes from one definition rather than two files spelling it out');
+t_like($read('includes/whop.php'), 'is not being loaded by config.php',
+    'the payments page reports it as a blocker — that is the page an operator reads when it says "not set"');
+
+t_ok(function_exists('config_overrides_mismatch'), 'the check is a function, so both pages and this test use one implementation');
+
+$probeFile = t_tmp_dir() . '/overrides_probe.php';
+file_put_contents($probeFile, <<<'PHP'
+<?php
+// Admin-managed config overrides.
+define('APP_ENV', 'test');
+define('UTILIGO_PROBE_QUOTE', 'it\'s; a test');
+define('UTILIGO_PROBE_BOOL', true);
+define('UTILIGO_PROBE_INT', -1);
+define('UTILIGO_PROBE_FLOAT', 0.5);
+PHP
+);
+
+$defines = config_overrides_defines($probeFile);
+t_is($defines['APP_ENV'] ?? null, 'test', 'a define in the overrides file is read back as the value PHP would load');
+t_is($defines['UTILIGO_PROBE_QUOTE'] ?? null, "it's; a test",
+    'including a value holding a quote and a semicolon — the two characters a hand-rolled parser gets wrong');
+t_is(config_overrides_canonical($defines['UTILIGO_PROBE_BOOL'] ?? null), 'true', 'a bare true is the boolean, not the string');
+t_is(config_overrides_canonical($defines['UTILIGO_PROBE_INT'] ?? null), '-1', 'and -1 stays -1 rather than becoming 0');
+t_is(config_overrides_canonical($defines['UTILIGO_PROBE_FLOAT'] ?? null), '0.5', 'and a float keeps its point');
+
+$state = config_overrides_mismatch($probeFile);
+t_is($state['stated'], 5, 'the file is reported as read, with what it states counted');
+t_is($state['mismatched'], ['UTILIGO_PROBE_QUOTE', 'UTILIGO_PROBE_BOOL', 'UTILIGO_PROBE_INT', 'UTILIGO_PROBE_FLOAT'],
+    'and every key this process never loaded is named as ignored — names only, never values');
+t_unlike(implode(' ', $state['mismatched']), 'test', 'the check reports keys, so a value cannot leak through it');
+
+$probeOk = t_tmp_dir() . '/overrides_probe_ok.php';
+file_put_contents($probeOk, "<?php\ndefine('APP_ENV', 'test');\n");
+t_is(config_overrides_mismatch($probeOk)['mismatched'], [],
+    'a file this process agrees with reports nothing — a check that always fires is not a check');
+
+$probeDrift = t_tmp_dir() . '/overrides_probe_drift.php';
+file_put_contents($probeDrift, "<?php\ndefine('APP_ENV', 'production');\n");
+t_is(config_overrides_mismatch($probeDrift)['mismatched'], ['APP_ENV'],
+    'and a key something defines ABOVE the overrides file reads as the same failure, because it is');
+
+t_is(config_overrides_mismatch(t_tmp_dir() . '/does_not_exist.php')['read'], false,
+    'a machine with no overrides file yet is not reported as a broken one');
+
+@unlink($probeFile);
+@unlink($probeOk);
+@unlink($probeDrift);
 
 /* ─────────────────────────────────────────────────────────────────────────────
  * 3. Saving the page — the secret round trip
@@ -219,13 +299,34 @@ try {
     // cannot pass on a refused token: this one fails loudly if the form itself
     // does not round-trip.
     $probe = $saveThrough([]);
-    t_is($probe['status'], 200, 'a form posted back unchanged is accepted');
-    t_like($probe['body'], 'Settings saved and opcache flushed', 'and really saves');
+    t_is($probe['status'], 302, 'a form posted back unchanged is accepted');
+    t_is($probe['location'], '/admin/settings.php?saved=1',
+        'and answers with a redirect rather than a rendered page');
+    t_unlike($probe['body'], 'Settings saved and opcache flushed',
+        'so the POST itself renders no page of its own');
+    $landed = t_http('GET', $app . '/admin/settings.php?saved=1', ['cookie' => $cookie]);
+    t_is($landed['status'], 200, 'the redirect target opens');
+    t_like($landed['body'], 'Settings saved and opcache flushed', 'and carries the confirmation');
+
+    // WHY THE REDIRECT IS NOT A STYLE CHOICE. Everything the page displays — the
+    // values in the inputs, the "saved (n characters)" lines, the readiness banner —
+    // is read from constants that config.php defined at the top of THIS request, and
+    // a constant cannot be replaced inside the process that defined it. So a POST
+    // used to answer with a render of the state it had read BEFORE the write:
+    // "Settings saved" above a banner still saying payments were not configured,
+    // which an operator reads as "this page is not editing the config at all".
+    $probeEmail = 'roundtrip-probe@example.test';
+    $res = $saveThrough(['cfg[ADMIN_EMAIL]' => $probeEmail]);
+    t_is($res['status'], 302, 'a save that changes a plain string is accepted');
+    $landed = t_http('GET', $app . '/admin/settings.php', ['cookie' => $cookie]);
+    t_like($landed['body'], $probeEmail, 'and the page you land on shows the value you just saved');
 
     $res = $saveThrough(['cfg[WHOP_WEBHOOK_SECRET]' => $secret]);
-    t_is($res['status'], 200, 'saving the form is accepted');
-    t_like($res['body'], 'Settings saved and opcache flushed', 'and says so');
-    t_unlike($res['body'], $secret, 'without echoing the secret back');
+    t_is($res['status'], 302, 'saving the form is accepted');
+    $landed = t_http('GET', $app . '/admin/settings.php?saved=1', ['cookie' => $cookie]);
+    t_like($landed['body'], 'saved (' . strlen($secret) . ' characters)',
+        'and the page you land on reports the secret as stored, by length only');
+    t_unlike($landed['body'], $secret, 'without echoing the secret back');
 
     $written = is_file($overrides) ? (string)file_get_contents($overrides) : '';
     t_ok($written !== '', 'the overrides file was written');
@@ -241,8 +342,9 @@ try {
     // byte. Writing an empty define() here is the quietest way to break payments —
     // save the page for a plan limit and the secret is gone.
     $res = $saveThrough(['cfg[WHOP_WEBHOOK_SECRET]' => '']);
-    t_is($res['status'], 200, 'saving again with the secret field left blank is accepted');
-    t_like($res['body'], 'Settings saved and opcache flushed', 'and really saves');
+    t_is($res['status'], 302, 'saving again with the secret field left blank is accepted');
+    $landed = t_http('GET', $app . '/admin/settings.php?saved=1', ['cookie' => $cookie]);
+    t_like($landed['body'], 'Settings saved and opcache flushed', 'and really saves');
     $rewritten = (string)file_get_contents($overrides);
     preg_match("/^define\('WHOP_WEBHOOK_SECRET',.*\);$/m", $written, $wasLine);
     preg_match("/^define\('WHOP_WEBHOOK_SECRET',.*\);$/m", $rewritten, $nowLine);
@@ -252,10 +354,20 @@ try {
     // A pasted value brings its own newline; the signature it would produce is the
     // one nobody can verify, so the whitespace goes.
     $res = $saveThrough(['cfg[WHOP_WEBHOOK_SECRET]' => "  ws_typed_secret\r\n"]);
-    t_like($res['body'], 'Settings saved and opcache flushed', 'a third save is accepted too');
+    t_is($res['status'], 302, 'a third save is accepted too');
     $typed = (string)file_get_contents($overrides);
     t_like($typed, "define('WHOP_WEBHOOK_SECRET', 'ws_typed_secret');",
         'a pasted secret is stripped of the whitespace a paste adds');
+
+    // And the file that now exists is being LOADED: this install's config.php is the
+    // repository's copy, which requires it first, so the strip has to say yes and
+    // the red "saved — and not loaded" card has to be absent. The other branch is
+    // pinned in §2b, where the unit can produce it on demand; proving the good
+    // branch here is what keeps the check from being a warning nobody has seen work.
+    $strip = t_http('GET', $app . '/admin/settings.php', ['cookie' => $cookie]);
+    preg_match('/Loaded by config\.php:.{0,160}?yes ✓ \d+ setting/s', $strip['body'], $ovOk);
+    t_ok($ovOk !== [], 'and the page reports the overrides file as loaded, with a count of what it states');
+    t_unlike($strip['body'], 'Saved — and not loaded', 'rather than written and ignored');
 } finally {
     $restore();
 }
