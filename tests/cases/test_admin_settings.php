@@ -254,14 +254,27 @@ t_like($settings, 'config_overrides_repair_reader', 'and can insert the missing 
 t_like($settings, "if (!\$reader['above_defines']): ?>",
     'and offers the fix off the config.php file itself, so it is there before anything has been saved to compare');
 t_like($settings, 'Where this page writes', 'and explains the test on the page itself, not in a wiki');
+t_like($settings, 'Recent configuration activity',
+    'and reads its own attempt log back into the page, so a save that never arrived needs no FTP to see');
+t_like($settings, 'config_overrides_audit_tail', 'from the log that sits beside the file it is about');
+t_ok(str_contains($settings, 'name="rewrite_overrides"'),
+    'with a second probe that rewrites that exact file, which is the one a save replaces');
+t_like($settings, 'config_overrides_rewrite_probe', 'through the same writer the save goes through');
+t_like($settings, '$runningMtime',
+    'and prints the timestamp of the copy serving the page, so a stale FTP window can be told from a stale save');
+
+$paymentsPage = $read('admin/payments.php');
+t_like($paymentsPage, 'Where these values come from',
+    'the payments page — where "not set" is read — names the file and when it last moved');
+t_like($paymentsPage, 'config_overrides_audit_tail', 'and shows the same attempt record, without a trip through FTP');
 t_like($settings, "header('Cache-Control: no-store')",
     'and is never cached, so a stale form cannot post the field list it had last month');
 t_like($settings, "htmlspecialchars(\$overrides_file)", 'the absolute path it writes to is printed, not just the file name');
 t_like($settings, "htmlspecialchars(\$reader['file'])", 'and so is the config.php that has to load it, so the two can be compared in FTP');
 t_ok(str_contains($settings, 'name="test_write"') && str_contains($settings, 'name="repair_reader"'),
     'both actions are their own POST, so neither can happen by loading a page');
-t_is(substr_count($settings, "admin_csrf_verify('settings'"), 3,
-    'and both check the same CSRF slot as the save — one verify per action, no shortcuts');
+t_is(substr_count($settings, "admin_csrf_verify('settings'"), 4,
+    'and every action checks the same CSRF slot as the save — one verify per action, no shortcuts');
 // The trap this page walked into: admin_csrf_token() rotates the slot, so a page with
 // two forms that each call it holds two tokens and one valid one. The small action
 // button is then refused while the big Save beside it works — a bug that looks like
@@ -341,6 +354,67 @@ t_is(is_file((string)$probe['file']), true, 'and it is really there afterwards, 
 t_is($probe['error'], '', 'with nothing to report');
 @unlink((string)$probe['file']);
 
+// The attempt log, read back into the page. It is the difference between an operator
+// opening FTP to find out what happened and the page telling them: a load line with no save
+// after it means the POST never arrived, a refused line means the token, a FAILED line
+// carries PHP's reason, and an empty log means the file manager is on another copy of the
+// site.
+$actDir = t_tmp_dir() . '/activity_log';
+@mkdir($actDir, 0777, true);
+@unlink(config_overrides_log_file($actDir));
+
+$emptyLog = config_overrides_audit_tail(5, $actDir);
+t_is($emptyLog['exists'], false, 'a log that does not exist yet is reported as empty, not guessed at');
+t_is($emptyLog['lines'], [], 'with nothing shown');
+
+for ($i = 1; $i <= 12; $i++) {
+    config_overrides_audit('load', 'fields=' . $i, $actDir);
+}
+$tail = config_overrides_audit_tail(5, $actDir);
+t_is(count($tail['lines']), 5, 'the tail is capped at what the page asks for, however long the log grows');
+t_like((string)end($tail['lines']), 'fields=12', 'newest last, so the page reads in time order');
+t_unlike(implode("\n", $tail['lines']), "define('", 'and never a definition — a value must not reach a page or a paste');
+t_is(basename($tail['file']), 'config_overrides.log', 'read from the log that sits beside the file it is about');
+
+// Past the 8 KB the tail reads, the lines still come out whole and newest-last.
+for ($i = 13; $i <= 400; $i++) {
+    config_overrides_audit('load', 'fields=' . $i, $actDir);
+}
+$long = config_overrides_audit_tail(3, $actDir);
+t_is(count($long['lines']), 3, 'a log larger than the read window still yields the lines asked for');
+t_like((string)end($long['lines']), 'fields=400', 'ending with the newest one');
+t_like((string)$long['lines'][0], 'Z load fields=', 'and starting on a whole line, because a half line would read as a different event');
+@unlink(config_overrides_log_file($actDir));
+
+// The rewrite probe. The canary above proves the FOLDER accepts a file; this proves a save
+// can replace the file it is about — the difference that matters when the file was uploaded
+// by FTP and is owned by somebody PHP is not.
+$rwDir = t_tmp_dir() . '/rewrite_probe';
+@mkdir($rwDir, 0777, true);
+$rwFile = $rwDir . '/config_overrides.php';
+@unlink($rwFile);
+
+$madeFile = config_overrides_rewrite_probe($rwFile);
+t_is($madeFile['ok'], true, 'the rewrite probe writes the overrides file when the folder is empty');
+t_is($madeFile['rewrote'], false, 'and says it wrote a header rather than contents');
+t_like((string)file_get_contents($rwFile), '<?php', 'leaving a valid file that defines nothing');
+
+$rwBody = "<?php\ndefine('UTILIGO_REWRITE_PROBE', 'unchanged');\n";
+file_put_contents($rwFile, $rwBody);
+touch($rwFile, time() - 300);
+// Without this the timestamp read back would be the stat cache's, from before the touch —
+// and a file that cannot be given an older timestamp would make the assertion below vacuous.
+clearstatcache(true, $rwFile);
+$oldTime = (int)filemtime($rwFile);
+
+$rewrote = config_overrides_rewrite_probe($rwFile);
+t_is($rewrote['ok'], true, 'and replaces the very file a save would replace');
+t_is($rewrote['rewrote'], true, 'reporting that it rewrote what was already there');
+t_is((string)file_get_contents($rwFile), $rwBody, 'with the bytes byte for byte what they were — a probe, not a save');
+t_ok($rewrote['mtime'] > $oldTime, 'and the timestamp moves, which is the whole result an operator watches');
+t_is((string)$rewrote['error'], '', 'with nothing to report');
+@unlink($rwFile);
+
 // config_overrides_write() is what the save now goes through, and it is the difference
 // between an operator being told "check permissions" and being told what PHP actually
 // objected to. Three cases: the folder is there, the folder is not there yet, and neither
@@ -394,6 +468,17 @@ $body = $page['body'];
 t_like($body, 'Payments (Whop)', 'it renders the payments section');
 t_like($body, 'The webhook, as Whop needs it', 'and the webhook block');
 t_like($body, 'Alerts', 'and the alerts section');
+
+// The payments page is where "not set" is read, and it is read-only by design — so when a
+// key was pasted and this page still says "not set", the page has to name the file the
+// values come from and the record of the saves that reached it, or the operator is back to
+// FTP to find out whether their paste arrived at all.
+$payments = t_http('GET', $app . '/admin/payments.php', ['cookie' => $cookie]);
+t_is($payments['status'], 200, 'the payments page opens for the same admin');
+t_like($payments['body'], 'Where these values come from',
+    'and names the file the values are read out of, so a save that did not land has one place to look');
+t_like($payments['body'], 'config_overrides.log', 'showing the attempt record beside it, without a trip through FTP');
+
 if ($secret !== '') {
     t_like($body, 'saved (' . strlen($secret) . ' characters)',
         'a stored secret is reported as saved and by length only');
@@ -487,6 +572,58 @@ try {
     $landed = t_http('GET', $app . '/admin/settings.php?saved=1', ['cookie' => $cookie]);
     t_is($landed['status'], 200, 'the redirect target opens');
     t_like($landed['body'], 'Settings saved and opcache flushed', 'and carries the confirmation');
+
+    /* TWO TABS, ONE FORM — the failure that looks identical to "Save does nothing".
+
+       admin_csrf_token() used to keep ONE token per form and replace it on every render, so
+       a second tab invalidated the first tab's form: paste a key, press Save, and the only
+       thing that happens is a refusal above the fold that scrolls past. The session now keeps
+       the last few tokens, so the tab opened first still saves; a token is still single-use,
+       and its siblings still work, which is what the replay and the second tab below pin. */
+    $from = static function (string $body): array {
+        preg_match_all('/<input[^>]*name="cfg\[([A-Z0-9_]+)\]"[^>]*>/', $body, $tags, PREG_SET_ORDER);
+        $fields = [];
+        foreach ($tags as $tag) {
+            $html = $tag[0];
+            preg_match('/value="([^"]*)"/', $html, $v);
+            if (str_contains($html, 'type="checkbox"')) {
+                if (!str_contains($html, 'checked')) continue;
+                $v[1] = '1';
+            }
+            $fields['cfg[' . $tag[1] . ']'] = html_entity_decode($v[1] ?? '', ENT_QUOTES);
+        }
+        preg_match('/name="csrf_token" value="([a-f0-9]+)"/', $body, $tok);
+
+        return [$fields, $tok[1] ?? ''];
+    };
+
+    $tabA = t_http('GET', $app . '/admin/settings.php', ['cookie' => $cookie]);
+    $tabB = t_http('GET', $app . '/admin/settings.php', ['cookie' => $cookie]);
+    [$fieldsA, $tokA] = $from($tabA['body']);
+    [$fieldsB, $tokB] = $from($tabB['body']);
+
+    t_ok($tokA !== '' && $tokB !== '' && $tokA !== $tokB,
+        'two renders of the form carry two different tokens, which is how a tab goes stale');
+
+    $stale = t_http('POST', $app . '/admin/settings.php', [
+        'form'   => $fieldsA + ['csrf_token' => $tokA, 'save_config' => '1'],
+        'cookie' => $cookie,
+    ]);
+    t_is($stale['status'], 302,
+        'and the tab that was opened first still saves after a second tab was opened later');
+
+    $replay = t_http('POST', $app . '/admin/settings.php', [
+        'form'   => $fieldsA + ['csrf_token' => $tokA, 'save_config' => '1'],
+        'cookie' => $cookie,
+    ]);
+    t_is($replay['status'], 200, 'while a token that has already been used is still refused');
+    t_like($replay['body'], 'Invalid or expired security token', 'and the refusal is said out loud, not silent');
+
+    $sibling = t_http('POST', $app . '/admin/settings.php', [
+        'form'   => $fieldsB + ['csrf_token' => $tokB, 'save_config' => '1'],
+        'cookie' => $cookie,
+    ]);
+    t_is($sibling['status'], 302, 'and the other tab keeps a token of its own that a refusal did not burn');
 
     // WHY THE REDIRECT IS NOT A STYLE CHOICE. Everything the page displays — the
     // values in the inputs, the "saved (n characters)" lines, the readiness banner —

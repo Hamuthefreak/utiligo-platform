@@ -74,13 +74,21 @@ Two details that matter:
   names and the API version to register in Whop are on the Settings page too, next
   to the field the signing secret goes in.
 
-**If a save seems to do nothing, open `storage/config_overrides.log`.** The settings
+**If a save seems to do nothing, read the page before you open FTP.** Settings shows the
+last lines of `storage/config_overrides.log` itself, under **Recent configuration activity**,
+and **Admin → Payments** shows the same record next to the time that file last moved. The
 page appends one line per page load and one per save — the outcome, the byte count, the
 names of the secret fields that came back filled, and PHP's own reason when a write is
 refused. Key names only, never a value. A `load` line with no `save` after it means the
 form never reached the server at all; a `save result=FAILED` line carries the reason; no
 lines at all means the file manager is open on a different copy of the site (the absolute
 path this page writes to is printed on the page itself, above the form).
+
+If the save *is* recorded but the file in your FTP client still looks untouched, press
+**Write test file** and then **Rewrite overrides file**, both on the Settings page. The
+second rewrites that exact file with its own bytes — nothing but the timestamp changes — so
+if the time in your FTP window does not move either, the window is not showing this copy of
+the site, and no amount of saving will ever appear in it.
 
 The payment keys are read **straight out of `storage/config_overrides.php`** by the
 payment code, so a value saved here takes effect even on a server whose `config.php`
