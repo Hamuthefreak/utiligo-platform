@@ -43,6 +43,7 @@ $overrides_file = config_overrides_file();
 $saved      = isset($_GET['saved']);
 $save_error = '';
 $write_test = null;   // set by the write test below
+$rewrite    = null;   // set by the rewrite probe below
 $repair     = null;   // set by the config.php repair below
 
 /* SIX HOURS FOR THIS PAGE'S TOKEN, WHERE THE APP'S DEFAULT IS ONE.
@@ -348,6 +349,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['test_write'])) {
 }
 
 // ---------------------------------------------------------------
+// REWRITE PROBE — "can this page replace the file it saves to?"
+// ---------------------------------------------------------------
+// The canary proves storage/ accepts a new FILE; this proves the save can replace the
+// file it is about, through the writer the save uses — including the write-beside-and-
+// rename fallback a host needs when the file is owned by the FTP user and PHP runs as
+// somebody else. Nothing changes: the bytes written are the bytes read, so the content is
+// byte for byte what it was, and the timestamp moving is the whole result — which is what
+// an operator watches while a save appears to do nothing.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['rewrite_overrides'])) {
+    if (!admin_csrf_verify('settings', $_POST['csrf_token'] ?? null, $csrfTtl)) {
+        $save_error = 'Invalid or expired security token — nothing was done. This page has just issued a new one: press the button again.';
+        config_overrides_audit('rewrite', 'result=not-run csrf=REFUSED');
+    } else {
+        $rewrite = config_overrides_rewrite_probe();
+        config_overrides_audit('rewrite',
+            'result=' . ($rewrite['ok'] ? 'rewritten' : 'FAILED')
+            . ' bytes=' . (int)$rewrite['bytes']
+            . ' rewrote=' . ($rewrite['rewrote'] ? 'yes' : 'created-header-only')
+            . ($rewrite['ok']
+                ? ' via=' . $rewrite['via']
+                : ' error="' . preg_replace('/\s+/', ' ', $rewrite['error']) . '"'));
+    }
+}
+
+// ---------------------------------------------------------------
 // REPAIR THE READER — the one step the deploy cannot do for this server
 // ---------------------------------------------------------------
 // config.php is excluded from the FTP deploy, so a stale copy of it is the one thing
@@ -514,6 +540,56 @@ require_once __DIR__ . '/../includes/admin_layout.php';
   </div>
 </div>
 
+<?php
+/* EVERY SAVE ATTEMPT, READ BACK INTO THE PAGE.
+
+   Everything this page can say about a save is decided by the server, and the operator is
+   looking at a browser, not at a shell. The lines below are the same ones the file manager
+   would show, so "I pressed Save and nothing happened" becomes one of four named outcomes
+   while the operator is still on the page: a load with no save after it (the POST never
+   arrived), a save refused by its token, a save that failed with PHP's own reason, or no
+   lines at all (the wrong copy of the site).
+
+   The running file's own path and timestamp are printed for the same reason: if the FTP
+   window shows admin/settings.php with a different date from the one here, it is not open
+   on the copy that is serving this page. Names and paths only — the log never holds a value. */
+$activity     = config_overrides_audit_tail(8);
+$runningFile  = __FILE__;
+$runningMtime = @filemtime(__FILE__);
+?>
+<div class="bg-white/[0.02] border border-white/5 rounded-2xl px-5 py-4 mb-6 text-xs">
+  <div class="flex items-start justify-between gap-4 flex-wrap">
+    <div class="flex-1 min-w-[18rem]">
+      <p class="text-slate-300 font-semibold">Recent configuration activity — the server's own record, read back</p>
+      <p class="text-slate-500 mt-1 leading-relaxed">
+        Every load of this page and every Save is appended to
+        <code class="break-all"><?= htmlspecialchars($activity['file']) ?></code>, and its last lines are shown
+        here so a save that did not happen can be seen without a file manager. UTC, key names only — never a value.
+      </p>
+    </div>
+    <a href="/admin/payments.php" class="shrink-0 inline-flex items-center gap-1.5 text-slate-400 hover:text-slate-200 font-semibold">
+      Payments page <i class="fa-solid fa-arrow-right text-[10px]"></i>
+    </a>
+  </div>
+  <?php if ($activity['lines']): ?>
+    <pre class="mt-3 bg-black/30 border border-white/5 rounded-xl px-4 py-3 overflow-x-auto text-[11px] leading-relaxed text-slate-400"><?= htmlspecialchars(implode("\n", $activity['lines'])) ?></pre>
+  <?php else: ?>
+    <p class="mt-3 text-amber-400 leading-relaxed">
+      Nothing has been recorded in that file yet. Reload this page: the load itself is written, so a line should
+      appear at this spot. If it stays empty, <code>storage/</code> is refusing the write — press
+      <strong>Write test file</strong> below for PHP's own reason.
+    </p>
+  <?php endif; ?>
+  <p class="mt-1 text-[11px] text-slate-600 leading-relaxed">
+    How to read it: <code>load</code> = this page opened · <code>save result=written</code> = the file was written ·
+    <code>save … csrf=REFUSED</code> = the security token was stale (open the page again and press Save) ·
+    <code>result=FAILED error="…"</code> = PHP's own reason. This page is running from
+    <code class="break-all"><?= htmlspecialchars($runningFile) ?></code>, deployed
+    <?= $runningMtime ? date('Y-m-d H:i:s', (int)$runningMtime) : 'at an unknown time' ?> — if your FTP window
+    shows that file with a different timestamp, it is not showing the copy that is serving this page.
+  </p>
+</div>
+
 <?php if ($ovState['ignored']): ?>
 <?php /*
    SAVED, AND NOT BEING READ — for the settings config.php defines itself.
@@ -657,14 +733,38 @@ if (!$reader['above_defines']): ?>
       <?php endif; ?>
     <?php endif; ?>
   </div>
-  <form method="POST" action="/admin/settings.php" class="shrink-0">
-    <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
-    <input type="hidden" name="test_write" value="1">
-    <button type="submit"
-            class="inline-flex items-center gap-2 bg-white/[.06] hover:bg-white/[.12] border border-white/10 text-slate-200 px-4 py-2 rounded-xl font-semibold transition">
-      <i class="fa-solid fa-vial"></i> Write test file
-    </button>
-  </form>
+  <div class="shrink-0 flex flex-col gap-2 min-w-[13rem]">
+    <form method="POST" action="/admin/settings.php">
+      <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+      <input type="hidden" name="test_write" value="1">
+      <button type="submit"
+              class="w-full inline-flex items-center justify-center gap-2 bg-white/[.06] hover:bg-white/[.12] border border-white/10 text-slate-200 px-4 py-2 rounded-xl font-semibold transition">
+        <i class="fa-solid fa-vial"></i> Write test file
+      </button>
+    </form>
+    <form method="POST" action="/admin/settings.php">
+      <input type="hidden" name="csrf_token" value="<?= $csrf ?>">
+      <input type="hidden" name="rewrite_overrides" value="1">
+      <button type="submit"
+              title="Writes the overrides file's own bytes back into it. Nothing changes but its timestamp, which is what this proves."
+              class="w-full inline-flex items-center justify-center gap-2 bg-white/[.06] hover:bg-white/[.12] border border-white/10 text-slate-200 px-4 py-2 rounded-xl font-semibold transition">
+        <i class="fa-solid fa-rotate"></i> Rewrite overrides file
+      </button>
+    </form>
+    <?php if ($rewrite !== null): ?>
+      <p class="text-[11px] leading-relaxed <?= $rewrite['ok'] ? 'text-emerald-400' : 'text-red-400' ?>">
+        <?php if ($rewrite['ok']): ?>
+          Wrote <?= (int)$rewrite['bytes'] ?> bytes back into the file
+          (<?= $rewrite['rewrote'] ? 'its own contents, unchanged' : 'a header, because it did not exist yet' ?>)
+          via <?= htmlspecialchars($rewrite['via']) ?>. Its timestamp is now
+          <?= date('H:i:s', (int)$rewrite['mtime']) ?> — look for that same file and time in your file manager.
+        <?php else: ?>
+          The file could not be replaced: <?= htmlspecialchars($rewrite['error']) ?>. A save would hit exactly
+          this, and PHP's own reason is the one to act on.
+        <?php endif; ?>
+      </p>
+    <?php endif; ?>
+  </div>
 </div>
 
 <?php if ($saved): ?>

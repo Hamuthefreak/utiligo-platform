@@ -475,6 +475,45 @@ $_alertWorks  = $_alertTo !== '' && $_alertMailer;
 </div>
 <?php endif; ?>
 
+<?php
+/* WHERE THESE VALUES COME FROM, AND WHEN THE FILE LAST MOVED.
+
+   This page reports what is set; it writes nothing — the settings page is the single
+   writer, deliberately. So when a key was just pasted and this page still says "not set",
+   the question is whether the paste reached the file at all, and the file's timestamp plus
+   the last lines of the attempt log answer it without a detour through FTP. It is the same
+   record the settings page shows; key names only, because the log never holds a value. */
+$_ovFile   = config_overrides_file();
+$_ovExists = is_file($_ovFile);
+$_ovMtime  = $_ovExists ? (int)@filemtime($_ovFile) : 0;
+$_activity = config_overrides_audit_tail(4);
+?>
+<div class="bg-white/[0.02] border border-white/5 rounded-2xl px-5 py-4 mb-8 text-xs">
+  <p class="text-slate-300 font-semibold">Where these values come from</p>
+  <p class="text-slate-500 mt-1 leading-relaxed">
+    <code class="break-all"><?= htmlspecialchars($_ovFile) ?></code> —
+    <?= $_ovExists ? 'last written ' . date('Y-m-d H:i:s', $_ovMtime) . ' (server time)' : 'not created yet' ?>.
+    This page only reads. The values are pasted and saved on
+    <a href="/admin/settings.php#payments-whop" class="underline text-slate-300">Settings → Payments (Whop)</a>,
+    and a save lands in this file immediately. Every attempt is recorded in
+    <code class="break-all"><?= htmlspecialchars($_activity['file']) ?></code>.
+  </p>
+  <?php if ($_activity['lines']): ?>
+    <pre class="mt-3 bg-black/30 border border-white/5 rounded-xl px-4 py-3 overflow-x-auto text-[11px] leading-relaxed text-slate-400"><?= htmlspecialchars(implode("\n", $_activity['lines'])) ?></pre>
+  <?php else: ?>
+    <p class="mt-2 text-amber-400 leading-relaxed">
+      No attempt has been recorded yet — the log is empty, which means no save has reached the application
+      at all, not that it was refused.
+    </p>
+  <?php endif; ?>
+  <p class="mt-2 text-[11px] text-slate-600 leading-relaxed">
+    If you have just pressed Save and neither the timestamp above nor the last line below moved, the save did
+    not arrive: open Settings → Payments (Whop), paste again, and use its two proof buttons. A save that did
+    arrive is recorded here as <code>save result=written</code> — and the values above turn green on the next
+    load without a redeploy.
+  </p>
+</div>
+
 <!-- ══ The configuration, value by value ═══════════════════════════════════ -->
 <div class="glass rounded-2xl border border-white/5 overflow-hidden mb-8">
   <div class="px-6 py-4 border-b border-white/5 flex items-center gap-2">

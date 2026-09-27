@@ -121,8 +121,41 @@ function admin_get_all_users(int $page = 1, int $perPage = 25, string $search = 
 function admin_csrf_token(string $form): string
 {
     $token = bin2hex(random_bytes(24));
-    $_SESSION['admin_csrf'][$form] = ['token' => $token, 'ts' => time()];
+    $_SESSION['admin_csrf'][$form] = ['tokens' => admin_csrf_ring($form, $token)];
     return $token;
+}
+
+/**
+ * The form's live tokens, newest first, with $newToken added and old ones dropped.
+ *
+ * Six is a number chosen for tabs, not for servers: a settings page open in three tabs,
+ * each reloaded twice while its owner looks for a key, stays inside it. Tokens are still
+ * random, session-bound and consumed on use, so the only thing a longer history costs is
+ * a few more bytes of session.
+ *
+ * The single-token shape is read as well as written, because a request on another
+ * worker may still be holding the session as it was before this change.
+ *
+ * @return list<array{token: string, ts: int}>
+ */
+function admin_csrf_ring(string $form, ?string $newToken = null): array
+{
+    $stored = $_SESSION['admin_csrf'][$form] ?? null;
+    $ring   = [];
+
+    if (is_array($stored)) {
+        if (isset($stored['tokens']) && is_array($stored['tokens'])) {
+            $ring = $stored['tokens'];
+        } elseif (isset($stored['token'])) {
+            $ring[] = ['token' => (string)$stored['token'], 'ts' => (int)($stored['ts'] ?? 0)];
+        }
+    }
+
+    if ($newToken !== null) {
+        array_unshift($ring, ['token' => $newToken, 'ts' => time()]);
+    }
+
+    return array_slice(array_values($ring), 0, 6);
 }
 
 /**
@@ -134,21 +167,48 @@ function admin_csrf_token(string $form): string
  * as "the save did nothing" — see admin/settings.php, which asks for six hours. Every
  * other caller keeps the default, and the token is still bound to the session, to one
  * form, and consumed by the save that uses it.
+ *
+ * A FORM IS KEPT OPEN IN MORE THAN ONE TAB, SO ONE SLOT IS NOT ENOUGH.
+ *
+ * admin_csrf_token() used to overwrite the form's one token, which made every render a
+ * race between tabs: the tab the operator did not reload last held a token that no longer
+ * verified, and its Save was refused — a refusal that arrives only after the work of
+ * copying two keys out of two dashboards, and that reads as "the save did nothing". The
+ * session therefore keeps the last few tokens per form: any unexpired one verifies,
+ * exactly one is consumed, and the rest age out.
  */
 function admin_csrf_verify(string $form, ?string $token, int $ttlSeconds = 3600): bool
 {
-    $stored = $_SESSION['admin_csrf'][$form] ?? null;
-    if (!$stored || !$token) return false;
-    if (time() - $stored['ts'] > $ttlSeconds) {
-        unset($_SESSION['admin_csrf'][$form]);
+    if (!$token) return false;
+
+    $now  = time();
+    $live = [];
+    foreach (admin_csrf_ring($form) as $entry) {
+        if (!isset($entry['token'], $entry['ts'])) continue;
+        // Expired tokens are dropped, not kept: a token that has aged out must not be
+        // handed a fresh clock by a later request.
+        if ($now - (int)$entry['ts'] > $ttlSeconds) continue;
+        $live[] = ['token' => (string)$entry['token'], 'ts' => (int)$entry['ts']];
+    }
+
+    $matched = null;
+    foreach ($live as $i => $entry) {
+        if (hash_equals($entry['token'], $token)) {
+            $matched = $i;
+            break;
+        }
+    }
+
+    if ($matched === null) {
+        // Nothing matched: keep the unexpired tokens, so a stale tab, a double-submit or
+        // a borrowed token does not burn the one the current tab is holding.
+        $_SESSION['admin_csrf'][$form] = ['tokens' => $live];
         return false;
     }
-    if (!hash_equals($stored['token'], $token)) {
-        // Do NOT unset on failure — preserve the token so a bad
-        // double-submit or stale tab doesn't burn the valid token.
-        return false;
-    }
-    // Only consume the token on genuine success
-    unset($_SESSION['admin_csrf'][$form]);
+
+    // Consume exactly the token that was used: its siblings — the ones issued to this
+    // form's other tabs — stay valid, and a reused token is refused even while they do.
+    unset($live[$matched]);
+    $_SESSION['admin_csrf'][$form] = ['tokens' => array_values($live)];
     return true;
 }
