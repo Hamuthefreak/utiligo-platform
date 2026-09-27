@@ -469,15 +469,50 @@ $csrf = admin_csrf_token('settings');
 $ovState = config_overrides_mismatch($overrides_file, whop_self_read_keys());
 $reader  = config_overrides_reader_status();
 
-/* ONE LINE PER LOAD, IN THE FOLDER THE OPERATOR IS ALREADY LOOKING AT.
+/* ONE LINE PER REQUEST, AND IT NAMES WHICH REQUEST IT WAS.
 
-   "I hit Save and nothing happened" has four causes that look identical from a browser:
-   the POST never arrived, the token was refused, the write was refused, or the file
-   manager is open on a second copy of the site. A page load that IS in the log with no
-   `save` line after it is what separates the first of those from the rest, so the load
-   is logged too. Names and counts only — never a value (see config_overrides_audit()). */
-config_overrides_audit('load', 'fields=' . count($fields)
-    . ' reader=' . (!empty($reader['above_defines']) ? 'loads' : 'NOT-loading'));
+   A page load is logged, because "I hit Save and nothing happened" has four causes that
+   look identical from a browser: the POST never arrived, the token was refused, the write
+   was refused, or the file manager is open on a second copy of the site. A load that IS in
+   the log with no `save` line after it is what separates the first of those from the rest.
+
+   A POST is not logged here, and that is deliberate: every handler above writes its own
+   line, so an unconditional line at this point meant one press of one button left TWO lines
+   — `write-test result=written` and an unexplained `load` next to it — with nothing saying
+   which of them was the thing that was pressed. The one POST that still has to be written
+   down is the one no handler claimed, because that is the request that leaves NO trace at
+   all: a form posting to a page that does not handle it and a body the host never passed on
+   look from a browser exactly like a working button that changed nothing. It is recorded
+   with the field COUNT and the field NAMES, which is what separates a dropped body
+   (fields=0) from a form that posted something unrecognised — and it is what would have
+   said, in one line, that a form posting to /admin/settings.php was arriving as a bodyless
+   GET. Names and counts only — never a value (see config_overrides_audit()). */
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (!array_intersect(['save_config', 'test_write', 'rewrite_overrides', 'repair_reader'], array_keys($_POST))) {
+        $posted = [];
+        foreach (array_slice(array_keys($_POST), 0, 8) as $name) {
+            // A field NAME, and never anything but one: anything outside the characters a
+            // form field name is made of is replaced rather than logged, because this line
+            // is printed back onto the page.
+            $posted[] = substr((string)preg_replace('/[^A-Za-z0-9_\[\]]/', '?', (string)$name), 0, 24);
+        }
+        config_overrides_audit('post', 'result=NOT-HANDLED'
+            . ' fields=' . count($_POST)
+            . ' names=' . ($posted ? implode(',', $posted) : 'none')
+            . ' bytes=' . (int)($_SERVER['CONTENT_LENGTH'] ?? 0)
+            . ' uri=' . substr((string)($_SERVER['REQUEST_URI'] ?? ''), 0, 64));
+        // And said out loud, not only on the log: this is the one failure that used to
+        // leave the operator with a page that simply reloaded and a file that did not change.
+        $save_error = 'A form was submitted to this page but no action in it was recognised, so nothing was'
+            . ' written. Confirm that the address the form posts to is the address this page is served at'
+            . ' (/admin/settings): a redirect between the two turns the POST into a plain page load, and'
+            . ' the page load is then the only thing that arrives. The attempt is recorded in '
+            . config_overrides_log_file() . '.';
+    }
+} else {
+    config_overrides_audit('load', 'fields=' . count($fields)
+        . ' reader=' . (!empty($reader['above_defines']) ? 'loads' : 'NOT-loading'));
+}
 
 $pageTitle = 'Settings — Admin — Utiligo';
 $adminPage = 'settings';
@@ -536,7 +571,7 @@ require_once __DIR__ . '/../includes/admin_layout.php';
     </p>
     <p class="mt-1 text-[11px] text-slate-500 break-all">File: <code><?= htmlspecialchars($overrides_file) ?></code></p>
     <p class="text-[11px] text-slate-500 break-all">Config: <code><?= htmlspecialchars($reader['file']) ?></code></p>
-    <p class="text-[11px] text-slate-500 break-all">Attempts: <code><?= htmlspecialchars(config_overrides_log_file()) ?></code> — one line per load and per save, key names only, never a value.</p>
+    <p class="text-[11px] text-slate-500 break-all">Attempts: <code><?= htmlspecialchars(config_overrides_log_file()) ?></code> — one line per request: <code>load</code> for a page view, <code>save</code> / <code>write-test</code> / <code>rewrite</code> / <code>repair</code> for a button, and <code>post result=NOT-HANDLED</code> for a form this page does not recognise. Key names only, never a value.</p>
   </div>
 </div>
 
@@ -562,9 +597,10 @@ $runningMtime = @filemtime(__FILE__);
     <div class="flex-1 min-w-[18rem]">
       <p class="text-slate-300 font-semibold">Recent configuration activity — the server's own record, read back</p>
       <p class="text-slate-500 mt-1 leading-relaxed">
-        Every load of this page and every Save is appended to
-        <code class="break-all"><?= htmlspecialchars($activity['file']) ?></code>, and its last lines are shown
-        here so a save that did not happen can be seen without a file manager. UTC, key names only — never a value.
+        Every request to this page — the load, and each button you press — is appended to
+        <code class="break-all"><?= htmlspecialchars($activity['file']) ?></code> as one line, and its last
+        lines are shown here so a save that did not happen can be seen without a file manager. UTC, key names
+        only — never a value.
       </p>
     </div>
     <a href="/admin/payments.php" class="shrink-0 inline-flex items-center gap-1.5 text-slate-400 hover:text-slate-200 font-semibold">
@@ -583,7 +619,9 @@ $runningMtime = @filemtime(__FILE__);
   <p class="mt-1 text-[11px] text-slate-600 leading-relaxed">
     How to read it: <code>load</code> = this page opened · <code>save result=written</code> = the file was written ·
     <code>save … csrf=REFUSED</code> = the security token was stale (open the page again and press Save) ·
-    <code>result=FAILED error="…"</code> = PHP's own reason. This page is running from
+    <code>result=FAILED error="…"</code> = PHP's own reason · <code>post result=NOT-HANDLED</code> = a form
+    arrived that this page does not handle, which is what a redirect between the form and here looks like
+    (<code>fields=0</code> means the POST body never arrived at all). This page is running from
     <code class="break-all"><?= htmlspecialchars($runningFile) ?></code>, deployed
     <?= $runningMtime ? date('Y-m-d H:i:s', (int)$runningMtime) : 'at an unknown time' ?> — if your FTP window
     shows that file with a different timestamp, it is not showing the copy that is serving this page.

@@ -74,6 +74,74 @@ if ($guard !== '') {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
+ * 1b. The clean-URL redirect never touches a POST
+ *
+ * A form posting to /admin/settings.php was answered with the 301 that strips `.php`
+ * off a URL — and a browser follows an [R] answer to a POST by re-issuing it as a GET
+ * with no body. So the save handler never ran, the file was never written, and the log
+ * held nothing but the load line the redirect target rendered. Every form in the app
+ * that names its action names a .php URL, which is why Save, both proof buttons, the
+ * Whop checkout button, Support's reply form and resend-verification all did nothing at
+ * one go, and why "the write test just adds a line to the log" was the one symptom an
+ * operator could see.
+ *
+ * The suite runs on `php -S`, which ignores .htaccess — so no HTTP test in this file,
+ * above or below, can catch this, and a green run was never evidence against it. This
+ * evaluates the rule the way mod_rewrite does, against the request line a browser sends.
+ * ──────────────────────────────────────────────────────────────────────────── */
+
+t_section('The .php -> clean-URL redirect cannot turn a POST into a GET');
+
+$cleanRule = '';
+if (preg_match('#((?:^[ \t]*RewriteCond[^\n]*\n)*^[ \t]*RewriteRule[ \t]+\^[ \t]+/%1[ \t]+\[R=301,L\])#m', $htaccess, $m)) {
+    $cleanRule = $m[1];
+}
+
+t_ok($cleanRule !== '', 'the rule that strips .php off a URL is still there to be reasoned about');
+
+/**
+ * mod_rewrite: every RewriteCond has to pass, then the rule pattern is matched against
+ * the path with the leading slash removed — which `^` does for anything. Only the shapes
+ * this file actually uses are evaluated: `%{VAR} value`, `!regex` and `=string`.
+ */
+$redirects = static function (string $method, string $uri) use ($cleanRule): bool {
+    if ($cleanRule === '') return false;
+
+    $conds = [];
+    if (preg_match_all('/RewriteCond\s+(\S+)\s+(\S+)/', $cleanRule, $cm, PREG_SET_ORDER)) {
+        foreach ($cm as $c) $conds[] = [strtoupper($c[1]), $c[2]];
+    }
+
+    $values = [
+        '%{REQUEST_METHOD}' => $method,
+        '%{REQUEST_URI}'    => (string)(parse_url($uri, PHP_URL_PATH) ?: '/'),
+        '%{THE_REQUEST}'    => $method . ' ' . $uri . ' HTTP/1.1',
+    ];
+
+    foreach ($conds as [$var, $pattern]) {
+        $value = $values[$var] ?? null;
+        if ($value === null) return false;   // a condition this test cannot evaluate must not be claimed as passing
+        $negated = str_starts_with($pattern, '!');
+        $body    = ltrim($pattern, '!');
+        $hit     = str_starts_with($body, '=')
+            ? strcasecmp(substr($body, 1), $value) === 0
+            : preg_match('#' . str_replace('#', '\#', $body) . '#i', $value) === 1;
+        if ($hit === $negated) return false;   // the condition fails, so the rule is not applied
+    }
+
+    return true;   // the pattern is `^`, so a passing condition set is a redirect
+};
+
+t_ok($redirects('GET', '/about.php'), 'a GET of a .php URL is still redirected to its clean URL');
+t_ok($redirects('GET', '/admin/settings.php'), 'and so is a GET of an admin page');
+t_ok(!$redirects('POST', '/admin/settings.php'),
+    'while a POST to /admin/settings.php is not redirected — this is why nothing was ever saved');
+t_ok(!$redirects('POST', '/whop-checkout.php'),
+    'nor the Whop purchase button, which posts to that endpoint from the billing page');
+t_ok(!$redirects('POST', '/resend-verification.php'), 'nor the resend-verification form');
+t_ok(!$redirects('GET', '/api/whop-webhook.php'), 'and /api/ is still left out of the redirect, as it was');
+
+/* ─────────────────────────────────────────────────────────────────────────────
  * 2. One page writes the overrides file
  * ──────────────────────────────────────────────────────────────────────────── */
 
@@ -720,6 +788,61 @@ try {
 
     $strip = t_http('GET', $app . '/admin/settings.php', ['cookie' => $cookie]);
     t_like($strip['body'], 'Attempts:', 'and the page prints where that record is, because the operator is looking at FTP and not at a console');
+
+    /* ONE CLICK, ONE LINE — AND THE BUTTON THAT USED TO ADD THE MYSTERY ONE.
+
+       The unexplained extra line was the first thing reported about this page, and it was a load
+       line: the button's POST was being answered with the 301 that strips `.php` off a URL, so what
+       reached the page was a bodyless GET of the redirect target and all the log could say was that
+       something had loaded. §1b pins that cause; these assertions pin the evidence an operator reads —
+       the press is named, and it is the only line the press adds. */
+    $auditLines = static function () use ($logFile): array {
+        $raw = is_file($logFile) ? (string)file_get_contents($logFile) : '';
+
+        return array_values(array_filter(array_map('trim', preg_split('/\R/', $raw))));
+    };
+
+    $canary     = dirname($overrides) . '/_utiligo_write_test.php';
+    $canaryWas  = is_file($canary) ? (string)file_get_contents($canary) : null;
+
+    $beforePress = $auditLines();
+    $pressed     = t_http('GET', $app . '/admin/settings.php', ['cookie' => $cookie]);
+    preg_match('/name="csrf_token" value="([a-f0-9]+)"/', $pressed['body'], $pressTok);
+    $press = t_http('POST', $app . '/admin/settings.php', [
+        'form'   => ['csrf_token' => $pressTok[1] ?? '', 'test_write' => '1'],
+        'cookie' => $cookie,
+    ]);
+    t_is($press['status'], 200, 'the write test answers with the page rather than with a redirect');
+    t_like($press['body'], 'Wrote ', 'and reports the bytes it wrote, which is the proof it exists to give');
+    t_ok(is_file($canary), 'the canary really lands in storage/, so the proof is not about another folder');
+
+    $afterPress = $auditLines();
+    t_is(count($afterPress), count($beforePress) + 2,
+        'one press adds exactly two lines: the load it renders on, and one for the press');
+    t_like(end($afterPress), 'write-test result=written',
+        'and the line for the press says it was the write test, not a second unexplained load');
+    t_like($afterPress[count($afterPress) - 2] ?? '', 'load fields=',
+        'with the plain load line above it being the page the button was pressed on');
+
+    // A POST that reaches this page and matches no handler is the failure that used to be
+    // invisible: nothing written, no error, and a page that simply reloaded. It is also what
+    // the redirect left behind, which is why the line records the size of the body it carried.
+    $beforeStray = $auditLines();
+    $stray = t_http('POST', $app . '/admin/settings.php', ['cookie' => $cookie]);
+    t_is($stray['status'], 200, 'a POST carrying no action still renders the page');
+    t_like($stray['body'], 'no action in it was recognised',
+        'and says so above the fold, instead of looking like a reload that changed nothing');
+    $afterStray = $auditLines();
+    t_is(count($afterStray), count($beforeStray) + 1, 'and it is recorded as exactly one line, not two');
+    t_like(end($afterStray), 'post result=NOT-HANDLED fields=0 names=none',
+        'naming the request and recording that its body never arrived — the shape a redirect leaves');
+
+    // The canary belongs to the operator's server, not to a test run.
+    if ($canaryWas === null) {
+        @unlink($canary);
+    } else {
+        @file_put_contents($canary, $canaryWas);
+    }
 } finally {
     $restore();
 }

@@ -47,6 +47,18 @@ RewriteRule ^(s|portal|admin|api)(/|$) - [E=UTL_NOINDEX:1]
 # ---------------------------------------------------------------
 
 # 1. Redirect /page.php -> /page (301)
+#
+# A POST IS NEVER REDIRECTED HERE. An [R] answer to a POST does not reach the
+# browser as a redirect to repeat: every browser re-issues it as a GET with no
+# body. A form posting to /admin/settings.php therefore reached admin/settings.php
+# as an empty GET — the save handler never ran, the file was never written, and the
+# only trace was the page-load line in the settings log, which is exactly how "I
+# press Save and nothing happens" was reported. Every form in this app that names
+# its action (Settings, Payments, Support, both resend-verification forms, the Whop
+# checkout button) names a .php URL, so this one condition is what keeps all of them
+# working. The guard belongs here rather than in those files: a page may name a .php
+# endpoint, and this rule may not destroy the request on the way to it.
+RewriteCond %{REQUEST_METHOD} =GET
 RewriteCond %{THE_REQUEST} \s/([^.]+)\.php[\s?] [NC]
 RewriteCond %{REQUEST_URI} !^/api/ [NC]
 RewriteCond %{REQUEST_URI} !^/notfound/ [NC]
